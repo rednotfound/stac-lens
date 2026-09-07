@@ -28,7 +28,10 @@ export interface TreeDatum {
 export function useStructureTree(rootHref: string) {
   const [uiState, setUiState] = useState<Map<string, NodeUiState>>(new Map())
 
-  const expand = useCallback(async (href: string) => {
+  // Named function expression so the recursive cascade (below) refers to
+  // its own binding rather than the outer `const expand` — avoids reading
+  // a variable while its own declaration is still being initialized.
+  const expand = useCallback(async function expand(href: string): Promise<void> {
     setUiState((prev) => {
       const next = new Map(prev)
       const existing = next.get(href)
@@ -55,6 +58,14 @@ export function useStructureTree(rootHref: string) {
       })
       return next
     })
+
+    // Auto-expand cascades through curated Catalog structure (the
+    // publisher's information architecture, cheap to reveal) but always
+    // stops at Collections — expanding one can mean fetching anywhere from
+    // a handful to thousands of Items, which should stay a deliberate click.
+    for (const child of children) {
+      if (child.type === 'Catalog') void expand(child.href)
+    }
   }, [])
 
   const collapse = useCallback((href: string) => {

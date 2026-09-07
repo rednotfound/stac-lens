@@ -21,6 +21,9 @@
   --color-badge-unknown-bg: #fbe7e2;
   --color-badge-unknown-text: #a3411f;
 
+  --color-land-fill: #efe9dd;
+  --color-land-stroke: #d8d0c0;
+
   --font-sans: -apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 
@@ -54,6 +57,9 @@
     --color-badge-known-text: #6fd1a1;
     --color-badge-unknown-bg: #3a2018;
     --color-badge-unknown-text: #e28a68;
+
+    --color-land-fill: #2a2822;
+    --color-land-stroke: #3d392f;
   }
 }
 
@@ -61,4 +67,27 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
+}
+
+/* Thin, themed scrollbars everywhere content overflows (Detail Inspector's
+ * JSON, Time Lens's item rows, ...) instead of the default OS scrollbar
+ * chrome, which reads as generic/clunky against the rest of the custom
+ * visual language. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-faint);
 }

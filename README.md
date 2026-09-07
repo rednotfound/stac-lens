@@ -12,7 +12,7 @@ Early prototype (v0.1). Working today:
 
 - **Structure Lens** — a horizontal, curved node-link tree (not a file-explorer list) over the STAC Catalog → Collection → Item graph. Lazily fetches on expand, classifies each node's real shape (flat collection of items / collection-of-collections / mixed / genuinely empty) rather than assuming a fixed depth, and pans/zooms via drag + wheel (no sliders).
 - **Time Lens** — a Wayback-Machine-style availability timeline scoped to whatever's selected in Structure. Renders instants, closed intervals, and open-ended intervals distinctly (never normalized to one point), and overlays a Collection's *stated* temporal extent against the *actual* range of its Items — surfacing stated-vs-actual conflicts directly rather than silently reconciling them.
-- **Space Lens** — bbox footprints on a bare lon/lat graticule (deliberately not a real basemap), scoped to the same selection.
+- **Space Lens** — bbox footprints over lightweight static coastline outlines (deliberately not a real interactive basemap — no tiles, no pan/zoom map widget, no layer switcher), scoped to the same selection.
 - **Detail Inspector** — source STAC JSON always available, plus derived facts (namespace classification of known vs. unknown extension prefixes, geometry-validity fallback, schema hints) clearly labeled as derived, never merged into the source.
 
 All three lenses and the inspector share one selection store, so clicking an Item's footprint in Space Lens highlights it in the Structure tree, the Time Lens timeline, and the Detail panel simultaneously.
@@ -38,7 +38,7 @@ Both are static catalogs fetched directly from the browser (both hosts serve per
 
 ## Stack
 
-TypeScript + React + Vite. `zustand` for the one shared selection store. `d3-hierarchy` + `d3-shape` + `d3-zoom` + `d3-scale` for tree layout math, curved link paths, pan/zoom gestures, and the time axis — d3 owns only the math, all rendering is plain React/SVG. No UI component library or map library; a small hand-written design-token layer (`src/design/tokens.css`) instead, deliberately avoiding an "enterprise dashboard" look.
+TypeScript + React + Vite. `zustand` for the one shared selection store. `d3-hierarchy` + `d3-shape` + `d3-zoom` + `d3-scale` for tree layout math, curved link paths, pan/zoom gestures, and the time axis; `d3-geo` + `topojson-client` + a bundled `world-atlas` 110m land topology (~56KB static asset) for Space Lens's coastline reference — d3 owns only the math, all rendering is plain React/SVG. No UI component library and no interactive map library (no tiles, no map widget); a small hand-written design-token layer (`src/design/tokens.css`) instead, deliberately avoiding an "enterprise dashboard" look.
 
 ## Project layout
 
@@ -61,7 +61,7 @@ src/
   components/
     StructureTree.tsx  Structure Lens (SVG tree, pan/zoom, legend, tooltip)
     TimeLens.tsx        Time Lens (SVG timeline)
-    SpaceLens.tsx       Space Lens (SVG graticule + bbox footprints)
+    SpaceLens.tsx       Space Lens (d3-geo coastline outlines + bbox footprints)
     DetailPanel.tsx     Detail Inspector
     EmptyState.tsx      shared empty/loading placeholder
   design/

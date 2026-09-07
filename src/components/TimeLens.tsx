@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { scaleUtc } from 'd3-scale'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
+import { useElementSize } from '../hooks/useElementSize'
 import { temporalBounds } from '../stac/temporal'
 import type { StacNode, TemporalShape } from '../stac/types'
 import { EmptyState } from './EmptyState'
@@ -11,7 +12,7 @@ const AXIS_HEIGHT = 28
 const STATED_ROW_HEIGHT = 24
 const LABEL_WIDTH = 220
 const RIGHT_PAD = 24
-const VIEW_WIDTH = 1400
+const FALLBACK_VIEW_WIDTH = 800
 const LABEL_MAX_CHARS = 26
 
 function truncateLabel(label: string): string {
@@ -42,8 +43,29 @@ interface TooltipState {
  *  shapes render distinctly rather than being normalized to one point, and
  *  the collection's stated extent renders as its own reference row so a
  *  stated-vs-actual mismatch is directly visible rather than computed only
- *  in a report. */
+ *  in a report.
+ *
+ *  The container div here must always render (only its *contents* are
+ *  conditional on data being ready) — the size-measuring effect below binds
+ *  once on mount, and if the ref were only attached inside a conditional
+ *  branch it could bind to a still-null ref on first render and never
+ *  retry. Same class of bug as the Structure Lens pan/zoom fix; see
+ *  docs/DESIGN.md §5. */
 export function TimeLens() {
+  const [containerRef, { width: measuredWidth }] = useElementSize<HTMLDivElement>()
+  const viewWidth = measuredWidth > 0 ? measuredWidth : FALLBACK_VIEW_WIDTH
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto' }}
+    >
+      <TimeLensBody viewWidth={viewWidth} />
+    </div>
+  )
+}
+
+function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
   const target = useSelectedItems(selectedHref)
@@ -91,8 +113,11 @@ export function TimeLens() {
     return <EmptyState>loading…</EmptyState>
   }
 
-  const x = scaleUtc().domain(domain).range([LABEL_WIDTH, VIEW_WIDTH - RIGHT_PAD])
-  const ticks = x.ticks(6)
+  const x = scaleUtc().domain(domain).range([LABEL_WIDTH, viewWidth - RIGHT_PAD])
+  // Scale tick count with available width so labels never crowd together
+  // at narrow panel widths (~110px per label is comfortable for a date).
+  const tickCount = Math.max(2, Math.floor((viewWidth - LABEL_WIDTH) / 110))
+  const ticks = x.ticks(tickCount)
 
   // Compare the collection's stated extent against the actual range of the
   // (possibly bounded) loaded items — a real, not hypothetical, conflict:
@@ -118,7 +143,7 @@ export function TimeLens() {
   const height = itemsStartY + sortedItems.length * ROW_HEIGHT + 12
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto' }}>
+    <>
       <div style={{ padding: '6px 16px 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
         <strong style={{ color: 'var(--color-text)' }}>{node?.title ?? node?.id}</strong>
         {' · '}
@@ -132,7 +157,7 @@ export function TimeLens() {
           </span>
         )}
       </div>
-      <svg width="100%" viewBox={`0 0 ${VIEW_WIDTH} ${height}`} style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${viewWidth} ${height}`} style={{ display: 'block' }}>
         {/* axis */}
         {ticks.map((t) => (
           <g key={t.getTime()} transform={`translate(${x(t)}, 0)`}>
@@ -225,7 +250,7 @@ export function TimeLens() {
           {tooltip.label}
         </div>
       )}
-    </div>
+    </>
   )
 }
 

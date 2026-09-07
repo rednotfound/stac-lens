@@ -218,9 +218,25 @@ collection, made visible rather than averaged away.
 
 ## 7. Space Lens
 
-Bbox footprints on a bare lon/lat graticule — explicitly not a real basemap
-(the brief states "space is not just a basemap" as a standing principle).
-No mapping library; the projection is a two-line equirectangular function.
+Bbox footprints over lightweight static coastline outlines — still
+explicitly not a real basemap (the brief states "space is not just a
+basemap" as a standing principle: no tile layer, no pan/zoom map widget, no
+layer switcher), but *some* geographic reference turned out to be necessary,
+not optional. The first version drew footprints against a bare lon/lat
+graticule with no landmass at all; asked directly after seeing it, "范围是不是
+应该有个背景地图啊，不然真的就只有一个方框可见" (shouldn't there be a
+background reference — otherwise it's really just a floating box) — a grid
+with no coastline gives no way to tell Africa from South America from a
+number. Fixed by rendering `world-atlas`'s bundled 110m-resolution land
+topology (~56KB, a static asset, not a tile fetch) via `d3-geo`
+(`geoEquirectangular` + `geoPath` + `geoGraticule`) and `topojson-client`.
+This is the correct middle ground: real geographic legibility, still zero
+interactivity/chrome that would make it read as a GIS dashboard widget.
+`geoEquirectangular().fitSize([viewWidth, viewHeight], {type:'Sphere'})`
+replaced the hand-rolled linear lon/lat→pixel function from the first
+version — same 2:1-ratio requirement (§ below), computed correctly by d3
+instead of by hand.
+
 Uses the same `useSelectedItems` hook as Time Lens (refactored out of what
 was originally Time-Lens-only code, once Space Lens needed the identical
 "resolve selection → collection + items" logic) — both lenses stay in sync
@@ -228,17 +244,17 @@ off one fetch, and clicking a footprint / timeline bar / tree node all write
 to the same `selection` store, so all three lenses and the Detail panel
 update together.
 
-Every Item's bbox renders as a low-opacity (`fillOpacity: 0.06`) filled
-rect, no stroke, unless selected. This is a deliberate choice, not a
-simplification skipped for later: most of Atlas's Items in any one
-collection share a near-identical continent-wide bbox (confirmed directly —
-several collections' bboxes differ only in the 4th–6th decimal place), so
-overlapping low-opacity fills accumulate into a visibly darker stacked
-region, communicating density even when every individual box is nearly
-identical, rather than hiding the overlap or faking spatial variety that
-isn't in the data. The selected Item's footprint is always drawn last (on
-top) with a solid selection-color stroke so it stays identifiable regardless
-of how many siblings occupy the same pixels.
+Every Item's bbox renders as a low-opacity (`fillOpacity: 0.1`) filled rect
+with a faint stroke, brought to full stroke when selected. This is a
+deliberate choice, not a simplification skipped for later: most of Atlas's
+Items in any one collection share a near-identical continent-wide bbox
+(confirmed directly — several collections' bboxes differ only in the
+4th–6th decimal place), so overlapping low-opacity fills accumulate into a
+visibly darker stacked region, communicating density even when every
+individual box is nearly identical, rather than hiding the overlap or
+faking spatial variety that isn't in the data. The selected Item's footprint
+is always drawn last (on top) with a solid selection-color stroke so it
+stays identifiable regardless of how many siblings occupy the same pixels.
 
 **Not yet real "Space" per the original brief:** this is display-only. The
 brief's actual Space↔Time interaction pattern (select an area on the map →
