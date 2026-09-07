@@ -1,0 +1,64 @@
+/* STAC Lens design tokens. Deliberately not a component library skin —
+ * a small palette + spacing scale we control directly, so the tree/timeline
+ * visuals stay custom rather than inheriting a generic dashboard look. */
+:root {
+  --color-bg: #faf9f7;
+  --color-surface: #ffffff;
+  --color-border: #e7e3dd;
+  --color-text: #2b2822;
+  --color-text-muted: #8a8478;
+  --color-text-faint: #b7b1a4;
+
+  --color-node-catalog: #55524a;
+  --color-node-collection: #0f766e;
+  --color-node-item: #b45309;
+  --color-node-warning: #b45309;
+  --color-selection: #2563eb;
+  --color-selection-bg: #eaf1fd;
+
+  --color-badge-known-bg: #e3f3ea;
+  --color-badge-known-text: #1f6f4a;
+  --color-badge-unknown-bg: #fbe7e2;
+  --color-badge-unknown-text: #a3411f;
+
+  --font-sans: -apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1c1a17;
+    --color-surface: #24221e;
+    --color-border: #3a372f;
+    --color-text: #ece8e0;
+    --color-text-muted: #a39c8c;
+    --color-text-faint: #6b6558;
+
+    --color-node-catalog: #b8b2a3;
+    --color-node-collection: #2dd4bf;
+    --color-node-item: #f0a253;
+    --color-node-warning: #f0a253;
+    --color-selection: #60a5fa;
+    --color-selection-bg: #1e2c42;
+
+    --color-badge-known-bg: #16332a;
+    --color-badge-known-text: #6fd1a1;
+    --color-badge-unknown-bg: #3a2018;
+    --color-badge-unknown-text: #e28a68;
+  }
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
