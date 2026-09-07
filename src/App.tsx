@@ -3,14 +3,21 @@ import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { TimeLens } from './components/TimeLens'
 import { SpaceLens } from './components/SpaceLens'
-
-const FIXTURES = {
-  atlas: 'https://digital-atlas.s3.amazonaws.com/stac/public_stac/catalog.json',
-  specExample: 'https://raw.githubusercontent.com/radiantearth/stac-spec/master/examples/catalog.json',
-}
+import { LandingPage } from './components/LandingPage'
+import { useSelectionStore } from './store/selection'
 
 function App() {
-  const [rootHref, setRootHref] = useState<string>(FIXTURES.atlas)
+  const [rootHref, setRootHref] = useState<string | null>(null)
+  const select = useSelectionStore((s) => s.select)
+
+  function openCatalog(href: string) {
+    select(null) // a selection from a previous catalog can't mean anything here
+    setRootHref(href)
+  }
+
+  if (!rootHref) {
+    return <LandingPage onOpen={openCatalog} />
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -24,22 +31,36 @@ function App() {
           background: 'var(--color-surface)',
         }}
       >
-        <strong style={{ fontSize: 14 }}>STAC Lens</strong>
-        <select
-          value={rootHref}
-          onChange={(e) => setRootHref(e.target.value)}
+        <button
+          onClick={() => {
+            select(null)
+            setRootHref(null)
+          }}
           style={{
             fontSize: 13,
-            padding: '4px 8px',
+            padding: '4px 10px',
             borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--color-border)',
             background: 'var(--color-surface)',
             color: 'var(--color-text)',
+            cursor: 'pointer',
           }}
         >
-          <option value={FIXTURES.atlas}>Africa Adaptation Atlas</option>
-          <option value={FIXTURES.specExample}>STAC spec example (minimal)</option>
-        </select>
+          ← Catalogs
+        </button>
+        <strong style={{ fontSize: 14, flexShrink: 0 }}>STAC Lens</strong>
+        <span
+          style={{
+            fontSize: 12,
+            color: 'var(--color-text-muted)',
+            fontFamily: 'var(--font-mono)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {rootHref}
+        </span>
       </header>
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div style={{ width: '55%', borderRight: '1px solid var(--color-border)' }}>

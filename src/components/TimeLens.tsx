@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { scaleUtc } from 'd3-scale'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
@@ -29,6 +29,84 @@ function sortKey(node: StacNode): number {
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10)
+}
+
+interface TimeGroup {
+  shape: TemporalShape
+  items: StacNode[]
+}
+
+function shapeKey(shape: TemporalShape): string {
+  if (shape.kind === 'instant') return `instant:${shape.at}`
+  return `interval:${shape.start ?? ''}:${shape.end ?? ''}`
+}
+
+/** Items with the exact same [start, end] (or the same instant) collapse
+ *  into one row instead of one apiece — not just a density optimization:
+ *  Adaptation Atlas has a real copy-paste metadata bug where many Items
+ *  claim identical timing despite different IDs, so grouping surfaces that
+ *  cluster directly rather than hiding it behind 50 visually-identical bars. */
+function groupByTemporalShape(items: StacNode[]): TimeGroup[] {
+  const groups = new Map<string, TimeGroup>()
+  for (const item of items) {
+    if (!item.temporal) continue
+    const key = shapeKey(item.temporal)
+    const existing = groups.get(key)
+    if (existing) existing.items.push(item)
+    else groups.set(key, { shape: item.temporal, items: [item] })
+  }
+  return [...groups.values()]
+}
+
+function groupBoundsMs(group: TimeGroup, domain: readonly [Date, Date]): [number, number] {
+  const [s, e] = temporalBounds(group.shape)
+  return [(s ?? domain[0]).getTime(), (e ?? domain[1]).getTime()]
+}
+
+/** Classic greedy interval-packing ("minimum meeting rooms"): each group
+ *  goes in the first lane whose previous occupant has already ended, so
+ *  groups that don't overlap in time share a row instead of every group
+ *  getting its own. This is what keeps panel height sane even before any
+ *  exact-duplicate grouping kicks in — e.g. yearly non-overlapping data
+ *  packs into very few lanes regardless of how many Items there are. */
+function packLanes(
+  groups: TimeGroup[],
+  domain: readonly [Date, Date],
+): { group: TimeGroup; lane: number }[] {
+  const withBounds = groups
+    .map((group) => ({ group, bounds: groupBoundsMs(group, domain) }))
+    .sort((a, b) => a.bounds[0] - b.bounds[0])
+
+  const laneEnds: number[] = []
+  const assignments: { group: TimeGroup; lane: number }[] = []
+  for (const { group, bounds } of withBounds) {
+    let lane = laneEnds.findIndex((end) => end <= bounds[0])
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(bounds[1])
+    } else {
+      laneEnds[lane] = bounds[1]
+    }
+    assignments.push({ group, lane })
+  }
+  return assignments
+}
+
+function groupLabel(group: TimeGroup): string {
+  if (group.items.length === 1) {
+    const item = group.items[0]
+    return item.title ?? item.id
+  }
+  return `${group.items.length} items, identical timing`
+}
+
+/** Full detail for the hover tooltip — the label truncates/summarizes,
+ *  the tooltip always lists what's actually in the group. */
+function groupTooltip(group: TimeGroup): string {
+  if (group.items.length === 1) return group.items[0].title ?? group.items[0].id
+  const ids = group.items.map((i) => i.id)
+  const shown = ids.slice(0, 8).join(', ')
+  return ids.length > 8 ? `${shown}, +${ids.length - 8} more` : shown
 }
 
 interface TooltipState {
@@ -100,6 +178,26 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
     return [min, max] as const
   }, [sortedItems, statedBounds])
 
+  const groups = useMemo(() => groupByTemporalShape(sortedItems), [sortedItems])
+  const assignments = useMemo(() => (domain ? packLanes(groups, domain) : []), [groups, domain])
+
+  const highlightHref = target.status === 'ready' ? target.highlightHref : undefined
+  const selectedItem = highlightHref ? sortedItems.find((i) => i.href === highlightHref) : undefined
+
+  // Bring the selected row into view automatically — a selection made
+  // elsewhere (Structure Lens, Space Lens) shouldn't require manually
+  // scrolling this panel to find where it landed. Once per distinct
+  // selection, so it doesn't fight a manual scroll.
+  const selectedRowRef = useRef<SVGGElement | null>(null)
+  const lastScrolledRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!highlightHref || highlightHref === lastScrolledRef.current) return
+    if (selectedRowRef.current) {
+      lastScrolledRef.current = highlightHref
+      selectedRowRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+  }, [highlightHref, assignments])
+
   if (target.status === 'empty') {
     return (
       <EmptyState>
@@ -138,9 +236,10 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
     actualMax &&
     ((statedBounds[0] && actualMin < statedBounds[0]) || (statedBounds[1] && actualMax > statedBounds[1]))
 
+  const laneCount = assignments.length ? Math.max(...assignments.map((a) => a.lane)) + 1 : 0
   const statedRowY = AXIS_HEIGHT
   const itemsStartY = AXIS_HEIGHT + (node?.temporal ? STATED_ROW_HEIGHT + 8 : 0)
-  const height = itemsStartY + sortedItems.length * ROW_HEIGHT + 12
+  const height = itemsStartY + laneCount * ROW_HEIGHT + 12
 
   return (
     <>
@@ -151,10 +250,21 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
         {target.status === 'ready' && target.totalItemCount > sortedItems.length
           ? ` of ${target.totalItemCount} items`
           : ' items'}
+        {groups.length !== sortedItems.length && (
+          <span style={{ marginLeft: 8 }}>· grouped into {groups.length} distinct timings</span>
+        )}
         {conflict && (
           <span style={{ color: 'var(--color-node-warning)', marginLeft: 8 }}>
             ⚠ actual Item range extends beyond the collection's stated extent
           </span>
+        )}
+        {selectedItem && (
+          <div style={{ marginTop: 2 }}>
+            selected:{' '}
+            <strong style={{ color: 'var(--color-selection)' }}>
+              {selectedItem.title ?? selectedItem.id}
+            </strong>
+          </div>
         )}
       </div>
       <svg width="100%" viewBox={`0 0 ${viewWidth} ${height}`} style={{ display: 'block' }}>
@@ -185,13 +295,27 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
           </g>
         )}
 
-        {/* item rows */}
-        {sortedItems.map((item, i) => {
-          const y = itemsStartY + i * ROW_HEIGHT
-          const selected = target.status === 'ready' && target.highlightHref === item.href
-          const label = item.title ?? item.id
+        {/* grouped, lane-packed rows — see groupByTemporalShape/packLanes.
+         * A row can be one Item, or several that share an exact timing
+         * signature; lanes are only as numerous as the actual overlap in
+         * time requires, not one per Item. */}
+        {assignments.map(({ group, lane }) => {
+          const y = itemsStartY + lane * ROW_HEIGHT
+          const selected =
+            target.status === 'ready' && group.items.some((i) => i.href === target.highlightHref)
+          const label = groupLabel(group)
+          const tooltipText = groupTooltip(group)
+          const hasInvalidGeometry = group.items.some((i) => i.spatial?.geometryInvalid)
+          // Multi-item groups don't map to one node — clicking selects the
+          // first member as a representative; Structure Lens is still the
+          // place to browse the rest by identity.
+          const clickHref = group.items[0].href
           return (
-            <g key={item.href} transform={`translate(0, ${y})`}>
+            <g
+              key={shapeKey(group.shape)}
+              ref={selected ? selectedRowRef : undefined}
+              transform={`translate(0, ${y})`}
+            >
               <text
                 x={LABEL_WIDTH - 10}
                 y={ROW_HEIGHT / 2 + 4}
@@ -203,29 +327,25 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
                   cursor: 'pointer',
                   userSelect: 'none',
                 }}
-                onClick={() => select(item.href)}
-                onMouseEnter={(e) => setTooltip({ label, x: e.clientX, y: e.clientY })}
-                onMouseMove={(e) => setTooltip({ label, x: e.clientX, y: e.clientY })}
+                onClick={() => select(clickHref)}
+                onMouseEnter={(e) => setTooltip({ label: tooltipText, x: e.clientX, y: e.clientY })}
+                onMouseMove={(e) => setTooltip({ label: tooltipText, x: e.clientX, y: e.clientY })}
                 onMouseLeave={() => setTooltip(null)}
               >
                 {truncateLabel(label)}
               </text>
-              {item.temporal && (
-                <TemporalMark
-                  shape={item.temporal}
-                  x={x}
-                  y={ROW_HEIGHT / 2}
-                  domain={domain}
-                  color={
-                    item.spatial?.geometryInvalid ? 'var(--color-node-warning)' : 'var(--color-node-item)'
-                  }
-                  filled
-                  selected={selected}
-                  onClick={() => select(item.href)}
-                  onHover={(clientX, clientY) => setTooltip({ label, x: clientX, y: clientY })}
-                  onHoverEnd={() => setTooltip(null)}
-                />
-              )}
+              <TemporalMark
+                shape={group.shape}
+                x={x}
+                y={ROW_HEIGHT / 2}
+                domain={domain}
+                color={hasInvalidGeometry ? 'var(--color-node-warning)' : 'var(--color-node-item)'}
+                filled
+                selected={selected}
+                onClick={() => select(clickHref)}
+                onHover={(clientX, clientY) => setTooltip({ label: tooltipText, x: clientX, y: clientY })}
+                onHoverEnd={() => setTooltip(null)}
+              />
             </g>
           )
         })}

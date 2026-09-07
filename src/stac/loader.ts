@@ -41,18 +41,32 @@ export class StacLoader {
     return buildNode(href, raw)
   }
 
-  /** Loads all of a node's children (rel:child), skipping any already cached. */
-  async loadChildren(node: StacNode): Promise<StacNode[]> {
-    return Promise.all(node.childHrefs.map((href) => this.load(href)))
+  /** Loads a bounded slice of a node's children (rel:child), skipping any
+   *  already cached. A catalog can be shallow-but-wide instead of deep —
+   *  NZ Imagery's root has 800+ direct children — so this needs the same
+   *  page-size bound loadItems already has, not just an unbounded fetch of
+   *  "however many links happen to be there". Tolerant of partial failure —
+   *  one dead link among many good ones (a real possibility once arbitrary,
+   *  unverified STAC catalogs are in play, not just our two hand-checked
+   *  fixtures) shouldn't take down its whole parent's expand. */
+  async loadChildren(node: StacNode, limit = 100): Promise<StacNode[]> {
+    return this.loadSettled(node.childHrefs.slice(0, limit))
   }
 
   /** Loads a bounded slice of a node's direct items (rel:item). Static-links
    *  item enumerations can be arbitrarily long (Earth-Search-scale collections
-   *  would use the cursor variant instead) — `limit` keeps this safe by default. */
+   *  would use the cursor variant instead) — `limit` keeps this safe by default.
+   *  Same partial-failure tolerance as loadChildren. */
   async loadItems(node: StacNode, limit = 20): Promise<StacNode[]> {
     if (node.items.kind !== 'links') return []
-    const slice = node.items.hrefs.slice(0, limit)
-    return Promise.all(slice.map((href) => this.load(href)))
+    return this.loadSettled(node.items.hrefs.slice(0, limit))
+  }
+
+  private async loadSettled(hrefs: string[]): Promise<StacNode[]> {
+    const results = await Promise.allSettled(hrefs.map((href) => this.load(href)))
+    return results
+      .filter((r): r is PromiseFulfilledResult<StacNode> => r.status === 'fulfilled')
+      .map((r) => r.value)
   }
 }
 

@@ -296,7 +296,113 @@ guessing at the fix. Keep using this loop for future lens/interaction work;
 a plain code-level "this should work" is not sufficient for anything touching
 layout, timing, or gesture handling.
 
-## 10. What's deliberately deferred (not forgotten)
+## 10. UX uplift pass — landing page, full bidirectional sync, timeline density
+
+Three gaps surfaced only by actually using the tool for a while, not from
+the original brief:
+
+**Entry experience.** The app used to drop straight into the explorer with
+a bare fixture `<select>`. Compared directly to what a STAC Browser gets
+right first: a proper entry point. `LandingPage.tsx` now asks for a STAC
+catalog URL (free text) or offers the two verified known catalogs, and only
+then moves into Structure/Time/Space/Detail. Free-text URL input is the
+actual "browse any STAC catalog" capability — the honest alternative to
+fabricating a long curated list of unverified catalog URLs, which the
+project's own rule against guessing URLs rules out. Since arbitrary,
+unverified URLs fail far more often than the two hand-checked fixtures
+(bad URL, dead link, CORS), this pass also added real error handling where
+there was none before: `StacLoader.loadChildren`/`loadItems` moved from
+`Promise.all` to `Promise.allSettled` (one dead link no longer takes down
+its whole parent's expand), and `useStructureTree`'s `expand()` now catches
+and surfaces a root-level load failure as a clear in-app message instead of
+an infinite "loading…" or an unhandled rejection. Known limitation: a
+non-root child's own fetch failure is silently dropped (robustness over
+per-node error granularity) — see §11.
+
+**Full bidirectional sync.** Selecting an Item from Time Lens or Space Lens
+previously updated the shared `selection` store correctly, but Structure
+Lens had no way to *show* that selection if the relevant Collection had
+never been manually expanded — the Item simply didn't exist as a rendered
+node. Fixed with two effects: `useStructureTree` now watches the selection
+store directly and walks the selected node's `parentHref` chain, calling
+`expand()` on every still-collapsed ancestor (cache-backed, so re-expanding
+an already-expanded one is harmless) — root-to-leaf order, since each
+level's children must be fetched before the next level's ancestor check
+makes sense. `StructureTree.tsx` then watches for the selected node to
+appear among the rendered `d3-hierarchy` nodes and imperatively re-centers
+the pan/zoom transform on it (keeping the current zoom scale), gated by a
+"last centered href" ref so it fires once per distinct selection rather
+than fighting a manual pan on every unrelated re-render. Time Lens got the
+matching half: a ref on the selected row calls `scrollIntoView` the same
+way, plus an explicit "selected: `<item>`" line in the header so what's
+selected and what's shown are never ambiguous — previously the header only
+ever said the *collection's* name, even when what triggered the view was
+clicking one specific Item.
+
+**Timeline density.** Asked directly: "when a collection has many Items,
+does Time Lens really need one row per Item, or is mapping them onto the
+timeline enough?" One row per Item is a Gantt-chart pattern, not a
+Wayback-Machine one — it defeats "see the shape at a glance" past a few
+dozen rows. Fixed with two composable techniques, both in `TimeLens.tsx`:
+(1) `groupByTemporalShape` collapses Items sharing an exact `[start, end]`
+(or identical instant) into one row — this is not just a density trick,
+it's a second, sharper instance of the stated-vs-actual conflict pattern:
+grouping `hazard_timeseries_mean_annual`'s 56 Items live collapses 55 of
+them into a single "55 items, identical timing" row, proving at scale (not
+just by spot-check) that the copy-paste metadata bug found during initial
+research affects nearly the whole collection. (2) `packLanes` is the
+classic greedy "minimum meeting rooms" interval-packing algorithm — groups
+that don't overlap in time share a lane, so even collections with no exact
+duplicates still compress well below one-row-per-Item whenever Items aren't
+all mutually overlapping. Multi-Item groups don't map to one node, so
+clicking one selects its first member as a representative; the hover
+tooltip always lists the actual members (truncated past 8) so nothing is
+hidden, only compacted.
+
+## 11. Growing the catalog list the right way, and a real scale bug it found
+
+Asked directly to add more catalogs "like STAC Browser does," rather than
+guess at a plausible-sounding list from memory: STAC Browser's own README
+states it doesn't maintain one — *"By default, STAC Browser will let you
+browse all catalogs on STAC Index... The catalog section of STAC Index is
+also built on top of STAC Browser."* STAC Index (`stacindex.org`) is the
+actual community directory, and it turns out to be a public, unauthenticated
+JSON API (`GET https://stacindex.org/api/catalogs`) rather than a static
+data file — 147 entries, split into static catalogs and dynamic STAC APIs.
+Confirms this is the right source: the existing Africa Adaptation Atlas
+fixture is entry `114` in that exact list. Six static entries were
+individually fetched and CORS-checked (`curl -I -H "Origin: ..."`, same
+method used on the original two fixtures) before being added to
+`LandingPage.tsx` — Capella Space Open Data (SAR), Maxar Open Data (optical,
+disaster response), NZ Imagery (aerial, 800+ links — see below), Overture
+Maps Releases (vector), fiboa Field Boundaries (vector, agricultural), and
+Polar Geospatial Center DEMs (elevation). STAC API entries from the same
+directory are deliberately not added yet — they need the still-unbuilt
+`ApiSearchSource` loader strategy (§7, §11) or they'll under-report Items
+the same way Earth Search would.
+
+Adding NZ Imagery immediately surfaced a real scale bug that Atlas's own
+~30-node Catalog structure never could: its root has **833 direct `rel:child`
+links at one level** — wide, not deep. `loader.loadChildren()` had no bound
+at all (unlike `loadItems()`, which was bounded from the start), so a single
+node's expand fetched all 833 children before the root would ever leave its
+loading state — StructureTree showed "loading…" indefinitely, not because
+anything hung, but because the definition of "done" required an 833-way
+fetch to fully settle. Fixed the same way item overflow already was:
+`loadChildren(node, limit = 100)`, with a matching synthetic "+N more
+children (not loaded)" leaf (`TreeDatum.moreKind: 'children' | 'items'`
+distinguishes the two overflow leaves, since they used to share one
+generic label). Also added `AUTO_EXPAND_BUDGET` (60), a `useRef` counter
+shared across one tree's entire auto-cascade (§10/§5's Catalog-to-Collection
+auto-expand) — insurance against a catalog that's both wide *and*
+Catalog-heavy several levels deep, which would otherwise auto-trigger an
+unbounded fetch cascade rather than just one wide `loadChildren` call.
+**Lesson reinforced**: a new, structurally different fixture is worth more
+than re-testing the same two — this is the second time (after the original
+three-fixture research round) that deliberately testing a differently-shaped
+catalog found a real bug the existing fixtures structurally could not.
+
+## 12. What's deliberately deferred (not forgotten)
 
 - STAC API loader strategy (`ApiSearchSource`) and a live Earth-Search-backed
   fixture — the type (`StacSourceKind`, `ItemEnumeration.cursor`) already
@@ -312,6 +418,23 @@ layout, timing, or gesture handling.
   idea, is unbuilt).
 - Point-cloud / vector / GeoParquet fixture as a fourth contrast case (asked
   about, not yet added).
-- Responsive Time Lens width (currently a fixed 1400 logical `viewBox` width
-  stretched via `width="100%"` — proportions can distort on extreme aspect
-  ratios; real container-width measurement would fix this).
+- Per-child error surfacing: a Catalog/Collection child whose own fetch
+  fails during a batched `loadChildren`/`loadItems` call is silently
+  dropped (via `Promise.allSettled`) rather than shown as a visible broken
+  node — chosen deliberately for robustness against unverified arbitrary
+  catalogs, but it means a partially-broken catalog looks smaller than it
+  is rather than flagging what's missing. Would need `loadChildren`/
+  `loadItems` to return failures alongside successes, and a synthetic
+  "failed to load" tree leaf similar to the existing "+N more" one.
+- Growing the landing page's known-catalog list further — now at 8 (the
+  original 2 plus 6 from STAC Index, §11); more candidates need the same
+  CORS-check-then-add treatment, never padded in unverified. STAC Index
+  itself lists 147, most not yet checked.
+- The 44 STAC-API entries in STAC Index's directory are deliberately
+  excluded from the landing page until `ApiSearchSource` (§7) exists —
+  adding one now would silently under-report Items exactly as Earth Search
+  would.
+- `CHILD_PAGE_SIZE`/`AUTO_EXPAND_BUDGET` (§11) are untuned constants (100
+  and 60) picked to fix NZ Imagery's 833-wide root without breaking Atlas's
+  ~30-node cascade — no attempt yet to make them adaptive (e.g. lowering the
+  page size for a node whose sibling count is already known to be huge).

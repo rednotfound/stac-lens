@@ -30,14 +30,22 @@ interface TooltipState {
  *  and link is still plain React/SVG so click/hover stay ordinary React
  *  event handlers. */
 export function StructureTree({ rootHref }: { rootHref: string }) {
-  const { root, toggle, isLoading } = useStructureTree(rootHref)
+  const { root, toggle, isLoading, rootError } = useStructureTree(rootHref)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select_ = useSelectionStore((s) => s.select)
 
   const svgRef = useRef<SVGSVGElement>(null)
+  const zoomBehaviorRef = useRef<ReturnType<typeof zoom<SVGSVGElement, unknown>> | null>(null)
+  const svgSelRef = useRef<ReturnType<typeof select<SVGSVGElement, unknown>> | null>(null)
   const [viewTransform, setViewTransform] = useState({ x: 80, y: 0, k: 1 })
+  const viewTransformRef = useRef(viewTransform)
+  const lastCenteredRef = useRef<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+
+  useEffect(() => {
+    viewTransformRef.current = viewTransform
+  }, [viewTransform])
 
   useEffect(() => {
     const svgEl = svgRef.current
@@ -54,6 +62,8 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
 
     svgSel.call(behavior)
     svgSel.call(behavior.transform, zoomIdentity.translate(80, svgEl.clientHeight / 2 || 300))
+    zoomBehaviorRef.current = behavior
+    svgSelRef.current = svgSel
 
     return () => {
       svgSel.on('.zoom', null)
@@ -67,11 +77,53 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     return h
   }, [root])
 
-  const nodes = (layout?.descendants() ?? []) as HierarchyPointNode<TreeDatum>[]
-  const links = (layout?.links() ?? []) as {
-    source: HierarchyPointNode<TreeDatum>
-    target: HierarchyPointNode<TreeDatum>
-  }[]
+  const nodes = useMemo(
+    () => (layout?.descendants() ?? []) as HierarchyPointNode<TreeDatum>[],
+    [layout],
+  )
+  const links = useMemo(
+    () =>
+      (layout?.links() ?? []) as {
+        source: HierarchyPointNode<TreeDatum>
+        target: HierarchyPointNode<TreeDatum>
+      }[],
+    [layout],
+  )
+
+  // Selection can arrive from Time Lens or Space Lens, panned far outside
+  // the current view (or not yet expanded into view at all — see the
+  // ancestor-auto-expand effect in useStructureTree). Once the selected
+  // node actually appears among the rendered nodes, recenter on it — but
+  // only once per distinct selection, so it doesn't fight a manual pan.
+  useEffect(() => {
+    if (!selectedHref || selectedHref === lastCenteredRef.current) return
+    const target = nodes.find((n) => n.data.href === selectedHref)
+    const svgSel = svgSelRef.current
+    const behavior = zoomBehaviorRef.current
+    const svgEl = svgRef.current
+    if (!target || !svgSel || !behavior || !svgEl) return
+
+    lastCenteredRef.current = selectedHref
+    const k = viewTransformRef.current.k
+    const cx = svgEl.clientWidth / 2
+    const cy = svgEl.clientHeight / 2
+    svgSel.call(behavior.transform, zoomIdentity.translate(cx - target.y * k, cy - target.x * k).scale(k))
+  }, [selectedHref, nodes])
+
+  if (rootError) {
+    return (
+      <div style={{ padding: 24, maxWidth: 480 }}>
+        <div style={{ color: 'var(--color-node-warning)', fontWeight: 600, marginBottom: 8 }}>
+          Failed to load this catalog
+        </div>
+        <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginBottom: 8 }}>{rootError}</div>
+        <div style={{ color: 'var(--color-text-faint)', fontSize: 12 }}>
+          This can happen if the URL doesn't point to valid STAC JSON, the server doesn't allow
+          cross-origin browser requests (CORS), or the catalog is temporarily unreachable.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: 'var(--color-bg)' }}>
@@ -279,7 +331,7 @@ function TreeNodeView({
       <g transform={`translate(${y}, ${x})`}>
         <circle r={3} fill="none" strokeDasharray="2,2" style={{ stroke: 'var(--color-text-faint)' }} />
         <text x={9} y={4} fontSize={11} style={{ fill: 'var(--color-text-faint)' }}>
-          +{datum.moreCount} more (not loaded)
+          +{datum.moreCount} more {datum.moreKind ?? 'items'} (not loaded)
         </text>
       </g>
     )
