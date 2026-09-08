@@ -202,6 +202,10 @@ selected Item resolves to its parent (`parentHref`) with itself flagged via
 `highlightHref`, so selecting an Item shows it in temporal context among its
 siblings rather than showing nothing.
 
+The axis itself narrows around whatever's specifically selected rather than
+always showing the full Collection span (§13) — the same scale problem
+Space Lens had with tiny bboxes, applied to time.
+
 Instant / closed-interval / open-ended interval render as visually distinct
 marks (diamond / bar / bar-with-arrow) on one shared `d3-scale` `scaleUtc`
 axis — never normalized to a single point. The Collection's *stated*
@@ -218,24 +222,67 @@ collection, made visible rather than averaged away.
 
 ## 7. Space Lens
 
-Bbox footprints over lightweight static coastline outlines — still
-explicitly not a real basemap (the brief states "space is not just a
-basemap" as a standing principle: no tile layer, no pan/zoom map widget, no
-layer switcher), but *some* geographic reference turned out to be necessary,
-not optional. The first version drew footprints against a bare lon/lat
-graticule with no landmass at all; asked directly after seeing it, "范围是不是
-应该有个背景地图啊，不然真的就只有一个方框可见" (shouldn't there be a
-background reference — otherwise it's really just a floating box) — a grid
-with no coastline gives no way to tell Africa from South America from a
-number. Fixed by rendering `world-atlas`'s bundled 110m-resolution land
-topology (~56KB, a static asset, not a tile fetch) via `d3-geo`
-(`geoEquirectangular` + `geoPath` + `geoGraticule`) and `topojson-client`.
-This is the correct middle ground: real geographic legibility, still zero
-interactivity/chrome that would make it read as a GIS dashboard widget.
-`geoEquirectangular().fitSize([viewWidth, viewHeight], {type:'Sphere'})`
-replaced the hand-rolled linear lon/lat→pixel function from the first
-version — same 2:1-ratio requirement (§ below), computed correctly by d3
-instead of by hand.
+Now a real interactive map — Leaflet, standard OSM raster tiles, real
+pan/zoom — not the two static-rendering approaches that came before it,
+each replaced for a concrete reason rather than personal preference:
+
+1. **v1**: bbox footprints on a bare lon/lat graticule, no landmass at all.
+   Explicitly not a real basemap, per the brief's "space is not just a
+   basemap" principle. Asked directly after seeing it, "范围是不是应该有个
+   背景地图啊，不然真的就只有一个方框可见" (shouldn't there be a background
+   reference — otherwise it's really just a floating box) — a grid with no
+   coastline gives no way to tell Africa from South America from a number.
+2. **v2**: added a static 110m-resolution land topology (`world-atlas` +
+   `d3-geo` + `topojson-client`, ~56KB) under the footprints — real
+   geographic legibility, still zero interactivity.
+3. **v3 (current)**: replaced entirely with Leaflet. v2's coastline data has
+   no detail to zoom into — plenty of real STAC Items have a bbox the size
+   of one small island (confirmed directly: NZ Imagery's per-survey
+   collections are each a few km across), invisible at world scale no
+   matter how good the *static* coastline data is. Raised directly: "很多
+   数据它的 Bounding Box 范围是非常小的...在我们地图 View 里面仅仅是一两个
+   像素" (a lot of data's bbox is tiny — in our map view it's just one or
+   two pixels) — the fix has to be real zoom, not a better static picture.
+   `d3-geo`/`topojson-client`/`world-atlas` were removed once Leaflet made
+   them redundant (§8's "no map library" rule was revised along with this —
+   Leaflet's own chrome, zoom control aside, is unobtrusive enough not to
+   read as a GIS dashboard, and it's the only thing that actually solves
+   the tiny-bbox problem).
+
+Leaflet owns the map DOM entirely (same pattern as d3-zoom in Structure
+Lens: the imperative library owns its own gesture/rendering internals,
+React only decides *when* to call its imperative API, never renders its
+content declaratively). Tiles are the standard OSM server
+(`tile.openstreetmap.org`) — CARTO's Positron/Dark-Matter basemaps were
+tried first and now watermark "API KEY REQUIRED" without one (a policy
+change since they were last free-to-use; confirmed directly, not assumed).
+No separate dark-tile source either, for the same reason — dark mode is a
+CSS filter (`invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9)`)
+on `.leaflet-tile-pane` toggled via a `.leaflet-dark` class, driven by a
+small `useIsDark()` hook watching `prefers-color-scheme`. Every Item's bbox
+is an `L.rectangle`; the selected one is redrawn last (on top, with a
+thicker selection-color stroke) so it isn't buried under overlapping
+siblings, same intent as the old fill-opacity-stacking trick from v1/v2
+(kept: unselected rects are still low fill-opacity, so identical/near-
+identical footprints — Atlas's continent-wide bboxes — still read as a
+darker stacked region rather than hiding the overlap).
+
+Two auto-navigation behaviors, both gated by a "last target/href" ref so
+they fire once per distinct selection rather than fighting a manual
+pan/zoom (same guard pattern as Structure Lens's auto-pan-to-selection,
+§10): selecting a Collection calls `map.fitBounds()` on the union of all
+its visible Items' bboxes; selecting a specific Item then calls
+`map.flyToBounds()` on just that Item's own bbox with tight padding — this
+is what actually makes an island-sized bbox visible, confirmed directly
+against NZ Imagery's Auckland-region collections (a small area, real
+street-level tiles, an 88-tile survey grid all become legible only once
+zoomed to that level).
+
+Every effect that needs `mapRef.current` guards on it being non-null and
+the map container div is unconditionally rendered (a sibling status-label
+div overlays it, never replaces it) — the same ref-timing rule as every
+other lens (§5's postmortem still applies to any new `useRef`-to-imperative-
+library pattern, not just d3-zoom).
 
 Uses the same `useSelectedItems` hook as Time Lens (refactored out of what
 was originally Time-Lens-only code, once Space Lens needed the identical
@@ -244,27 +291,15 @@ off one fetch, and clicking a footprint / timeline bar / tree node all write
 to the same `selection` store, so all three lenses and the Detail panel
 update together.
 
-Every Item's bbox renders as a low-opacity (`fillOpacity: 0.1`) filled rect
-with a faint stroke, brought to full stroke when selected. This is a
-deliberate choice, not a simplification skipped for later: most of Atlas's
-Items in any one collection share a near-identical continent-wide bbox
-(confirmed directly — several collections' bboxes differ only in the
-4th–6th decimal place), so overlapping low-opacity fills accumulate into a
-visibly darker stacked region, communicating density even when every
-individual box is nearly identical, rather than hiding the overlap or
-faking spatial variety that isn't in the data. The selected Item's footprint
-is always drawn last (on top) with a solid selection-color stroke so it
-stays identifiable regardless of how many siblings occupy the same pixels.
-
-**Not yet real "Space" per the original brief:** this is display-only. The
-brief's actual Space↔Time interaction pattern (select an area on the map →
-see available dates; select a date → see footprints) needs a real spatial
-query, which only Earth Search's fixture has (`/search` with `bbox`+
-`datetime`, confirmed working during research) — Atlas has no query
-capability at all, only whatever's already been loaded into the graph. This
-is the concrete reason Space Lens's real interactive version and the
-API-search loader strategy (§4, §2) are expected to land together rather
-than independently.
+**Not yet real "Space" per the original brief:** this is still display-only,
+unaffected by the Leaflet rewrite. The brief's actual Space↔Time interaction
+pattern (select an area on the map → see available dates; select a date →
+see footprints) needs a real spatial *query*, which only Earth Search's
+fixture has (`/search` with `bbox`+`datetime`, confirmed working during
+research) — Atlas and NZ Imagery have no query capability at all, only
+whatever's already been loaded into the graph. This is the concrete reason
+Space Lens's real interactive query version and the API-search loader
+strategy (§4, §2) are expected to land together rather than independently.
 
 ## 8. Visual design system
 
@@ -281,6 +316,18 @@ choice is Radix UI primitives (unstyled, accessible, no visual opinion of
 their own) rather than a skinned component kit — not yet added because
 nothing in the app has needed one yet (the fixture `<select>` and the
 Legend's plain `<button>` toggle have sufficed).
+
+The "no map library" half of this rule was deliberately revised for Space
+Lens (§7) — Leaflet is now a real dependency. Not a contradiction: the
+objection was always to *reading like a GIS dashboard* (heavy chrome, a
+layer switcher, tool panels), not to interactivity itself, and a hand-rolled
+static projection turned out to have a real functional gap (tiny bboxes are
+invisible without real zoom) that no amount of visual restraint fixes. A
+component library was rejected for a *taste* reason that a redesign
+wouldn't change; Leaflet was adopted for a *capability* reason that only
+Leaflet (or an equivalent) actually addresses — worth keeping these as
+different categories of decision rather than treating "add a library" as
+one uniform thing to resist.
 
 ## 9. Verification method
 
@@ -338,6 +385,27 @@ way, plus an explicit "selected: `<item>`" line in the header so what's
 selected and what's shown are never ambiguous — previously the header only
 ever said the *collection's* name, even when what triggered the view was
 clicking one specific Item.
+
+**A second, distinct gap in the same sync** surfaced later, in a
+larger-collection scenario: Structure Lens's own `expand()` only ever loads
+the first `ITEM_PAGE_SIZE` (20) Items of a Collection, while Time Lens and
+Space Lens each independently load up to 100 via `useSelectedItems`. Walking
+the ancestor chain and re-calling `expand()` on an already-expanded parent
+doesn't fix this — it just re-fetches the same first 20 again, so selecting
+Item #45 of a 300-item Collection via a Space Lens footprint updated the
+selection store correctly but the Item still didn't exist as a Structure
+Lens node — "如果不显示出来的话，那这个在看什么呢...我选中一个 item，它怎么也
+得在 tree 的 list 中显示出来吧" (if it doesn't show up, what am I even
+looking at — selecting an Item has to show up in the tree's list, however
+that happens). Fixed by patching the selected Item's href directly into its
+parent's `itemHrefs` state when it's missing (`useStructureTree`'s
+ancestor-expand effect, after the expand loop) — appended to the end of the
+already-loaded list rather than re-fetched in original STAC order, so it
+renders as the last visible Item, just before the "+N more" leaf, not in
+its natural position. A real position/ordering trade-off, not a bug:
+correctly loading it in-place would mean knowing its index within the
+Collection's full item list ahead of time, which static link-following
+doesn't give for free.
 
 **Timeline density.** Asked directly: "when a collection has many Items,
 does Time Lens really need one row per Item, or is mapping them onto the
@@ -402,7 +470,248 @@ than re-testing the same two — this is the second time (after the original
 three-fixture research round) that deliberately testing a differently-shaped
 catalog found a real bug the existing fixtures structurally could not.
 
-## 12. What's deliberately deferred (not forgotten)
+## 12. Progressive disclosure: start minimal, reveal on selection
+
+Every lens used to render unconditionally, all four panels always on
+screen even with nothing selected — three of them permanently showing
+"Select a Collection or Item..." placeholder text. Raised directly:
+"打开这个项目的树状结构图，其他东西都没出来...我们的设计哲学就是每次只给他
+看他需要的东西" (opening a project should show just the Structure tree,
+nothing else — the design philosophy is to only show what's needed each
+time). `App.tsx` now renders Structure Lens alone, full width, until
+`selectedHref` is set; Detail Panel and the Time/Space Lens row only mount
+once there's something for them to show.
+
+The two reveals are handled differently on purpose. Structure Lens's own
+width animates via a CSS `transition` (it never unmounts, just resizes —
+safe). The Time/Space row is a conditional *mount*, not a CSS height
+collapse from 0 — Leaflet has a well-known gotcha where a map initialized
+inside a zero-height container renders tiles incorrectly until an explicit
+`invalidateSize()` call after it later expands, and getting that timing
+right against a CSS transition is fiddlier than just not creating the
+problem. Conditional mounting sidesteps it entirely: by the time Space
+Lens's container first exists, `hasSelection` is already true and the
+container already has its final real size, no invalidateSize dance needed.
+This works cleanly because selection realistically never reverts to
+"nothing" within a session short of leaving the catalog entirely (no UI
+action currently clears it otherwise), so Leaflet only ever initializes
+once per catalog session, not repeatedly.
+
+## 13. Time Lens gets the same scale fix as Space Lens
+
+Raised directly, drawing the analogy explicitly: "这个时间...它只在这个时间有用...
+但是我们默认现在可能是跨越了五十年、六十年...它就永远就看那一小段。这个问题跟这个
+地理范围是类似的" (this time [range] — the selected Item is only meaningful at
+its own time, but the axis defaults to spanning 50-60 years, so it always
+looks like a tiny sliver — this is the same problem as the geographic
+range). Exactly right: a selected Item's own range can be a sliver of the
+full Collection's stated-or-actual span the same way a small bbox is a
+sliver of the world, and the axis always showing the full Collection range
+regardless of what's selected has precisely the same failure mode Space
+Lens had before its Leaflet rewrite (§7).
+
+The fix is deliberately *not* a port of Space Lens's mechanism, though —
+different problem shape. Space is 2D and open-ended (a real map you might
+want to explore beyond any single bbox), which is why it got a real
+interactive Leaflet map with manual pan/zoom plus `flyToBounds`. Time here
+is 1D and the "full view" is always well-defined (the Collection's own
+extent) — there's no equivalent open-ended exploration need, just "show the
+full range by default, narrow around whatever's specifically selected."
+So no d3-zoom, no manual gesture handling, no wheel/drag-conflict concerns
+with the panel's own vertical scroll (which a d3-zoom-on-wheel setup would
+have created, fighting the lane list's native scroll — a real trade-off
+avoided by not needing it). Instead, `computeFocusDomain()` derives a
+second, narrower `displayDomain` from the full `domain` whenever a specific
+Item is selected: padded by whichever is larger, 40% of the Item's own
+duration or 5% of the full Collection span (so a single-instant Item still
+gets a sensible surrounding window, and an Item that already spans most of
+the Collection — Atlas's 65-year aggregate rollup again — naturally ends up
+close to the full view rather than an arbitrarily wider one), clamped to
+never exceed the Collection's own extent. `displayDomain`, not `domain`,
+feeds the `scaleUtc()` construction and every `TemporalMark`'s open-bound
+clamping; `domain` itself stays the full extent and keeps doing what it
+always did — lane packing and the stated-vs-actual conflict comparison are
+both data questions independent of what's currently zoomed into view, not
+display concerns.
+
+Confirmed directly against Atlas's `hazard_timeseries_mean_annual` (stated
+1995–2020, actual Items to 2060, per §11's finding): selecting the
+Collection shows the full ~65-year span; selecting one of its 55
+identically-timed Items (2041–2060) narrows the axis to roughly 2035–2060;
+re-selecting the Collection snaps back to the full range. An explicit
+"selected: `<item>` — showing a focused window around it, not the full
+range" note accompanies the narrowed view so it's never ambiguous *why*
+the axis suddenly looks different — the same "target and result should
+visibly correspond" principle §10's Structure/Time sync work was built on.
+
+## 14. Collection-level spatial extent: three candidate sources, and why we don't merge them
+
+Raised as a direct question, prompted by a real dataset rather than a
+hypothetical: does Space Lens's Collection-level range come from the
+Collection's own declared extent, or from aggregating the Items underneath
+it — given that some publishers attach a collection-level `assets` entry
+pointing at a separate GeoJSON that may be *more* precise than either
+("我在查看一份数据...在它的 collection level 的 asset 指向了一个 capture
+area...那个范围是来自于 item 的呢,还是来自于这个 collection 它自己就带有
+它下面那一层的数据呢?"). The concrete case: NZ Imagery
+(`https://nz-imagery.s3.ap-southeast-2.amazonaws.com/catalog.json`).
+
+**What Space Lens does today** (confirmed by direct code inspection, before
+any change): it draws both existing sources at once, never one or the
+other — the Collection's stated `extent.spatial.bbox` as a dashed, unfilled
+outline, and every currently-loaded Item's own bbox as a filled rectangle,
+then fits the map to their union. `graph.ts` only scans `assets` for
+extension-namespace detection; it never looks at `assets` for spatial
+content. So today there are two sources, already shown side by side
+(stated vs. derived-from-loaded-Items), and a third, real one this
+dataset surfaces that isn't looked at at all.
+
+**The three sources, and what each actually is:**
+
+1. **Stated `extent.spatial.bbox`** — a *required* Collection field, but
+   the spec (`collection-spec.md`) only says it's "recommended to be as
+   precise as possible," not guaranteed accurate. It's self-reported by
+   the publisher and never validated against the actual Items.
+2. **Derived, aggregated from loaded Items** — reflects only whatever's
+   actually been fetched, bounded by our own pagination (100 Items in
+   Time/Space Lens; see §11). Precise for what it covers, silently
+   incomplete for what it doesn't.
+3. **A collection-level geometry asset** (NZ Imagery's `capture_area`) —
+   confirmed directly: the Auckland region's `collection.json` has
+   `"assets": { "capture_area": { "href": "./capture-area.geojson", "type":
+   "application/geo+json", "roles": ["metadata"], "title": "Capture area" }
+   }`. Fetched the actual GeoJSON: a 150-vertex irregular polygon (the real
+   flight-survey boundary), not a rectangle. Shoelace-formula area
+   comparison against the stated bbox: the true polygon covers **~43%** of
+   the bbox's area — the declared bbox overstates true coverage by more
+   than 2×. Checked two more NZ Imagery collections (different regions/
+   years) the same way — both also carry a `capture_area` asset, so this
+   is systematic across the dataset, not a one-off.
+
+**How common is this beyond NZ Imagery?** Checked all 8 landing-page
+fixtures directly (not guessed): only NZ Imagery has it. The other 7 —
+including fiboa, whose collection asset is the field-boundary Parquet data
+itself (geometry embedded per-row via `table:primary_geometry`, not a
+separate footprint sketch) — have no equivalent. Web search on the STAC
+spec repo and extension registry turned up no formal convention for this
+at all: STAC's core "Collection Assets" feature is documented for
+collection-wide files that aren't Item duplicates (thumbnails, checksums,
+etc.), with no named role or extension for "precise footprint asset."
+`capture_area` is LINZ's own naming, not a spec term — a different
+publisher doing the same thing might call it anything, or use a different
+asset `type`.
+
+**Recommendation (design only — not yet implemented):**
+
+- **Detect structurally, not by name.** Never match on `capture_area`
+  specifically — that's one publisher's word choice. Detect any
+  Collection-level `assets` entry whose `type` is a GeoJSON media type
+  (`application/geo+json`, or `application/json` with a `roles` hint), the
+  same "trust structure over vocabulary" approach already used for
+  namespace detection.
+- **Fetch lazily, only for the selected Collection** — no eager fetch just
+  to detect the asset's existence across a whole tree; the existence check
+  reads `assets` already present in the Collection JSON we fetched anyway.
+- **Show it, don't silently prefer it.** Render as a third, visually
+  distinct layer (e.g. a solid polygon outline, between the dashed stated
+  bbox and the filled Item rectangles) labeled with its own asset `title`
+  ("Capture area"), not relabeled as if we'd defined the concept — same
+  "never silently reconcile conflicting metadata" principle as Time Lens's
+  stated-vs-actual overlay (§10, §11). Let the user see, not just trust,
+  that the declared bbox is ~2× too generous here.
+- **Prefer it for auto-fit when present**, since it's the most precise of
+  the three, but keep drawing the stated bbox regardless — the gap between
+  them is exactly the signal worth surfacing, not hiding.
+- **Fail soft.** This is an ad hoc, non-standardized asset with no spec
+  backing — a malformed or unreachable GeoJSON here must degrade to
+  "just don't draw the third layer," never break the two layers that
+  already work.
+
+Deliberately not built yet — the open question was "is this worth doing at
+all," not "how," per the user's framing ("我不确定这样做的数据多不多"). Given
+1-of-8 confirmed and no ecosystem-wide convention found, this stays a
+documented, ready-to-build option rather than committed work; revisit if a
+future fixture shows the same pattern or the user decides the NZ Imagery
+case alone justifies it.
+
+## 15. An Item's parent is singular — per spec, not just per our data model
+
+Raised from a second real dataset, Capella Space Open Data
+(`https://capella-open-data.s3.us-west-2.amazonaws.com/stac/catalog.json`):
+its root fans out into six *parallel classification catalogs* over the same
+underlying Items — By Product Type, By Instrument Mode, By Use Case, By
+Capital, By Datetime, plus a contest-specific Collection. The question,
+almost identical in shape to §14 but about graph topology instead of
+geometry: "STAC 官方甚至比较推荐...同一个 item 可以被不同归类到不同的
+collection 里面去...那我们选中一个 item...它永远就指向我第一次打开的那个
+collection...但是我其实是从第二个 collection 里面找到的" (STAC itself
+arguably recommends this — the same Item classified into different
+Collections — but our selection always resolves to whichever Collection it
+happened to load through first, not the one the user actually found it in).
+
+**What the spec actually says (verified against the raw spec text, not
+recalled from memory):** `item-spec.md` line 201, quoted exactly: *"Multiple
+collections can point to an Item, but an Item can only point back to a
+single collection."* The many-to-one direction — several Collections
+cross-referencing the same Item as a secondary index — is the explicitly
+sanctioned flexible part, and is exactly what Capella's six facet catalogs
+do. But an Item's own containment is deliberately singular: the `collection`
+field plus its paired `rel:collection` link are spec-required to agree and
+represent *the one* Collection an Item belongs to. `rel:parent` is a
+different, weaker relation — the spec's own NOTE on it says dynamic
+catalogs "can implement multiple parents through a dynamic browsing
+interface... though only 1 parent at a time," i.e. even that is singular
+per served document; it just isn't guaranteed to agree with `rel:collection`
+by definition, since it's about physical/crawl containment (where you'd
+walk up the file tree from here) rather than thematic ownership. So this
+followed the same trajectory as §14: the user's initial framing (build a
+`viaHref`/selection-provenance system to remember which Collection a
+multi-membership Item was found through) was **superseded once the spec
+research came back** — that system would have been solving a problem the
+spec says doesn't exist. The user reached the same conclusion independently
+before I'd finished presenting the research: "就算那个不高亮也没问题,反正
+指向那个 item 都问题不大" (it's fine if the Collection I browsed from isn't
+what highlights — landing correctly on the Item's true home is enough).
+
+**Confirmed the disagreement is real, not hypothetical**, on the exact Item
+above: its own `links` array has `rel:collection` → `.../capella-open-data-
+by-use-case/capella-open-data-environmental/collection.json` (its declared
+thematic home) and `rel:parent` → `../catalog.json`, i.e. the physical
+day-folder under `capella-open-data-by-datetime/2026/2026-08/2026-08-24/`
+where the file actually lives. Same Item, two different, both-truthful
+answers to "what contains you," depending which relation you ask. Our old
+`graph.ts` code picked between them with
+`links.find((l) => l.rel === 'parent' || l.rel === 'collection')` — first
+match by array order, which happened to return `collection` here purely
+because it's listed before `parent` in this particular file. Accidentally
+correct, not deliberately — a publisher (or even a different Capella Item)
+listing them in the other order would have silently resolved to the wrong
+one, no signal that anything was ambiguous.
+
+**The fix** (small, surgical — no store/hooks rearchitecture needed, since
+the spec confirms singular containment was the right model all along):
+`StacNode` now carries `declaredCollectionHref` and `declaredParentHref` as
+two separate source facts (never merged), plus `parentHref` as the resolved
+value — `declaredCollectionHref ?? declaredParentHref`, matching the spec's
+own precedence (an Item's `collection` link is spec-authoritative when
+present; `rel:parent` is the correct fallback only for Items that aren't
+part of any formal Collection at all). Every existing consumer of
+`parentHref` (Structure Tree's ancestor auto-expand, `useSelectedItems`'s
+target resolution) needed no change — they were already built around "one
+canonical parent," which is exactly what the spec models; they just needed
+that one value computed deliberately instead of by array-order luck.
+Detail Panel gained a new "Containment (source)" field showing both
+declared hrefs plainly, with an explicit warning when they disagree — same
+"never silently reconcile conflicting metadata" principle as Time Lens's
+stated-vs-actual overlay (§10, §11) and the capture-area discussion (§14):
+a real, observed data inconsistency should be visible, not quietly resolved
+behind a `.find()`. Verified end-to-end against the live Capella Item above
+(screenshot-checked): Detail Panel shows both hrefs and the disagreement
+warning; Structure Tree/Time/Space Lens all resolve to the Item's one true
+Collection regardless of which secondary facet catalog it was discovered
+through.
+
+## 16. What's deliberately deferred (not forgotten)
 
 - STAC API loader strategy (`ApiSearchSource`) and a live Earth-Search-backed
   fixture — the type (`StacSourceKind`, `ItemEnumeration.cursor`) already
@@ -438,3 +747,9 @@ catalog found a real bug the existing fixtures structurally could not.
   and 60) picked to fix NZ Imagery's 833-wide root without breaking Atlas's
   ~30-node cascade — no attempt yet to make them adaptive (e.g. lowering the
   page size for a node whose sibling count is already known to be huge).
+- Space Lens's Leaflet reskin (§7, §8) is light-touch — zoom control and
+  tooltip colors only. No custom loading/error state while tiles are still
+  fetching (Leaflet just shows blank/gray tiles natively during that
+  window), and `fitBounds`/`flyToBounds`'s padding and `maxZoom` values are
+  similarly untuned constants, not yet validated against a wide range of
+  bbox sizes beyond Atlas's continent-scale and NZ Imagery's city-scale.

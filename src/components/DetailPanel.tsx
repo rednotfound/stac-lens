@@ -58,6 +58,25 @@ export function DetailPanel() {
         )}
       </Field>
 
+      {(node.declaredCollectionHref || node.declaredParentHref) && (
+        <Field label="Containment (source)">
+          {node.declaredCollectionHref && (
+            <div>collection: {node.declaredCollectionHref}</div>
+          )}
+          {node.declaredParentHref && <div>parent: {node.declaredParentHref}</div>}
+          {node.declaredCollectionHref &&
+            node.declaredParentHref &&
+            node.declaredCollectionHref !== node.declaredParentHref && (
+              <div style={{ color: 'var(--color-node-warning)', marginTop: 2 }}>
+                ⚠ `rel:collection` and `rel:parent` disagree — this node is
+                physically reachable from one location but thematically belongs to
+                another. Per STAC's own philosophy, `collection` is the authoritative
+                one; the tree navigates/highlights through it.
+              </div>
+            )}
+        </Field>
+      )}
+
       <Field label="Declared extensions (stac_extensions)">
         {node.declaredExtensions.length ? node.declaredExtensions.join(', ') : <em>none</em>}
       </Field>

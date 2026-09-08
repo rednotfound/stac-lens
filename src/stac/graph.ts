@@ -74,7 +74,19 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const itemHrefs = dedupe(
     links.filter((l) => l.rel === 'item' && l.href).map((l) => resolveHref(href, l.href!)),
   )
-  const parentLink = links.find((l) => (l.rel === 'parent' || l.rel === 'collection') && l.href)
+  // Kept as two separate source facts rather than one `.find()` over both
+  // rel types — the two can genuinely disagree (a file crawled from one
+  // directory structure via `rel:parent` while its `collection` field/link
+  // declares thematic membership elsewhere; confirmed in the wild in
+  // Capella Open Data's static catalog). Per STAC's own philosophy
+  // ("multiple collections can point to an Item, but an Item can only
+  // point back to a single collection" — item-spec.md), `rel:collection`
+  // is the spec-authoritative signal and wins when both are present;
+  // `rel:parent` is the fallback for nodes with no formal Collection.
+  const collectionLink = links.find((l) => l.rel === 'collection' && l.href)
+  const parentLink = links.find((l) => l.rel === 'parent' && l.href)
+  const declaredCollectionHref = collectionLink ? resolveHref(href, collectionLink.href!) : undefined
+  const declaredParentHref = parentLink ? resolveHref(href, parentLink.href!) : undefined
 
   const namespaceScans = [scanNamespaces(raw.properties)]
   if (raw.assets) {
@@ -87,7 +99,9 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     id: raw.id ?? href,
     type,
     title: raw.title,
-    parentHref: parentLink ? resolveHref(href, parentLink.href!) : undefined,
+    parentHref: declaredCollectionHref ?? declaredParentHref,
+    declaredCollectionHref,
+    declaredParentHref,
     childHrefs,
     items: { kind: 'links', hrefs: itemHrefs },
     raw,

@@ -92,6 +92,34 @@ function packLanes(
   return assignments
 }
 
+/** The same scale problem Space Lens had with tiny bboxes, applied to time:
+ *  a Collection can span decades while one selected Item covers a single
+ *  day, and the axis defaulting to the full collection range makes that
+ *  Item an invisible sliver. Mirrors Space Lens's flyToBounds — narrows the
+ *  displayed domain around the selected Item's own range (padded so its
+ *  mark isn't flush against the edges), clamped to never exceed the full
+ *  collection extent (an Item that already spans most of it, like Atlas's
+ *  65-year aggregate rollup, naturally ends up close to the full view
+ *  rather than an arbitrarily wider one). */
+function computeFocusDomain(
+  shape: TemporalShape,
+  fullDomain: readonly [Date, Date],
+): readonly [Date, Date] {
+  const [s, e] = temporalBounds(shape)
+  const startMs = (s ?? e)?.getTime()
+  const endMs = (e ?? s)?.getTime()
+  if (startMs == null || endMs == null) return fullDomain
+
+  const fullSpanMs = fullDomain[1].getTime() - fullDomain[0].getTime()
+  const duration = Math.max(endMs - startMs, 0)
+  const pad = Math.max(duration * 0.4, fullSpanMs * 0.05)
+
+  const start = Math.max(startMs - pad, fullDomain[0].getTime())
+  const end = Math.min(endMs + pad, fullDomain[1].getTime())
+  if (start >= end) return fullDomain
+  return [new Date(start), new Date(end)]
+}
+
 function groupLabel(group: TimeGroup): string {
   if (group.items.length === 1) {
     const item = group.items[0]
@@ -184,6 +212,17 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   const highlightHref = target.status === 'ready' ? target.highlightHref : undefined
   const selectedItem = highlightHref ? sortedItems.find((i) => i.href === highlightHref) : undefined
 
+  // What's actually displayed on the axis — the full collection range by
+  // default, narrowed to a padded window around the selected Item's own
+  // range once one is selected. Lane packing (above) always uses the full
+  // `domain`, never this — which Items overlap in time is a data question,
+  // independent of what's currently zoomed into view.
+  const displayDomain = useMemo(() => {
+    if (!domain) return undefined
+    if (selectedItem?.temporal) return computeFocusDomain(selectedItem.temporal, domain)
+    return domain
+  }, [domain, selectedItem])
+
   // Bring the selected row into view automatically — a selection made
   // elsewhere (Structure Lens, Space Lens) shouldn't require manually
   // scrolling this panel to find where it landed. Once per distinct
@@ -207,11 +246,11 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
       </EmptyState>
     )
   }
-  if (target.status === 'loading' || !domain) {
+  if (target.status === 'loading' || !domain || !displayDomain) {
     return <EmptyState>loading…</EmptyState>
   }
 
-  const x = scaleUtc().domain(domain).range([LABEL_WIDTH, viewWidth - RIGHT_PAD])
+  const x = scaleUtc().domain(displayDomain).range([LABEL_WIDTH, viewWidth - RIGHT_PAD])
   // Scale tick count with available width so labels never crowd together
   // at narrow panel widths (~110px per label is comfortable for a date).
   const tickCount = Math.max(2, Math.floor((viewWidth - LABEL_WIDTH) / 110))
@@ -264,6 +303,9 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
             <strong style={{ color: 'var(--color-selection)' }}>
               {selectedItem.title ?? selectedItem.id}
             </strong>
+            <span style={{ color: 'var(--color-text-faint)', marginLeft: 6 }}>
+              — showing a focused window around it, not the full range
+            </span>
           </div>
         )}
       </div>
@@ -288,7 +330,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
               shape={node.temporal}
               x={x}
               y={STATED_ROW_HEIGHT / 2}
-              domain={domain}
+              domain={displayDomain}
               color={conflict ? 'var(--color-node-warning)' : 'var(--color-text-faint)'}
               filled={false}
             />
@@ -338,7 +380,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
                 shape={group.shape}
                 x={x}
                 y={ROW_HEIGHT / 2}
-                domain={domain}
+                domain={displayDomain}
                 color={hasInvalidGeometry ? 'var(--color-node-warning)' : 'var(--color-node-item)'}
                 filled
                 selected={selected}

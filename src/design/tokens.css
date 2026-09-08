@@ -21,9 +21,6 @@
   --color-badge-unknown-bg: #fbe7e2;
   --color-badge-unknown-text: #a3411f;
 
-  --color-land-fill: #efe9dd;
-  --color-land-stroke: #d8d0c0;
-
   --font-sans: -apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 
@@ -57,9 +54,6 @@
     --color-badge-known-text: #6fd1a1;
     --color-badge-unknown-bg: #3a2018;
     --color-badge-unknown-text: #e28a68;
-
-    --color-land-fill: #2a2822;
-    --color-land-stroke: #3d392f;
   }
 }
 
@@ -90,4 +84,37 @@ body {
 }
 *::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-faint);
+}
+
+/* Light reskin of Leaflet's own chrome (Space Lens) so its controls/tooltip
+ * read as part of this app rather than a dropped-in default widget — not a
+ * full override of Leaflet's rendering, just its UI chrome. */
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+}
+.leaflet-control-zoom a {
+  color: var(--color-text) !important;
+  background: var(--color-surface) !important;
+  border-color: var(--color-border) !important;
+}
+.leaflet-control-attribution {
+  background: var(--color-surface) !important;
+  color: var(--color-text-faint) !important;
+}
+.leaflet-tooltip {
+  background: var(--color-text) !important;
+  color: var(--color-bg) !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
+.leaflet-tooltip-top::before {
+  border-top-color: var(--color-text) !important;
+}
+/* No free no-key dark raster tile set checked out as reliably available,
+ * so dark mode inverts the (light) OSM tiles instead of switching source. */
+.leaflet-dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
 }

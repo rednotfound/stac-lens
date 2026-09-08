@@ -49,7 +49,26 @@ export interface StacNode {
   id: string
   type: StacNodeType
   title?: string
+  /** The single canonical container to navigate/highlight through — per
+   *  STAC's own philosophy ("multiple collections can point to an Item, but
+   *  an Item can only point back to a single collection," item-spec.md),
+   *  this is deliberately singular, not a set. Resolved from whichever of
+   *  `declaredCollectionHref`/`declaredParentHref` is authoritative — see
+   *  `buildNode`. */
   parentHref?: string
+  /** Source fact: this node's own `rel:collection` link, if any — the
+   *  spec-authoritative "which Collection do I belong to" signal, required
+   *  to be present (and to agree with the `collection` field) whenever that
+   *  field is set. Kept separate from `parentHref` so Detail Panel can show
+   *  it plainly rather than through a resolved, possibly-differing value. */
+  declaredCollectionHref?: string
+  /** Source fact: this node's own `rel:parent` link, if any — describes
+   *  physical/crawl containment (where you'd walk up to from here), which
+   *  the spec allows to diverge from `rel:collection` (e.g. a file that
+   *  physically lives in one directory structure but logically belongs to
+   *  a different, thematically-organized Collection — observed directly in
+   *  Capella Open Data's static catalog). */
+  declaredParentHref?: string
   childHrefs: string[]
   items: ItemEnumeration
   /** Original JSON, untouched. SOURCE layer — never mutated. */

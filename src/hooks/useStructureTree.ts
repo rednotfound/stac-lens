@@ -150,6 +150,31 @@ export function useStructureTree(rootHref: string) {
       for (const href of ancestors) {
         await expand(href)
       }
+
+      // Re-expanding an already-expanded parent only re-fetches its first
+      // ITEM_PAGE_SIZE items — it does NOT guarantee this specific selected
+      // Item is among them. Time/Space Lens load up to 100 Items
+      // independently of Structure Lens's own smaller page (§ITEM_PAGE_SIZE),
+      // so selecting Item #45 of 300 via a Space Lens footprint is a real,
+      // reachable case where the Item exists in the loader's cache but was
+      // never added to its parent's visible item set. Patch it in directly
+      // rather than bumping the page size for everyone.
+      if (node.type === 'Item' && node.parentHref) {
+        const parentHref = node.parentHref
+        setUiState((prev) => {
+          const parentState = prev.get(parentHref)
+          const existingItemHrefs = parentState?.itemHrefs ?? []
+          if (existingItemHrefs.includes(selectedHref)) return prev
+          const next = new Map(prev)
+          next.set(parentHref, {
+            expanded: true,
+            loading: false,
+            childHrefs: parentState?.childHrefs,
+            itemHrefs: [...existingItemHrefs, selectedHref],
+          })
+          return next
+        })
+      }
     })()
   }, [selectedHref, expand])
 

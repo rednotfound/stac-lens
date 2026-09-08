@@ -10,15 +10,15 @@ See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design rationale, research f
 
 Early prototype (v0.1). Working today:
 
-- **Landing page** — paste any STAC catalog URL, or pick one of two verified known catalogs, before entering the explorer. Free-text URL input is the real "browse any STAC catalog" capability, not just a convenience.
+- **Landing page** — paste any STAC catalog URL, or pick one of 8 verified known catalogs, before entering the explorer. Free-text URL input is the real "browse any STAC catalog" capability, not just a convenience. Nothing else renders until you enter a catalog and select something — progressive disclosure, not four permanently-visible panels.
 - **Structure Lens** — a horizontal, curved node-link tree (not a file-explorer list) over the STAC Catalog → Collection → Item graph. Lazily fetches on expand, classifies each node's real shape (flat collection of items / collection-of-collections / mixed / genuinely empty) rather than assuming a fixed depth, auto-expands every Catalog down to (but not into) each Collection on load, and pans/zooms via drag + wheel (no sliders).
-- **Time Lens** — a Wayback-Machine-style availability timeline scoped to whatever's selected in Structure. Renders instants, closed intervals, and open-ended intervals distinctly (never normalized to one point); groups Items sharing an identical temporal signature into one row and packs the rest into the minimum number of non-overlapping lanes (not one row per Item — a collection's-worth of Items no longer means a collection's-worth of vertical scrolling); and overlays a Collection's *stated* temporal extent against the *actual* range of its Items, surfacing stated-vs-actual conflicts directly.
-- **Space Lens** — bbox footprints over lightweight static coastline outlines (deliberately not a real interactive basemap — no tiles, no pan/zoom map widget, no layer switcher), scoped to the same selection.
+- **Time Lens** — a Wayback-Machine-style availability timeline scoped to whatever's selected in Structure. Renders instants, closed intervals, and open-ended intervals distinctly (never normalized to one point); groups Items sharing an identical temporal signature into one row and packs the rest into the minimum number of non-overlapping lanes (not one row per Item — a collection's-worth of Items no longer means a collection's-worth of vertical scrolling); overlays a Collection's *stated* temporal extent against the *actual* range of its Items, surfacing stated-vs-actual conflicts directly; and — the same scale problem Space Lens has with tiny bboxes — narrows the axis around a specifically-selected Item instead of always showing the full (possibly decades-wide) Collection span.
+- **Space Lens** — a real interactive map (Leaflet + standard OSM tiles), bbox footprints as rectangles, real pan/zoom, and automatic fly-to-bounds on selection — a bbox the size of a small island is invisible at world scale no matter how good a static map is; only real zoom fixes that. Dark mode inverts the tiles via CSS rather than switching tile source.
 - **Detail Inspector** — source STAC JSON always available, plus derived facts (namespace classification of known vs. unknown extension prefixes, geometry-validity fallback, schema hints) clearly labeled as derived, never merged into the source.
 
-All four share one selection store, fully bidirectionally: selecting an Item in Time Lens or Space Lens auto-expands its ancestors in Structure Lens and pans the tree to bring it into view, highlighted, with a "selected: X" indicator and auto-scroll in Time Lens too — not just shared state nobody can see manifested elsewhere.
+All four share one selection store, fully bidirectionally: selecting an Item in Time Lens or Space Lens auto-expands its ancestors in Structure Lens and pans the tree to bring it into view, highlighted, with a "selected: X" indicator and auto-scroll in Time Lens, and a fly-to-bounds zoom in Space Lens — not just shared state nobody can see manifested elsewhere.
 
-Not yet built: STAC API (dynamic search) source support, a real Human/JSON toggle with extension-specific interpreters beyond namespace detection, semantic zoom / virtualization for very large collections, and a genuine Space↔Time query loop (select an area → see available dates; select a date → see footprints) — the current Space Lens is read-only/display-only.
+Not yet built: STAC API (dynamic search) source support, a real Human/JSON toggle with extension-specific interpreters beyond namespace detection, semantic zoom / virtualization for very large collections, and a genuine Space↔Time *query* loop (select an area → see available dates; select a date → see footprints) — Space Lens is a real map now, but still selection-driven only, not query-driven.
 
 ## Getting started
 
@@ -40,7 +40,7 @@ All are static catalogs fetched directly from the browser, individually checked 
 
 ## Stack
 
-TypeScript + React + Vite. `zustand` for the one shared selection store. `d3-hierarchy` + `d3-shape` + `d3-zoom` + `d3-scale` for tree layout math, curved link paths, pan/zoom gestures, and the time axis; `d3-geo` + `topojson-client` + a bundled `world-atlas` 110m land topology (~56KB static asset) for Space Lens's coastline reference — d3 owns only the math, all rendering is plain React/SVG. No UI component library and no interactive map library (no tiles, no map widget); a small hand-written design-token layer (`src/design/tokens.css`) instead, deliberately avoiding an "enterprise dashboard" look.
+TypeScript + React + Vite. `zustand` for the one shared selection store. `d3-hierarchy` + `d3-shape` + `d3-zoom` + `d3-scale` for tree layout math, curved link paths, pan/zoom gestures, and the time axis — d3 owns only the math, all rendering is plain React/SVG. `leaflet` for Space Lens's real interactive map (standard OSM tiles, no API key) — the one real dependency exception to "no map library," adopted once a hand-rolled static projection turned out to have a genuine functional gap (island-sized bboxes need real zoom, not just a better picture; see `docs/DESIGN.md` §7–8). No UI component library; a small hand-written design-token layer (`src/design/tokens.css`) instead, deliberately avoiding an "enterprise dashboard" look.
 
 ## Project layout
 
@@ -66,7 +66,7 @@ src/
     LandingPage.tsx     URL input + known-catalog picker, the entry point before the explorer
     StructureTree.tsx  Structure Lens (SVG tree, pan/zoom, legend, tooltip, auto-pan-to-selection)
     TimeLens.tsx        Time Lens (SVG timeline, grouping + lane packing, auto-scroll-to-selection)
-    SpaceLens.tsx       Space Lens (d3-geo coastline outlines + bbox footprints)
+    SpaceLens.tsx       Space Lens (Leaflet map + bbox rectangles, fly-to-bounds on selection)
     DetailPanel.tsx     Detail Inspector
     EmptyState.tsx      shared empty/loading placeholder
   design/

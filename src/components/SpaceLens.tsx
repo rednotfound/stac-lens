@@ -1,201 +1,211 @@
-import { useMemo, useState } from 'react'
-import { geoEquirectangular, geoPath, geoGraticule, type GeoProjection } from 'd3-geo'
-import { feature } from 'topojson-client'
-import type { Topology } from 'topojson-specification'
-import landTopologyJson from 'world-atlas/land-110m.json'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
-import { useElementSize } from '../hooks/useElementSize'
 import type { StacNode } from '../stac/types'
-import { EmptyState } from './EmptyState'
 
-const FALLBACK_VIEW_WIDTH = 600
-const landTopology = landTopologyJson as unknown as Topology
+// The standard OSM tile server — no API key, unlike CARTO's basemap tiles
+// (tried first; they now watermark "API KEY REQUIRED" over the imagery
+// without one). No separate dark tile source either — dark mode is a CSS
+// filter on the tile pane instead (see `.leaflet-dark` below), since a
+// free, no-key dark raster tile set didn't check out as reliably available.
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
-interface TooltipState {
-  label: string
-  x: number
-  y: number
+// Mirrors src/design/tokens.css — Leaflet's SVG renderer sets fill/stroke
+// as plain attributes, which don't reliably resolve CSS custom properties
+// the way our own `style={{ fill: 'var(...)' }}` SVG elements do elsewhere
+// in this app, so the palette is duplicated here rather than referenced.
+const PALETTE = {
+  light: { item: '#b45309', selection: '#2563eb', textFaint: '#b7b1a4' },
+  dark: { item: '#f0a253', selection: '#60a5fa', textFaint: '#6b6558' },
 }
 
-/** Bbox footprints over lightweight static coastline outlines — not a real
- *  basemap (no tiles, no pan/zoom map widget, no layer switcher), just
- *  enough geographic reference (a ~56KB bundled 110m-resolution land
- *  topology, the same data countless minimal D3 map sketches use) that a
- *  floating rectangle is actually locatable. A bare lon/lat grid with no
- *  landmass at all turned out to be too abstract in practice — asked
- *  directly by the user after seeing it. Scoped to the same selection Time
- *  Lens uses via the same shared hook.
+const EMPTY_ITEMS: StacNode[] = []
+
+function useIsDark(): boolean {
+  const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return isDark
+}
+
+function bboxToBounds(bbox: number[]): L.LatLngBoundsLiteral {
+  const [west, south, east, north] = bbox
+  return [
+    [south, west],
+    [north, east],
+  ]
+}
+
+/** A real interactive map (Leaflet + the standard OSM tile server) — not
+ *  the hand-rolled static equirectangular projection this component used
+ *  to be. That version's coastline outline had no
+ *  detail to zoom into: plenty of real STAC Items have a bbox the size of
+ *  one small island, invisible at world scale no matter how good the
+ *  coastline data is. Real pan/zoom plus flying to the selected Item's own
+ *  bounds is what actually solves that.
  *
- *  The container div here must always render — see the same note in
- *  TimeLens.tsx / docs/DESIGN.md §5 about ref-measuring effects binding to
- *  a still-null ref when the ref is only attached inside a conditional
- *  branch. Width is measured from the real container so the equirectangular
- *  projection (which needs a true 2:1 ratio) never gets stretched. */
+ *  The map container div always renders regardless of loading/empty
+ *  status — same rule as every other lens in this app (see docs/DESIGN.md
+ *  §5): the mount effect binds to the ref once, and a container that only
+ *  appears in some render branches risks binding to a still-null ref. */
 export function SpaceLens() {
-  const [containerRef, { width: measuredWidth }] = useElementSize<HTMLDivElement>()
-  const viewWidth = measuredWidth > 0 ? measuredWidth : FALLBACK_VIEW_WIDTH
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const layerGroupRef = useRef<L.LayerGroup | null>(null)
+  const lastFitTargetRef = useRef<string | undefined>(undefined)
+  const lastFlyHrefRef = useRef<string | undefined>(undefined)
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto' }}
-    >
-      <SpaceLensBody viewWidth={viewWidth} />
-    </div>
-  )
-}
-
-function SpaceLensBody({ viewWidth }: { viewWidth: number }) {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
   const target = useSelectedItems(selectedHref)
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const isDark = useIsDark()
 
-  // Equirectangular projection needs a true 2:1 width:height ratio —
-  // derived from the real measured width, not stretched to fill whatever
-  // height the panel happens to have.
-  const viewHeight = viewWidth / 2
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const map = L.map(el, { worldCopyJump: true, zoomControl: false }).setView([0, 0], 2)
+    L.control.zoom({ position: 'bottomright' }).addTo(map)
+    L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    const layerGroup = L.layerGroup().addTo(map)
+    mapRef.current = map
+    layerGroupRef.current = layerGroup
+    return () => {
+      map.remove()
+      mapRef.current = null
+      layerGroupRef.current = null
+    }
+  }, [])
 
-  const projection = useMemo(
-    () => geoEquirectangular().fitSize([viewWidth, viewHeight], { type: 'Sphere' }),
-    [viewWidth, viewHeight],
+  // Dark mode is a CSS filter on the tile pane, not a separate tile source
+  // — see the note on TILE_URL above.
+  useEffect(() => {
+    mapRef.current?.getContainer().classList.toggle('leaflet-dark', isDark)
+  }, [isDark])
+
+  const items = target.status === 'ready' ? target.items : EMPTY_ITEMS
+  const node = target.status === 'ready' ? target.node : undefined
+  const highlightHref = target.status === 'ready' ? target.highlightHref : undefined
+  const statedBbox = node?.spatial?.bbox
+  const palette = isDark ? PALETTE.dark : PALETTE.light
+
+  const itemsWithBbox = useMemo(
+    () => items.filter((i): i is StacNode & { spatial: { bbox: number[] } } => !!i.spatial?.bbox),
+    [items],
   )
-  const pathGenerator = useMemo(() => geoPath(projection), [projection])
-  const landFeature = useMemo(
-    () => feature(landTopology, landTopology.objects.land),
-    [],
-  )
-  const graticuleLines = useMemo(() => geoGraticule().step([30, 30])(), [])
 
-  if (target.status === 'empty') {
-    return (
-      <EmptyState>
-        {target.reason === 'no-selection'
-          ? 'Select a Collection or Item in Structure to see where it is.'
-          : 'This node has no Items directly — drill into a sub-collection.'}
-      </EmptyState>
+  // Rebuild the rectangle layers whenever the visible item set changes.
+  useEffect(() => {
+    const layerGroup = layerGroupRef.current
+    if (!layerGroup) return
+    layerGroup.clearLayers()
+
+    if (statedBbox) {
+      L.rectangle(bboxToBounds(statedBbox), {
+        color: palette.textFaint,
+        weight: 1,
+        dashArray: '3,2',
+        fill: false,
+      }).addTo(layerGroup)
+    }
+
+    // Selected item drawn last (on top) so its outline isn't buried under a
+    // stack of overlapping siblings sharing near-identical footprints.
+    const ordered = highlightHref
+      ? [
+          ...itemsWithBbox.filter((i) => i.href !== highlightHref),
+          ...itemsWithBbox.filter((i) => i.href === highlightHref),
+        ]
+      : itemsWithBbox
+
+    for (const item of ordered) {
+      const selected = item.href === highlightHref
+      const rect = L.rectangle(bboxToBounds(item.spatial.bbox), {
+        color: selected ? palette.selection : palette.item,
+        weight: selected ? 2 : 1,
+        fillOpacity: selected ? 0.25 : 0.1,
+      })
+      rect.bindTooltip(item.title ?? item.id, { sticky: true, direction: 'top' })
+      rect.on('click', () => select(item.href))
+      rect.addTo(layerGroup)
+    }
+  }, [itemsWithBbox, statedBbox, highlightHref, palette, select])
+
+  // Fit the whole visible set into view once per distinct target
+  // Collection — not on every render, so it doesn't fight a manual pan/zoom.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !node) return
+    if (lastFitTargetRef.current === node.href) return
+    lastFitTargetRef.current = node.href
+
+    const boundsList = itemsWithBbox.map((i) => bboxToBounds(i.spatial.bbox))
+    if (statedBbox) boundsList.push(bboxToBounds(statedBbox))
+    if (boundsList.length === 0) return
+    const bounds = boundsList.reduce<L.LatLngBounds | undefined>(
+      (acc, b) => (acc ? acc.extend(b) : L.latLngBounds(b)),
+      undefined,
     )
-  }
-  if (target.status === 'loading') {
-    return <EmptyState>loading…</EmptyState>
-  }
+    if (bounds) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 })
+  }, [node, itemsWithBbox, statedBbox])
 
-  const { node, items, highlightHref } = target
-  const statedBbox = node.spatial?.bbox
-  const itemsWithBbox = items.filter((i): i is StacNode & { spatial: { bbox: number[] } } => !!i.spatial?.bbox)
+  // Fly to the specifically-selected Item's own bbox — this is what makes
+  // an island-sized bbox actually visible instead of a 1-2px speck on a
+  // world-scale view. Once per distinct selection.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !highlightHref || lastFlyHrefRef.current === highlightHref) return
+    const item = itemsWithBbox.find((i) => i.href === highlightHref)
+    if (!item) return
+    lastFlyHrefRef.current = highlightHref
+    map.flyToBounds(bboxToBounds(item.spatial.bbox), { padding: [60, 60], maxZoom: 16, duration: 0.75 })
+  }, [highlightHref, itemsWithBbox])
 
-  if (itemsWithBbox.length === 0 && !statedBbox) {
-    return <EmptyState>No spatial data available.</EmptyState>
-  }
-
-  // Render the selected item's footprint last so its outline isn't buried
-  // under the translucent stack of its siblings.
-  const ordered = highlightHref
-    ? [...itemsWithBbox.filter((i) => i.href !== highlightHref), ...itemsWithBbox.filter((i) => i.href === highlightHref)]
-    : itemsWithBbox
+  const statusMessage =
+    target.status === 'empty'
+      ? target.reason === 'no-selection'
+        ? 'Select a Collection or Item in Structure to see where it is.'
+        : 'This node has no Items directly — drill into a sub-collection.'
+      : target.status === 'loading'
+        ? 'loading…'
+        : itemsWithBbox.length === 0 && !statedBbox
+          ? 'No spatial data available.'
+          : undefined
 
   return (
-    <>
-      <div style={{ padding: '6px 16px 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-        <strong style={{ color: 'var(--color-text)' }}>{node.title ?? node.id}</strong>
-        {' · '}
-        {itemsWithBbox.length} item footprint{itemsWithBbox.length === 1 ? '' : 's'}
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          padding: '6px 10px',
+          fontSize: 12,
+          color: 'var(--color-text-muted)',
+          background: 'var(--color-surface)',
+          opacity: 0.92,
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}
+      >
+        {node ? (
+          <>
+            <strong style={{ color: 'var(--color-text)' }}>{node.title ?? node.id}</strong>
+            {' · '}
+            {itemsWithBbox.length} item footprint{itemsWithBbox.length === 1 ? '' : 's'}
+          </>
+        ) : (
+          statusMessage
+        )}
       </div>
-      <svg width="100%" viewBox={`0 0 ${viewWidth} ${viewHeight}`} style={{ display: 'block' }}>
-        <rect x={0} y={0} width={viewWidth} height={viewHeight} style={{ fill: 'var(--color-bg)' }} />
-        <path d={pathGenerator(graticuleLines) ?? undefined} fill="none" style={{ stroke: 'var(--color-border)' }} strokeWidth={0.5} />
-        <path
-          d={pathGenerator(landFeature) ?? undefined}
-          style={{ fill: 'var(--color-land-fill)', stroke: 'var(--color-land-stroke)' }}
-          strokeWidth={0.75}
-        />
-        <rect x={0.5} y={0.5} width={viewWidth - 1} height={viewHeight - 1} fill="none" style={{ stroke: 'var(--color-border)' }} />
-        {statedBbox && <BboxRect bbox={statedBbox} projection={projection} filled={false} color="var(--color-text-faint)" />}
-        {ordered.map((item) => (
-          <BboxRect
-            key={item.href}
-            bbox={item.spatial.bbox}
-            projection={projection}
-            filled
-            color="var(--color-node-item)"
-            selected={highlightHref === item.href}
-            onClick={() => select(item.href)}
-            onHover={(x, y) => setTooltip({ label: item.title ?? item.id, x, y })}
-            onHoverEnd={() => setTooltip(null)}
-          />
-        ))}
-      </svg>
-      {tooltip && (
-        <div
-          style={{
-            position: 'fixed',
-            left: tooltip.x + 14,
-            top: tooltip.y + 12,
-            background: 'var(--color-text)',
-            color: 'var(--color-bg)',
-            padding: '4px 8px',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 12,
-            maxWidth: 380,
-            pointerEvents: 'none',
-            zIndex: 10,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-          }}
-        >
-          {tooltip.label}
-        </div>
-      )}
-    </>
-  )
-}
-
-interface BboxRectProps {
-  bbox: number[]
-  projection: GeoProjection
-  filled: boolean
-  color: string
-  selected?: boolean
-  onClick?: () => void
-  onHover?: (clientX: number, clientY: number) => void
-  onHoverEnd?: () => void
-}
-
-function BboxRect({ bbox, projection, filled, color, selected, onClick, onHover, onHoverEnd }: BboxRectProps) {
-  const [west, south, east, north] = bbox
-  const p1 = projection([west, north])
-  const p2 = projection([east, south])
-  if (!p1 || !p2) return null
-  const [x1, y1] = p1
-  const [x2, y2] = p2
-  const width = Math.max(1, x2 - x1)
-  const height = Math.max(1, y2 - y1)
-
-  const handlers = onHover
-    ? {
-        onMouseEnter: (e: React.MouseEvent) => onHover(e.clientX, e.clientY),
-        onMouseMove: (e: React.MouseEvent) => onHover(e.clientX, e.clientY),
-        onMouseLeave: () => onHoverEnd?.(),
-      }
-    : {}
-
-  return (
-    <rect
-      x={x1}
-      y={y1}
-      width={width}
-      height={height}
-      onClick={onClick}
-      {...handlers}
-      style={{
-        fill: filled ? color : 'none',
-        fillOpacity: filled ? 0.1 : undefined,
-        stroke: selected ? 'var(--color-selection)' : color,
-        cursor: onClick ? 'pointer' : undefined,
-      }}
-      strokeWidth={selected ? 2 : 1}
-      strokeDasharray={!filled ? '3,2' : undefined}
-      strokeOpacity={filled && !selected ? 0.5 : 1}
-    />
+    </div>
   )
 }
