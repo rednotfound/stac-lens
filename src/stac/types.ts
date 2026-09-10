@@ -42,6 +42,26 @@ export interface SchemaHints {
   itemAssets?: Record<string, unknown>
 }
 
+/** A STAC Asset Object, normalized — critically, `href` here is always
+ *  already resolved to an absolute URL, never the raw JSON value. The
+ *  Asset Object spec permits a relative href (resolved against the STAC
+ *  entity's own location, same as any `links` entry), and real catalogs
+ *  use both forms — a UI that ever shows or copies the raw, unresolved
+ *  value risks handing the user a link that silently doesn't work once
+ *  pasted somewhere else. Asked about directly: "很多asset,它的路径是,有的
+ *  是给完整路径,有的是给相对路径...这东西其实我们都要判别一下,才能够保证用户粘贴
+ *  的那个是可以直接使用的那个才行" (a lot of assets give a relative path, not
+ *  a full one — we have to account for that so whatever the user pastes
+ *  actually works). */
+export interface ResolvedAsset {
+  key: string
+  href: string
+  title?: string
+  description?: string
+  type?: string
+  roles?: string[]
+}
+
 export interface StacNode {
   /** Canonical key — absolute resolved URL. Not `id`: ids are not
    *  guaranteed globally unique across a whole catalog tree. */
@@ -94,6 +114,12 @@ export interface StacNode {
   spatial?: SpatialExtent
   temporal?: TemporalShape
   schemaHints?: SchemaHints
+  /** This node's own `assets` object, normalized — every `href` already
+   *  resolved to an absolute URL (see `ResolvedAsset`). Present on Items
+   *  (their real data/thumbnail files) and occasionally Collections
+   *  (shared/representative assets, per the Collection spec's own
+   *  optional `assets` field) — empty array when the source has none. */
+  assets: ResolvedAsset[]
 
   /** stac_extensions as declared by the publisher. */
   declaredExtensions: string[]

@@ -2531,12 +2531,208 @@ Search scenario afterward and got a clean, consistent +7px gap between
 every row, confirmed by both the raw numbers and a full, un-cropped
 screenshot of the same dense view (not a calmer, cherry-picked one).
 
-## 34. What's deliberately deferred (not forgotten)
+## 34. Inspector v2: a Human tab, standard-extension facts, and trustworthy asset links
 
-- A real Human/JSON toggle with extension-specific interpreters (raster, eo,
-  proj, etc. rendering as human-readable facts) — today Detail Panel shows
-  derived facts (namespaces, spatial/temporal validity) plus raw JSON, not a
-  full enrichment layer.
+Prompted by a genuine, direct question, not a feature request at first:
+"这些信息...是你从这个stac json里面抽出来的吗?还是通过一个别的其他方法获得的信息
+呢?" (this information — is it extracted from the STAC JSON, or obtained
+some other way?). Answered by actually reading `DetailPanel.tsx` and every
+file it depends on (`graph.ts`, `namespaces.ts`, `spatial.ts`, `temporal.ts`)
+rather than from memory, field by field: everything is either a direct
+source field (labeled "(source)"/"declared" in the UI) or an explicitly-
+labeled derived one (Shape, the static/API distinction, "Property
+namespaces observed") — nothing comes from anywhere outside the fetched
+JSON itself. Confirmed correct by the user.
+
+That opened into a real redesign ask: two tabs — "Human" (readable,
+default) and "JSON" (untouched, always one click away — "很重要,因为整个
+STAC都是base在这个逻辑里面的," important since the whole STAC spec's own
+logic is based on it) — plus two concrete asks: render actual thumbnail
+images for Items where a safe one exists, and make every asset link
+trustworthy to copy-paste regardless of whether the source JSON wrote it as
+a relative or absolute path. Explicit sequencing: standard/known extensions
+get human-readable treatment in this pass; custom/unrecognized namespaces
+stay exactly as they already were (a plain badge list), one at a time,
+later.
+
+**Researched before building** (not assumed): fetched the official STAC
+extensions registry (stac-extensions.github.io, 93 extensions across four
+maturity tiers) — our existing 13-prefix `KNOWN_EXTENSION_PREFIXES` list
+already covers essentially all of the stable/candidate/pilot tier extensions
+that actually show up in Item/Collection properties, a legitimate "standard
+extensions, v1" scope (`datacube`/`version`/`timestamps`/`alternate-assets`/
+`storage`/`label`/`render` are real but not yet covered). Also fetched the
+Asset Object spec's own text and real assets from both Capella and Earth
+Search: the `thumbnail` role is explicitly spec-defined as *"displayable in
+a web browser without scripts or extensions"* — real data confirmed this is
+the only reliably safe case (`role: thumbnail` + `image/png`/`image/jpeg`);
+`overview`/`visual` assets look preview-like by name but are routinely COG
+(`image/tiff; profile=cloud-optimized`), which no browser decodes natively.
+Both fixtures' asset buckets serve `Access-Control-Allow-Origin: *`, so no
+CORS blocker for an `<img>` tag against either.
+
+**Href resolution — the user's own catch, not something already handled**:
+"很多asset,它的路径是,有的是给完整路径,有的是给相对路径...这东西其实我们都要判别
+一下,才能够保证用户粘贴的那个是可以直接使用的那个才行" (a lot of assets give a
+relative path, not a full one — we have to account for that so whatever the
+user pastes actually works). The Asset Object spec permits either form,
+same as any `links` entry — but nothing in the codebase had ever resolved
+an asset's `href` before, since nothing rendered them until now. Fixed at
+the data layer, not the UI: `StacNode` gained a normalized `assets:
+ResolvedAsset[]` field (`stac/types.ts`), built by `graph.ts`'s new
+`buildAssets()` using the exact same `resolveHref(base, href)` already used
+for every other link on a node — the UI only ever sees the already-
+resolved absolute URL, never `raw.assets[key].href` directly.
+
+**Implemented**:
+- `stac/assets.ts` — `isInlinePreviewAsset()` (the spec-grounded rule above)
+  and `describeAssetType()` (a short label: COG, GeoTIFF, JSON, Parquet,
+  or the media type's own subtype).
+- `stac/extensionFacts.ts` — one small interpreter per standard extension
+  (`eo`, `view`, `proj`, `sat`, `sar`, `sci`, `processing` in this first
+  pass), each reading directly from an Item's `properties` and returning
+  only the facts it actually finds — a fixture with no `sar:*` fields shows
+  no SAR section at all, not an empty one.
+- `DetailPanel.tsx` rewritten with a Human/JSON tab switcher (Human
+  default). Human tab: an inline thumbnail preview when a real one exists,
+  the existing Temporal/Spatial/Containment/etc. fields, a new per-extension
+  facts section, and a new compact Assets list — each row a title, a short
+  type badge, a "Copy link" button (copies the resolved absolute URL,
+  confirmed via `navigator.clipboard`), and an "Open" link. JSON tab: the
+  exact same raw dump as before, just under its own tab now.
+
+Verified against real data, not synthetic fixtures: selected a real
+Sentinel-2 Item from Earth Search after a live API search — the thumbnail
+rendered as a genuine loaded image (343×343, confirmed via `naturalWidth`/
+`naturalHeight`, not a broken-image icon); extension facts showed real,
+correct values (cloud cover 85.07%, sun elevation/azimuth, incidence angle,
+`EPSG:32656`, processing software) with SAR/satellite sections correctly
+absent (this is an optical Sentinel-2 Item, as expected); all 38 real
+assets listed with correct COG/JP2/XML/JSON type labels; clicking "Copy
+link" and reading the clipboard back confirmed a genuine absolute URL
+(`https://sentinel-cogs.s3.us-west-2.amazonaws.com/.../AOT.tif`), not a
+raw relative path; switching to the JSON tab showed the real source
+unchanged. Also confirmed a static Catalog with no assets at all correctly
+shows no "Assets" field rather than an empty one, and its unrecognized
+`earthsearch` property-namespace prefix still surfaces in "Property
+namespaces observed" exactly as before — the custom/unrecognized path is
+untouched, exactly as scoped.
+
+**Update — "Copy link" silently did nothing.** Reported directly: "点了
+Copy link按钮好像也没反应,也不知道有没有复制成功,粘贴之后发现好像没有复制"
+(clicking Copy link seemed to do nothing, no idea whether it actually
+copied — pasting afterward showed nothing was copied). Root cause: the
+original handler wrapped `navigator.clipboard.writeText()` in a `try {}
+catch {}` with an *empty* catch — real STAC Lens usage includes testing
+over this project's own LAN URL (`http://192.168.x.x:5173`, set up earlier
+this session for exactly that), a plain-HTTP, non-`localhost` origin the
+browser treats as an insecure context, where `navigator.clipboard` is
+often `undefined` entirely — `navigator.clipboard.writeText` then throws
+immediately on property access, silently swallowed, with the button never
+changing state either way. Confirmed directly: `window.isSecureContext` is
+`false` and `navigator.clipboard` doesn't exist at all when loaded via the
+LAN URL, versus `true`/present on `localhost`.
+
+Fixed with a real fallback chain (`copyToClipboard()`), not just better
+error messages: try the modern Clipboard API first (works on `localhost`/
+`https://`), then fall back to the legacy `document.execCommand('copy')`
+technique (a temporary off-screen textarea, select, execute) — confirmed
+directly that this fallback genuinely succeeds even over the insecure LAN
+origin where the modern API is entirely absent. The button's own text now
+reflects the *real* outcome ("Copied" / "Copy failed — select below"), and
+on the rare case both methods fail, a real, focused, pre-selected
+read-only input with the exact href appears so the user has a guaranteed
+manual `Ctrl/Cmd+C` path — not a promise a button "did something."
+
+Verified precisely, including a testing pitfall of its own: an initial
+Playwright check re-queried a locator by button text ("Copy link") *after*
+clicking it — once that specific button correctly updated to "Copied," the
+live text-based query silently matched a *different*, still-unclicked
+button instead, making it look like nothing had changed. Re-verified by
+holding a stable element handle to the exact clicked button and reading
+its own `textContent` afterward: confirmed it genuinely changed to
+"Copied," on the LAN origin specifically, via the `execCommand` fallback
+path — the same class of stale-reference testing mistake this project has
+hit before, caught the same way: by re-checking with a more precise,
+non-reactive reference rather than trusting the first read.
+
+## 35. Item Set as a genuinely selectable object, not just a code-level one
+
+A direct, pointed critique, worth quoting in full because it's the actual
+design principle at stake: "用户选择什么,他应该看到什么。我选择了collection这个
+节点,他就不应该看到collection下面所有的item...既然我们有一个items的一个list,
+一个panel...就相当于是选中的,就是有一些全选状态的一个,给一个全选状态的一个。那么
+点那个,那就可以...作为一个,这就是我提出这个item set那个概念...我觉得那个单独是
+要,就是它得单独做一个对象可以去选它,为了UI。你懂我的意思吗?就是我之前我们聊过
+这个事情,但是你并没有这么做。你在代码层面实现了单独的一个对象,但是在用户体验
+层面其实并没有" (whatever the user selects, that's what they should see —
+selecting the Collection node shouldn't show every Item under it. Since we
+have an Item list/panel, give it a "select all" state — click it, and only
+then does the aggregate show. That's the Item Set concept I proposed: it
+needs to be its own separate, *selectable* object, for the UI's sake. We
+talked about this before, but you didn't do it — you built it as a
+separate object at the code level, but not at the user-experience level).
+
+Verified against the actual code before responding, not from memory:
+`store/itemSet.ts` genuinely was already a separate zustand store from
+`store/selection.ts` — but `ItemSetBrowser`'s own effect published
+`visibleHrefs` to it the instant its first page loaded, with zero action
+of the user's own in between. Merely opening/browsing a Collection was
+functionally indistinguishable, from the user's side, from "selecting its
+Item Set" — the separate object existed in code but was never actually
+something you *selected*.
+
+**Fix**: `useItemSetStore` gained `aggregateSelected: boolean` (default
+`false`) and `setAggregateSelected()`. `useSelectedItems` now gates the
+aggregate Item list behind it — selecting/browsing a Collection alone
+shows only its own stated temporal/spatial extent, same as before this
+whole feature existed; `ItemSetBrowser` gained an explicit checkbox
+("Show all N in Time/Space Lens") that's the actual, deliberate selection
+gesture. A specific Item selected directly (from the list, the map, or the
+timeline) still shows in isolation regardless of this toggle — that part
+of "selecting an object stays scoped to that object" was already correct
+and untouched.
+
+A real second bug surfaced while making the toggle reset correctly when
+switching Collections: resetting it inside `setVisible` (keyed on whether
+`forHref` changed) missed the case where the *intermediate* Collection you
+browse through has no direct items of its own — `ItemSetBrowser` never
+mounts for it at all, `setVisible` never fires, and the store's `forHref`
+never actually changes, so a stale `aggregateSelected: true` survived a
+full round trip back to the same Item Set. Confirmed directly via
+Playwright before fixing: browse a leaf-items Collection → check the box →
+browse a different, items-less Collection → return to the first one → the
+checkbox was still checked. Fixed by moving the reset to `ItemSetBrowser`'s
+own mount effect instead (keyed on `node.href`) — this component fully
+unmounts and remounts every time `browsingHref` changes to a different
+target, regardless of whether anything in between had items, which is the
+actual moment "you're looking at a different Item Set now" happens.
+
+Verified end-to-end via Playwright against a real Collection (Capella's
+"IEEE Data Contest 2026," 40 real items): selecting it alone produced zero
+item marks in Time Lens; checking the box brought all 40; unchecking
+dropped back to zero; selecting one specific Item while the box stayed
+checked showed exactly one mark, not forty; switching to a different,
+items-less Collection and back reset the checkbox to unchecked (the exact
+scenario the second bug was found in) — re-run after the fix and confirmed
+correct.
+
+## 36. What's deliberately deferred (not forgotten)
+
+- §34 built the Human/JSON toggle and standard-extension interpreters for
+  `eo`/`view`/`proj`/`sat`/`sar`/`sci`/`processing` — still open: a
+  per-extension interpreter for `raster` (asset-level `raster:bands`) and
+  `classification`/`table`/`mgrs`/`grid`/`s2`, plus extensions the official
+  registry has that this project hasn't added yet (`datacube`, `version`,
+  `timestamps`, `alternate-assets`, `storage`, `label`, `render`). Custom/
+  unrecognized property namespaces are explicitly out of scope for this
+  pass entirely — deliberately deferred to be handled "一个一个" (one at a
+  time), not a bulk pass.
+- In-browser COG/GeoTIFF rendering — real Item assets are routinely COG
+  (`visual`/`overview`/individual bands), which no browser decodes natively;
+  today these get a trustworthy copy-paste link (§34), not a rendered
+  preview. Would need a client-side COG decoder (e.g. georaster/geotiff.js)
+  to actually preview one inline.
 - Semantic zoom / virtualization once a collection's node count genuinely
   can't fit on screen even lazily (the 16k/51M-item collections are handled
   today only by never enumerating past the bounded page size — true

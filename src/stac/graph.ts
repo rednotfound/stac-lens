@@ -1,4 +1,11 @@
-import type { ItemEnumeration, SchemaHints, StacNode, StacNodeType, StacSourceKind } from './types'
+import type {
+  ItemEnumeration,
+  ResolvedAsset,
+  SchemaHints,
+  StacNode,
+  StacNodeType,
+  StacSourceKind,
+} from './types'
 import {
   normalizeCollectionTemporalExtent,
   normalizeItemTemporal,
@@ -59,6 +66,23 @@ export function detectSourceKind(raw: RawStacObject, href: string): StacSourceKi
 function buildSchemaHints(raw: RawStacObject): SchemaHints | undefined {
   if (!raw.summaries && !raw.item_assets) return undefined
   return { summaries: raw.summaries, itemAssets: raw.item_assets }
+}
+
+/** Resolves every asset's `href` against this node's own href — the Asset
+ *  Object spec permits a relative path (real catalogs use both forms), so
+ *  the raw JSON value is never safe to show or copy verbatim. Same
+ *  resolution `childHrefs`/`rel:item`/etc. already get; assets just never
+ *  went through it before because nothing rendered them yet. */
+function buildAssets(href: string, raw: RawStacObject): ResolvedAsset[] {
+  if (!raw.assets) return []
+  return Object.entries(raw.assets).map(([key, asset]) => ({
+    key,
+    href: resolveHref(href, String(asset.href ?? '')),
+    title: typeof asset.title === 'string' ? asset.title : undefined,
+    description: typeof asset.description === 'string' ? asset.description : undefined,
+    type: typeof asset.type === 'string' ? asset.type : undefined,
+    roles: Array.isArray(asset.roles) ? (asset.roles as string[]) : undefined,
+  }))
 }
 
 /** Builds a normalized StacNode from raw fetched JSON. `href` must already
@@ -148,6 +172,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
           : undefined,
 
     schemaHints: type === 'Collection' ? buildSchemaHints(raw) : undefined,
+    assets: buildAssets(href, raw),
 
     declaredExtensions: raw.stac_extensions ?? [],
     propertyNamespaces: mergeNamespaceScans(namespaceScans),

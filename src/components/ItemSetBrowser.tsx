@@ -42,6 +42,8 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
   const setVisible = useItemSetStore((s) => s.setVisible)
+  const aggregateSelected = useItemSetStore((s) => s.aggregateSelected)
+  const setAggregateSelected = useItemSetStore((s) => s.setAggregateSelected)
   const [query, setQuery] = useState('')
 
   const isApiSearched = node.items.kind === 'cursor'
@@ -70,6 +72,21 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
   useEffect(() => {
     setVisible(node.href, filtered.map((i) => i.href))
   }, [node.href, filtered, setVisible])
+
+  // This component only ever exists while `browsingHref` points at this
+  // exact node (StructureTree.tsx's `showItemSetBox`) — it fully unmounts
+  // the moment browsing moves elsewhere and remounts fresh if you come
+  // back, regardless of whether the Collection(s) in between had any
+  // direct items of their own. That makes "on mount" the right place to
+  // reset the explicit "show all in Time/Space Lens" selection back to
+  // off, rather than trying to detect the change in the store itself —
+  // browsing through a Collection with no items never calls `setVisible`
+  // at all, which left a stale `aggregateSelected: true` surviving a round
+  // trip back to the same Item Set (confirmed directly before this fix).
+  useEffect(() => {
+    setAggregateSelected(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.href])
 
   // Bring the selected row into view automatically — selecting an Item
   // from Space Lens or Time Lens (both driven by this same list, via
@@ -124,6 +141,37 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
         >
           API
         </span>
+      )}
+      {/* The Item Set's own explicit selection state — merely opening/
+       * browsing this Collection used to publish `visibleHrefs` straight
+       * to Time/Space Lens the moment its first page loaded, no action of
+       * the user's own required in between: "选择了collection这个节点,他就
+       * 不应该看到collection下面所有的item...它得单独做一个对象可以去选它"
+       * (selecting the Collection node shouldn't show every Item under
+       * it — Item Set needs to be its own separate, selectable object).
+       * This checkbox is that selection: off by default (and reset to off
+       * whenever a different Collection is browsed — see store/itemSet.ts),
+       * so Time/Space Lens show only this Collection's own stated extent
+       * until the user deliberately opts into seeing the aggregate. */}
+      {state.status === 'ready' && filtered.length > 0 && (
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 8,
+            fontSize: 12,
+            color: 'var(--color-text-muted)',
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={aggregateSelected}
+            onChange={(e) => setAggregateSelected(e.target.checked)}
+          />
+          Show {query ? `these ${filtered.length}` : `all ${filtered.length}`} in Time/Space Lens
+        </label>
       )}
       {/* The real search, for an API-backed node — a bbox drawn on Space
        * Lens and/or a datetime range dragged on Time Lens, applied here.
