@@ -3,6 +3,7 @@ import { scaleUtc } from 'd3-scale'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
 import { useElementSize } from '../hooks/useElementSize'
+import { useQueryStore } from '../store/query'
 import { temporalBounds } from '../stac/temporal'
 import type { StacNode, TemporalShape } from '../stac/types'
 import { EmptyState } from './EmptyState'
@@ -61,6 +62,18 @@ function groupByTemporalShape(items: StacNode[]): TimeGroup[] {
 function groupBoundsMs(group: TimeGroup, domain: readonly [Date, Date]): [number, number] {
   const [s, e] = temporalBounds(group.shape)
   return [(s ?? domain[0]).getTime(), (e ?? domain[1]).getTime()]
+}
+
+/** Does this group's own range fall anywhere within `domain` — used to
+ *  filter down to "what's actually visible" when the axis is focused on a
+ *  selected Item (see `displayDomain`/`computeFocusDomain`). Open bounds are
+ *  treated as unbounded, not clamped to some other domain, so an
+ *  open-ended group is "visible" from wherever it starts/ends onward. */
+function groupIntersectsDomain(group: TimeGroup, domain: readonly [Date, Date]): boolean {
+  const [s, e] = temporalBounds(group.shape)
+  const startMs = s ? s.getTime() : -Infinity
+  const endMs = e ? e.getTime() : Infinity
+  return endMs >= domain[0].getTime() && startMs <= domain[1].getTime()
 }
 
 /** Classic greedy interval-packing ("minimum meeting rooms"): each group
@@ -156,26 +169,41 @@ interface TooltipState {
  *  once on mount, and if the ref were only attached inside a conditional
  *  branch it could bind to a still-null ref on first render and never
  *  retry. Same class of bug as the Structure Lens pan/zoom fix; see
- *  docs/DESIGN.md §5. */
+ *  docs/DESIGN.md §5.
+ *
+ *  Deliberately `height: 'auto'`, not `100%` — this component hugs
+ *  whatever height its own content (an EmptyState message, or the SVG's
+ *  own data-driven height) actually needs; App.tsx's wrapper caps that at
+ *  a max height with scroll, rather than this div stretching to fill a
+ *  fixed-size slot sized for Space Lens's map instead (see docs/DESIGN.md
+ *  §23). */
 export function TimeLens() {
   const [containerRef, { width: measuredWidth }] = useElementSize<HTMLDivElement>()
   const viewWidth = measuredWidth > 0 ? measuredWidth : FALLBACK_VIEW_WIDTH
 
   return (
-    <div
-      ref={containerRef}
-      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto' }}
-    >
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: 'auto' }}>
       <TimeLensBody viewWidth={viewWidth} />
     </div>
   )
 }
 
 function TimeLensBody({ viewWidth }: { viewWidth: number }) {
-  const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
-  const target = useSelectedItems(selectedHref)
+  const target = useSelectedItems()
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  // Driven by the shared store, not local state — Item Set's own query
+  // section can arm this same tool (see docs/DESIGN.md §27), so there is
+  // exactly one place tracking whether it's currently armed, regardless of
+  // which UI started it.
+  const rangeMode = useQueryStore((s) => s.drawRequest === 'datetime')
+  const requestDraw = useQueryStore((s) => s.requestDraw)
+  const clearDrawRequest = useQueryStore((s) => s.clearDrawRequest)
+  const [dragRange, setDragRange] = useState<{ startX: number; currentX: number } | null>(null)
+  const setDatetimeRange = useQueryStore((s) => s.setDatetimeRange)
+  const queryDatetimeStart = useQueryStore((s) => s.datetimeStart)
+  const queryDatetimeEnd = useQueryStore((s) => s.datetimeEnd)
 
   const items = target.status === 'ready' ? target.items : EMPTY_ITEMS
   const node = target.status === 'ready' ? target.node : undefined
@@ -207,21 +235,61 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   }, [sortedItems, statedBounds])
 
   const groups = useMemo(() => groupByTemporalShape(sortedItems), [sortedItems])
-  const assignments = useMemo(() => (domain ? packLanes(groups, domain) : []), [groups, domain])
 
   const highlightHref = target.status === 'ready' ? target.highlightHref : undefined
   const selectedItem = highlightHref ? sortedItems.find((i) => i.href === highlightHref) : undefined
 
   // What's actually displayed on the axis — the full collection range by
   // default, narrowed to a padded window around the selected Item's own
-  // range once one is selected. Lane packing (above) always uses the full
-  // `domain`, never this — which Items overlap in time is a data question,
-  // independent of what's currently zoomed into view.
+  // range once one is selected.
   const displayDomain = useMemo(() => {
     if (!domain) return undefined
     if (selectedItem?.temporal) return computeFocusDomain(selectedItem.temporal, domain)
     return domain
   }, [domain, selectedItem])
+
+  const isFocused = !!selectedItem?.temporal
+
+  // Lane packing over *every* loaded group (rather than just what's inside
+  // displayDomain) is exactly right for the unfocused, whole-collection
+  // overview — that's the point of packing, showing the full shape of
+  // availability in minimal vertical space. But once focused on one Item, a
+  // Collection loaded with 100 Items still packed *all* of them in, most of
+  // them off in some other decade — real, dense, all-instant data (Capella's
+  // near-daily SAR captures) packs unrelated Items into the same lane purely
+  // because zero-duration events never "overlap," which then collide at the
+  // label layer (below) and clutter the view with marks nobody asked to see.
+  // Repacking over only what's actually visible in the focused window fixes
+  // both at once — see docs/DESIGN.md.
+  const visibleGroups = useMemo(() => {
+    if (!isFocused || !displayDomain) return groups
+    return groups.filter((g) => groupIntersectsDomain(g, displayDomain))
+  }, [groups, isFocused, displayDomain])
+
+  const assignments = useMemo(() => {
+    if (!domain) return []
+    return isFocused && displayDomain
+      ? packLanes(visibleGroups, displayDomain)
+      : packLanes(groups, domain)
+  }, [groups, visibleGroups, domain, displayDomain, isFocused])
+
+  // A lane can hold several groups that don't overlap in time (that's the
+  // whole point of packing), but the label column is a fixed-x gutter, not
+  // positioned per-mark — so more than one label per lane would render at
+  // the exact same pixel, unreadable (confirmed directly against Capella's
+  // near-daily captures: distinct Item names literally overlapping). Cap it
+  // at one label per lane, preferring whichever group contains the current
+  // selection; the rest stay identifiable via hover/click on their mark,
+  // same as before.
+  const laneLabelKey = useMemo(() => {
+    const byLane = new Map<number, string>()
+    for (const { group, lane } of assignments) {
+      const isSelected = !!highlightHref && group.items.some((i) => i.href === highlightHref)
+      if (isSelected) byLane.set(lane, shapeKey(group.shape))
+      else if (!byLane.has(lane)) byLane.set(lane, shapeKey(group.shape))
+    }
+    return byLane
+  }, [assignments, highlightHref])
 
   // Bring the selected row into view automatically — a selection made
   // elsewhere (Structure Lens, Space Lens) shouldn't require manually
@@ -246,8 +314,20 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
       </EmptyState>
     )
   }
-  if (target.status === 'loading' || !domain || !displayDomain) {
+  if (target.status === 'loading') {
     return <EmptyState>loading…</EmptyState>
+  }
+  if (!domain || !displayDomain) {
+    // Reachable only once loading is done: no stated extent on the
+    // Collection itself, and nothing yet visible in Item Set (Detail Panel)
+    // to derive a range from either — not a timing artifact, an honest
+    // "nothing to plot yet" (see docs/DESIGN.md §21).
+    return (
+      <EmptyState>
+        No stated temporal extent, and no items visible yet — open Detail Panel to browse this
+        collection's items.
+      </EmptyState>
+    )
   }
 
   const x = scaleUtc().domain(displayDomain).range([LABEL_WIDTH, viewWidth - RIGHT_PAD])
@@ -255,6 +335,49 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   // at narrow panel widths (~110px per label is comfortable for a date).
   const tickCount = Math.max(2, Math.floor((viewWidth - LABEL_WIDTH) / 110))
   const ticks = x.ticks(tickCount)
+
+  // Drag-to-select-a-datetime-range tool: active only while `rangeMode` is
+  // on (a toggle button, shown only for API-searchable nodes — selecting a
+  // range does nothing for a static catalog). The SVG's viewBox width
+  // equals `viewWidth` (the measured container width, no CSS scaling), so
+  // a pointer's position relative to the SVG's own bounding box maps
+  // directly to this scale's user-space x coordinates — no separate
+  // coordinate transform needed. Manual draw-then-release, not
+  // live-as-you-drag, for the same reason as Space Lens's bbox tool: a
+  // real API query firing on every mouse-move would be wasteful (see
+  // store/query.ts).
+  function svgX(clientX: number): number {
+    const rect = svgRef.current?.getBoundingClientRect()
+    return rect ? clientX - rect.left : 0
+  }
+  function handleRangeDown(e: React.MouseEvent) {
+    if (!rangeMode) return
+    const px = svgX(e.clientX)
+    setDragRange({ startX: px, currentX: px })
+  }
+  function handleRangeMove(e: React.MouseEvent) {
+    if (!rangeMode || !dragRange) return
+    setDragRange({ startX: dragRange.startX, currentX: svgX(e.clientX) })
+  }
+  function handleRangeUp() {
+    if (!rangeMode || !dragRange) return
+    const [px1, px2] = [dragRange.startX, dragRange.currentX].sort((a, b) => a - b)
+    if (px2 - px1 > 2) {
+      setDatetimeRange(x.invert(px1).toISOString(), x.invert(px2).toISOString())
+    }
+    setDragRange(null)
+    clearDrawRequest()
+  }
+  // The currently-applied query range (if any), in the *current* pixel
+  // space — recomputed against whatever `displayDomain` is now, so it
+  // stays correctly positioned even if the axis has since re-focused.
+  const queryRangePx =
+    queryDatetimeStart || queryDatetimeEnd
+      ? [
+          queryDatetimeStart ? x(new Date(queryDatetimeStart)) : LABEL_WIDTH,
+          queryDatetimeEnd ? x(new Date(queryDatetimeEnd)) : viewWidth - RIGHT_PAD,
+        ]
+      : undefined
 
   // Compare the collection's stated extent against the actual range of the
   // (possibly bounded) loaded items — a real, not hypothetical, conflict:
@@ -282,34 +405,81 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
 
   return (
     <>
-      <div style={{ padding: '6px 16px 0', fontSize: 12, color: 'var(--color-text-muted)' }}>
-        <strong style={{ color: 'var(--color-text)' }}>{node?.title ?? node?.id}</strong>
-        {' · '}
-        showing {sortedItems.length}
-        {target.status === 'ready' && target.totalItemCount > sortedItems.length
-          ? ` of ${target.totalItemCount} items`
-          : ' items'}
-        {groups.length !== sortedItems.length && (
-          <span style={{ marginLeft: 8 }}>· grouped into {groups.length} distinct timings</span>
-        )}
-        {conflict && (
-          <span style={{ color: 'var(--color-node-warning)', marginLeft: 8 }}>
-            ⚠ actual Item range extends beyond the collection's stated extent
-          </span>
-        )}
-        {selectedItem && (
-          <div style={{ marginTop: 2 }}>
-            selected:{' '}
-            <strong style={{ color: 'var(--color-selection)' }}>
-              {selectedItem.title ?? selectedItem.id}
-            </strong>
-            <span style={{ color: 'var(--color-text-faint)', marginLeft: 6 }}>
-              — showing a focused window around it, not the full range
+      <div
+        style={{
+          padding: '6px 16px 0',
+          fontSize: 12,
+          color: 'var(--color-text-muted)',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <strong style={{ color: 'var(--color-text)' }}>{node?.title ?? node?.id}</strong>
+          {' · '}
+          showing {sortedItems.length}
+          {target.status === 'ready' && target.totalItemCount != null && target.totalItemCount > sortedItems.length
+            ? ` of ${target.totalItemCount} items`
+            : ' items'}
+          {groups.length !== sortedItems.length && (
+            <span style={{ marginLeft: 8 }}>· grouped into {groups.length} distinct timings</span>
+          )}
+          {conflict && (
+            <span style={{ color: 'var(--color-node-warning)', marginLeft: 8 }}>
+              ⚠ actual Item range extends beyond the collection's stated extent
             </span>
-          </div>
+          )}
+          {selectedItem && (
+            <div style={{ marginTop: 2 }}>
+              selected:{' '}
+              <strong style={{ color: 'var(--color-selection)' }}>
+                {selectedItem.title ?? selectedItem.id}
+              </strong>
+              <span style={{ color: 'var(--color-text-faint)', marginLeft: 6 }}>
+                {sortedItems.length === 1
+                  ? '— scoped to just this Item, not its neighbors'
+                  : `— showing a focused window around it (${assignments.length} nearby of ${groups.length} loaded), not the full range`}
+              </span>
+            </div>
+          )}
+        </div>
+        {/* Only meaningful for an API-searched node — selecting a range
+         * does nothing for a static catalog, which has no query to apply
+         * it to. */}
+        {node?.items.kind === 'cursor' && (
+          <button
+            onClick={() => requestDraw('datetime')}
+            title={
+              rangeMode
+                ? 'Click and drag across the timeline to select a range; click again to cancel'
+                : 'Select a datetime range for the query'
+            }
+            style={{
+              flexShrink: 0,
+              fontSize: 12,
+              padding: '3px 10px',
+              borderRadius: 999,
+              border: `1px solid ${rangeMode ? '#2563eb' : 'var(--color-border)'}`,
+              background: rangeMode ? '#2563eb' : 'var(--color-surface)',
+              color: rangeMode ? '#fff' : 'var(--color-text)',
+              cursor: 'pointer',
+            }}
+          >
+            {rangeMode ? 'Selecting… (drag below)' : queryDatetimeStart || queryDatetimeEnd ? 'Reselect range' : 'Select range'}
+          </button>
         )}
       </div>
-      <svg width="100%" viewBox={`0 0 ${viewWidth} ${height}`} style={{ display: 'block' }}>
+      <svg
+        ref={svgRef}
+        width="100%"
+        viewBox={`0 0 ${viewWidth} ${height}`}
+        style={{ display: 'block', cursor: rangeMode ? 'crosshair' : undefined }}
+        onMouseDown={handleRangeDown}
+        onMouseMove={handleRangeMove}
+        onMouseUp={handleRangeUp}
+        onMouseLeave={handleRangeUp}
+      >
         {/* axis */}
         {ticks.map((t) => (
           <g key={t.getTime()} transform={`translate(${x(t)}, 0)`}>
@@ -320,10 +490,46 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
           </g>
         ))}
 
-        {/* stated extent reference row */}
+        {/* The currently-applied query datetime range (if any) — rendered
+         * first so it sits behind marks, not on top of them. */}
+        {queryRangePx && (
+          <rect
+            x={Math.min(queryRangePx[0], queryRangePx[1])}
+            y={0}
+            width={Math.abs(queryRangePx[1] - queryRangePx[0])}
+            height={height}
+            style={{ fill: '#2563eb', opacity: 0.08, stroke: '#2563eb', strokeWidth: 1, strokeDasharray: '4,3' }}
+            pointerEvents="none"
+          />
+        )}
+        {/* Live preview while dragging a new range. */}
+        {rangeMode && dragRange && (
+          <rect
+            x={Math.min(dragRange.startX, dragRange.currentX)}
+            y={0}
+            width={Math.abs(dragRange.currentX - dragRange.startX)}
+            height={height}
+            style={{ fill: '#2563eb', opacity: 0.15 }}
+            pointerEvents="none"
+          />
+        )}
+
+        {/* stated extent reference row — right-aligned ending at
+         * LABEL_WIDTH - 10, matching every item row's own label below it
+         * (see the `assignments.map` block). This one used to sit at a
+         * hardcoded `x={0}`, flush against the container's own left edge
+         * with no padding at all — the only label in this whole view
+         * without one — called out directly as looking cramped/"顶头"
+         * (jammed right up against the edge). */}
         {node?.temporal && statedBounds && (
           <g transform={`translate(0, ${statedRowY})`}>
-            <text x={0} y={13} fontSize={11} style={{ fill: 'var(--color-text-muted)' }}>
+            <text
+              x={LABEL_WIDTH - 10}
+              y={13}
+              textAnchor="end"
+              fontSize={11}
+              style={{ fill: 'var(--color-text-muted)' }}
+            >
               stated extent (source)
             </text>
             <TemporalMark
@@ -352,30 +558,33 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
           // first member as a representative; Structure Lens is still the
           // place to browse the rest by identity.
           const clickHref = group.items[0].href
+          const showLabel = laneLabelKey.get(lane) === shapeKey(group.shape)
           return (
             <g
               key={shapeKey(group.shape)}
               ref={selected ? selectedRowRef : undefined}
               transform={`translate(0, ${y})`}
             >
-              <text
-                x={LABEL_WIDTH - 10}
-                y={ROW_HEIGHT / 2 + 4}
-                textAnchor="end"
-                fontSize={11}
-                fontWeight={selected ? 600 : 400}
-                style={{
-                  fill: selected ? 'var(--color-selection)' : 'var(--color-text)',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                }}
-                onClick={() => select(clickHref)}
-                onMouseEnter={(e) => setTooltip({ label: tooltipText, x: e.clientX, y: e.clientY })}
-                onMouseMove={(e) => setTooltip({ label: tooltipText, x: e.clientX, y: e.clientY })}
-                onMouseLeave={() => setTooltip(null)}
-              >
-                {truncateLabel(label)}
-              </text>
+              {showLabel && (
+                <text
+                  x={LABEL_WIDTH - 10}
+                  y={ROW_HEIGHT / 2 + 4}
+                  textAnchor="end"
+                  fontSize={11}
+                  fontWeight={selected ? 600 : 400}
+                  style={{
+                    fill: selected ? 'var(--color-selection)' : 'var(--color-text)',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                  }}
+                  onClick={() => select(clickHref)}
+                  onMouseEnter={(e) => setTooltip({ label: tooltipText, x: e.clientX, y: e.clientY })}
+                  onMouseMove={(e) => setTooltip({ label: tooltipText, x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => setTooltip(null)}
+                >
+                  {truncateLabel(label)}
+                </text>
+              )}
               <TemporalMark
                 shape={group.shape}
                 x={x}
@@ -405,7 +614,13 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
             fontSize: 12,
             maxWidth: 380,
             pointerEvents: 'none',
-            zIndex: 10,
+            // Space Lens's Leaflet map uses z-index up to 1000 internally
+            // (controls) for its own panes — this tooltip is `position:
+            // fixed` and paints in the same root stacking context, so it
+            // must clear that or the map visually covers it whenever the
+            // cursor is near the Time/Space Lens boundary (confirmed: the
+            // tooltip was being cut off exactly at that boundary).
+            zIndex: 2000,
             boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
           }}
         >

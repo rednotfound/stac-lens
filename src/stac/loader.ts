@@ -14,6 +14,16 @@ export class StacLoader {
     return this.cache.get(href)
   }
 
+  /** Inserts an already-fetched node directly into the cache, no network
+   *  request. Used for Items returned whole by a STAC API search response
+   *  — unlike a static catalog's `rel:item` links (which only name an href
+   *  each Item must be separately fetched from), a `/search` or `rel:items`
+   *  response already embeds full Item JSON for every result in the page,
+   *  so re-fetching each one individually via `load()` would be pure waste. */
+  cachePreFetched(node: StacNode): void {
+    if (!this.cache.has(node.href)) this.cache.set(node.href, node)
+  }
+
   async load(href: string): Promise<StacNode> {
     const cached = this.cache.get(href)
     if (cached) return cached
@@ -67,6 +77,25 @@ export class StacLoader {
     return results
       .filter((r): r is PromiseFulfilledResult<StacNode> => r.status === 'fulfilled')
       .map((r) => r.value)
+  }
+
+  /** Finds the catalog root a node belongs to, for opening a deep-linked
+   *  node (fetched directly, in isolation, with nothing else loaded yet) —
+   *  the same "session root" Structure Lens needs to build a tree from.
+   *  Prefers the node's own `rel:root` link (one hop, per commons/links.md's
+   *  "usually just one root entity"); falls back to walking `parentHref` all
+   *  the way up for publishers who omit it. Bounded to guard against a
+   *  malformed or cyclic parent chain in an arbitrary, unverified catalog. */
+  async resolveRoot(node: StacNode, maxHops = 50): Promise<string> {
+    if (node.declaredRootHref) return node.declaredRootHref
+
+    let current = node
+    for (let i = 0; i < maxHops && current.parentHref; i++) {
+      const parentHref = current.parentHref
+      if (parentHref === current.href) break // self-referencing link, bail out
+      current = this.get(parentHref) ?? (await this.load(parentHref))
+    }
+    return current.href
   }
 }
 

@@ -21,6 +21,18 @@
   --color-badge-unknown-bg: #fbe7e2;
   --color-badge-unknown-text: #a3411f;
 
+  /* Static (link-walked) vs. API-searched (§22) — a real, distinct data-
+   * access model, not just a metadata detail, so it needs its own visible
+   * tag rather than small gray subtext: "得有一个标签也好,highlight也好什么
+   * 东西,因为你看这个Stack Browser里面,它就是有一个tag在" (it needs a tag or
+   * highlight of some kind — STAC Browser has a tag for this). Aliased to
+   * the same blue already used for every other API-querying affordance
+   * (Draw area/Select range/Search — see docs/DESIGN.md §29) rather than a
+   * new hue, so "blue = live API interaction" reads as one consistent
+   * language across the whole app, not a one-off color choice. */
+  --color-badge-api-bg: var(--color-selection-bg);
+  --color-badge-api-text: var(--color-selection);
+
   --font-sans: -apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
 

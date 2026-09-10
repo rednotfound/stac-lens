@@ -3,7 +3,6 @@ import { loader } from '../stac/loaderInstance'
 import { useSelectionStore } from '../store/selection'
 import type { StacNode } from '../stac/types'
 
-const ITEM_PAGE_SIZE = 20
 const CHILD_PAGE_SIZE = 100
 /** Total budget for auto-cascade-triggered expansions across one tree.
  *  Atlas's whole Catalog structure is ~30 nodes and cascades fully within
@@ -11,7 +10,7 @@ const CHILD_PAGE_SIZE = 100
  *  several wide levels deep) stops auto-expanding gracefully instead of
  *  firing an unbounded number of fetches — remaining nodes just wait for a
  *  manual click, same as any other collapsed node. */
-const AUTO_EXPAND_BUDGET = 60
+const EXPAND_ALL_BUDGET = 60
 
 interface NodeUiState {
   expanded: boolean
@@ -23,32 +22,35 @@ interface NodeUiState {
   error?: string
   /** Resolved once expanded — undefined means "not fetched yet", not "empty". */
   childHrefs?: string[]
-  itemHrefs?: string[]
 }
 
 export interface TreeDatum {
   href: string
   node: StacNode
-  isItem: boolean
-  /** Synthetic trailing leaf for a bounded item/child page — "+N more (not loaded)". */
+  /** Synthetic trailing leaf for a bounded child page — "+N more (not loaded)". */
   moreCount?: number
-  moreKind?: 'items' | 'children'
   children?: TreeDatum[]
 }
 
 /** Owns the lazily-expanded subset of the STAC graph currently visible in
  *  Structure Lens, and builds the nested datum tree d3-hierarchy needs from
  *  it. Loading is per-node and on-demand — nothing is fetched until expanded,
- *  which is what keeps this safe against a 16,000-item collection. */
+ *  which is what keeps this safe against a catalog with hundreds of children.
+ *
+ *  Items are deliberately never part of this tree at all — they're reached
+ *  only through Item Set (Detail Panel), never as tree leaves. A Collection
+ *  used to expand into up to 20 Item leaves on click, which meant two
+ *  different, inconsistent paths to "find an item" (tree-click vs Item
+ *  Set's search) and a real, confirmed bug: selecting an Item via Item Set
+ *  re-triggered the ancestor-auto-expand effect below, silently re-opening
+ *  a Collection the user had just manually collapsed. Structure Lens is now
+ *  purely a Catalog/Collection navigator — see docs/DESIGN.md §21. */
 export function useStructureTree(rootHref: string) {
   const [uiState, setUiState] = useState<Map<string, NodeUiState>>(new Map())
   const selectedHref = useSelectionStore((s) => s.selectedHref)
-  const autoExpandBudgetRef = useRef(AUTO_EXPAND_BUDGET)
+  const browsingHref = useSelectionStore((s) => s.browsingHref)
 
-  // Named function expression so the recursive cascade (below) refers to
-  // its own binding rather than the outer `const expand` — avoids reading
-  // a variable while its own declaration is still being initialized.
-  const expand = useCallback(async function expand(href: string): Promise<void> {
+  const expand = useCallback(async (href: string): Promise<void> => {
     setUiState((prev) => {
       const next = new Map(prev)
       const existing = next.get(href)
@@ -58,13 +60,7 @@ export function useStructureTree(rootHref: string) {
 
     try {
       const node = loader.get(href) ?? (await loader.load(href))
-
-      const needChildren = node.childHrefs.length > 0
-      const needItems = node.items.kind === 'links' && node.items.hrefs.length > 0
-      const [children, items] = await Promise.all([
-        needChildren ? loader.loadChildren(node, CHILD_PAGE_SIZE) : Promise.resolve([]),
-        needItems ? loader.loadItems(node, ITEM_PAGE_SIZE) : Promise.resolve([]),
-      ])
+      const children = node.childHrefs.length > 0 ? await loader.loadChildren(node, CHILD_PAGE_SIZE) : []
 
       setUiState((prev) => {
         const next = new Map(prev)
@@ -72,25 +68,9 @@ export function useStructureTree(rootHref: string) {
           expanded: true,
           loading: false,
           childHrefs: children.map((c) => c.href),
-          itemHrefs: items.map((i) => i.href),
         })
         return next
       })
-
-      // Auto-expand cascades through curated Catalog structure (the
-      // publisher's information architecture, cheap to reveal) but always
-      // stops at Collections — expanding one can mean fetching anywhere
-      // from a handful to thousands of Items, which should stay a
-      // deliberate click. A shared budget caps the total cascade size —
-      // NZ Imagery's root alone has 800+ children, and a Catalog-heavy
-      // structure at that scale would otherwise fire an unbounded number
-      // of auto-triggered fetches.
-      for (const child of children) {
-        if (child.type === 'Catalog' && autoExpandBudgetRef.current > 0) {
-          autoExpandBudgetRef.current -= 1
-          void expand(child.href)
-        }
-      }
     } catch (err) {
       setUiState((prev) => {
         const next = new Map(prev)
@@ -113,6 +93,51 @@ export function useStructureTree(rootHref: string) {
     })
   }, [])
 
+  // Collapses every expanded node back down to just the root's own direct
+  // children — "reset to first level" for catalogs whose auto-expand
+  // cascade (see `expand` above) or a lot of manual clicking has opened up
+  // many levels deep (NZ Imagery/Capella-scale catalogs especially). Doesn't
+  // touch the loader cache or re-fetch anything — collapsed nodes' data
+  // stays cached, so re-expanding them afterward is instant.
+  const collapseAll = useCallback(() => {
+    setUiState((prev) => {
+      const next = new Map(prev)
+      for (const [href, state] of prev) {
+        if (href === rootHref) continue
+        next.set(href, { ...state, expanded: false })
+      }
+      return next
+    })
+  }, [rootHref])
+
+  // The opposite of collapseAll, and manual rather than automatic — see the
+  // comment on the root pre-expand effect below for why this used to run by
+  // itself on load. Walks every currently-reachable Catalog (never a
+  // Collection — expanding one can mean fetching anywhere from a handful to
+  // thousands of Items, which should always stay a deliberate click) and
+  // expands it, so the publisher's whole curated Catalog hierarchy becomes
+  // visible in one action instead of one click per level. Same shared budget
+  // the old auto-cascade used, now scoped to a single manual invocation
+  // instead of implicitly firing on every expand() call — NZ Imagery's root
+  // alone has 800+ children, so this still needs a cap even on purpose.
+  const expandAllCatalogs = useCallback(async () => {
+    let budget = EXPAND_ALL_BUDGET
+    async function walk(href: string): Promise<void> {
+      await expand(href)
+      const node = loader.get(href)
+      if (!node) return
+      const catalogChildren = node.childHrefs.filter((h) => loader.get(h)?.type === 'Catalog')
+      await Promise.all(
+        catalogChildren.map((childHref) => {
+          if (budget <= 0) return Promise.resolve()
+          budget -= 1
+          return walk(childHref)
+        }),
+      )
+    }
+    await walk(rootHref)
+  }, [expand, rootHref])
+
   const toggle = useCallback(
     (href: string) => {
       if (uiState.get(href)?.expanded) collapse(href)
@@ -123,60 +148,80 @@ export function useStructureTree(rootHref: string) {
 
   // Root starts pre-expanded — the user shouldn't have to click the root
   // node just to see the first level of a catalog they already navigated to.
+  // Deliberately *only* the root, one level: this used to cascade
+  // recursively through every nested Catalog automatically, which for a
+  // deep, unfamiliar structure (Capella's by-datetime facet nests
+  // Catalog→year→month→day) fetched far more than the user asked to see
+  // before they'd even gotten oriented — "我也不知道结构...会一下子加载太多
+  // 东西" (I don't know the structure yet, and it loads too much all at
+  // once). Deeper levels are now always a deliberate click, one at a time,
+  // or one `expandAllCatalogs()` call away if the user wants the whole
+  // curated hierarchy at once.
   useEffect(() => {
     void expand(rootHref)
   }, [rootHref, expand])
 
-  // Selection can now come from Time Lens or Space Lens, whose Items may
+  // Selection can come from Time Lens, Space Lens, or Item Set, and may
   // belong to a Collection the tree was never manually expanded into — walk
-  // up the selected node's ancestor chain and expand anything still
-  // collapsed so the selection is actually visible, not just recorded in
-  // state nobody can see. `expand` re-fetches are cache-backed, so calling
+  // up to that Collection and expand every ancestor *above* it so it
+  // actually renders as a visible tree node. Deliberately does not expand
+  // the target itself: Items are never tree children (see the note on
+  // `useStructureTree` above), so there's nothing to reveal by expanding a
+  // leaf-items Collection — StructureTree.tsx highlights it directly via
+  // "contains the current selection" instead.
+  //
+  // Targets `browsingHref` (the Collection actually being browsed), not an
+  // Item's own resolved `parentHref` — those can genuinely disagree (§15),
+  // and navigating off of it on every Item selection is what caused "我就
+  // lost掉了" (§21): the tree would jump to wherever the clicked Item's
+  // `rel:collection` happened to point, away from the Collection whose
+  // Item Set the user was actually browsing.
+  //
+  // Only re-runs when the target actually changes, not on every individual
+  // Item selection — Item Set lets you click through many Items belonging
+  // to the same Collection in quick succession, and without this guard
+  // each click would re-expand that Collection's ancestor chain, silently
+  // undoing a manual collapse of one of them (a real, confirmed case:
+  // collapsing a Catalog while continuing to browse an already-open Item
+  // Set). Navigating to a genuinely different Collection still expands its
+  // ancestors as before — `expand` re-fetches are cache-backed, so calling
   // it again on an already-expanded ancestor is harmless.
+  const lastNavigatedTargetRef = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (!selectedHref) return
     const node = loader.get(selectedHref)
     if (!node) return
-
-    const ancestors: string[] = []
-    let cur = node.parentHref
-    while (cur) {
-      ancestors.push(cur)
-      cur = loader.get(cur)?.parentHref
-    }
-    ancestors.reverse() // root-to-leaf order
+    const targetHref = node.type === 'Item' ? (browsingHref ?? node.parentHref) : selectedHref
+    if (!targetHref || targetHref === lastNavigatedTargetRef.current) return
+    lastNavigatedTargetRef.current = targetHref
 
     void (async () => {
+      // Walking via `loader.get` alone (cache peek, no fetch) is enough
+      // once the user has been browsing — Time/Space/Item Set selections
+      // arise from an already-loaded Collection, so every ancestor up to
+      // root is already cached. A deep-linked node (§18's hash URL) breaks
+      // that assumption: it's fetched in isolation, with *nothing* else
+      // loaded, so the chain has to be fetched on the way up, not just
+      // peeked — same as `StacLoader.resolveRoot`, and bounded the same way
+      // against a malformed/cyclic parent chain in an arbitrary catalog.
+      const target = loader.get(targetHref) ?? (await loader.load(targetHref))
+      const ancestors: string[] = []
+      let cur = target.parentHref
+      for (let i = 0; i < 50 && cur; i++) {
+        ancestors.push(cur)
+        const parent = loader.get(cur) ?? (await loader.load(cur))
+        // `parent.href` always equals `cur` here (that's the href we just
+        // fetched it by) — the guard against a cyclic parent chain has to
+        // compare the *next* hop instead.
+        cur = parent.parentHref === cur ? undefined : parent.parentHref
+      }
+      ancestors.reverse() // root-to-leaf order
+
       for (const href of ancestors) {
         await expand(href)
       }
-
-      // Re-expanding an already-expanded parent only re-fetches its first
-      // ITEM_PAGE_SIZE items — it does NOT guarantee this specific selected
-      // Item is among them. Time/Space Lens load up to 100 Items
-      // independently of Structure Lens's own smaller page (§ITEM_PAGE_SIZE),
-      // so selecting Item #45 of 300 via a Space Lens footprint is a real,
-      // reachable case where the Item exists in the loader's cache but was
-      // never added to its parent's visible item set. Patch it in directly
-      // rather than bumping the page size for everyone.
-      if (node.type === 'Item' && node.parentHref) {
-        const parentHref = node.parentHref
-        setUiState((prev) => {
-          const parentState = prev.get(parentHref)
-          const existingItemHrefs = parentState?.itemHrefs ?? []
-          if (existingItemHrefs.includes(selectedHref)) return prev
-          const next = new Map(prev)
-          next.set(parentHref, {
-            expanded: true,
-            loading: false,
-            childHrefs: parentState?.childHrefs,
-            itemHrefs: [...existingItemHrefs, selectedHref],
-          })
-          return next
-        })
-      }
     })()
-  }, [selectedHref, expand])
+  }, [selectedHref, browsingHref, expand])
 
   function buildDatum(href: string): TreeDatum | undefined {
     const node = loader.get(href)
@@ -185,18 +230,7 @@ export function useStructureTree(rootHref: string) {
 
     let children: TreeDatum[] | undefined
     if (state?.expanded && !state.loading) {
-      const childDatums = (state.childHrefs ?? [])
-        .map(buildDatum)
-        .filter((d): d is TreeDatum => !!d)
-
-      const itemDatums = (state.itemHrefs ?? [])
-        .map((h) => {
-          const itemNode = loader.get(h)
-          return itemNode ? { href: h, node: itemNode, isItem: true } : undefined
-        })
-        .filter((d): d is TreeDatum => !!d)
-
-      children = [...childDatums, ...itemDatums]
+      children = (state.childHrefs ?? []).map(buildDatum).filter((d): d is TreeDatum => !!d)
 
       const totalChildren = node.childHrefs.length
       const loadedChildren = state.childHrefs?.length ?? 0
@@ -204,26 +238,12 @@ export function useStructureTree(rootHref: string) {
         children.push({
           href: `${href}#more-children`,
           node,
-          isItem: false,
           moreCount: totalChildren - loadedChildren,
-          moreKind: 'children',
-        })
-      }
-
-      const totalItems = node.items.kind === 'links' ? node.items.hrefs.length : 0
-      const loadedItems = state.itemHrefs?.length ?? 0
-      if (totalItems > loadedItems) {
-        children.push({
-          href: `${href}#more-items`,
-          node,
-          isItem: false,
-          moreCount: totalItems - loadedItems,
-          moreKind: 'items',
         })
       }
     }
 
-    return { href, node, isItem: node.type === 'Item', children }
+    return { href, node, children }
   }
 
   const rootDatum = loader.get(rootHref) ? buildDatum(rootHref) : undefined
@@ -231,5 +251,5 @@ export function useStructureTree(rootHref: string) {
   const isExpanded = (href: string) => uiState.get(href)?.expanded ?? false
   const rootError = !rootDatum ? uiState.get(rootHref)?.error : undefined
 
-  return { root: rootDatum, toggle, isLoading, isExpanded, rootError }
+  return { root: rootDatum, toggle, collapseAll, expandAllCatalogs, isLoading, isExpanded, rootError }
 }

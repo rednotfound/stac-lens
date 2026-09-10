@@ -3,6 +3,7 @@ import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
+import { useQueryStore, type QueryBbox } from '../store/query'
 import type { StacNode } from '../stac/types'
 
 // The standard OSM tile server — no API key, unlike CARTO's basemap tiles
@@ -43,6 +44,15 @@ function bboxToBounds(bbox: number[]): L.LatLngBoundsLiteral {
   ]
 }
 
+function boundsToQueryBbox(bounds: L.LatLngBounds): QueryBbox {
+  return {
+    west: bounds.getWest(),
+    south: bounds.getSouth(),
+    east: bounds.getEast(),
+    north: bounds.getNorth(),
+  }
+}
+
 /** A real interactive map (Leaflet + the standard OSM tile server) — not
  *  the hand-rolled static equirectangular projection this component used
  *  to be. That version's coastline outline had no
@@ -59,13 +69,27 @@ export function SpaceLens() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerGroupRef = useRef<L.LayerGroup | null>(null)
+  // Separate from layerGroupRef (item footprints, rebuilt whenever the
+  // visible set changes) — this one rectangle represents the drawn/active
+  // query bbox and should persist across those rebuilds.
+  const queryLayerRef = useRef<L.Rectangle | null>(null)
+  const drawingRectRef = useRef<L.Rectangle | null>(null)
+  const drawStartRef = useRef<L.LatLng | null>(null)
   const lastFitTargetRef = useRef<string | undefined>(undefined)
   const lastFlyHrefRef = useRef<string | undefined>(undefined)
 
-  const selectedHref = useSelectionStore((s) => s.selectedHref)
+  // Driven by the shared store, not local state — Item Set's own query
+  // section can arm this same tool (see docs/DESIGN.md §27), so there is
+  // exactly one place tracking whether it's currently armed, regardless of
+  // which UI started it.
+  const drawMode = useQueryStore((s) => s.drawRequest === 'bbox')
+  const requestDraw = useQueryStore((s) => s.requestDraw)
+  const clearDrawRequest = useQueryStore((s) => s.clearDrawRequest)
   const select = useSelectionStore((s) => s.select)
-  const target = useSelectedItems(selectedHref)
+  const target = useSelectedItems()
   const isDark = useIsDark()
+  const queryBbox = useQueryStore((s) => s.bbox)
+  const setQueryBbox = useQueryStore((s) => s.setBbox)
 
   useEffect(() => {
     const el = containerRef.current
@@ -76,12 +100,107 @@ export function SpaceLens() {
     const layerGroup = L.layerGroup().addTo(map)
     mapRef.current = map
     layerGroupRef.current = layerGroup
+
+    // Leaflet measures its container's pixel size once at init (and caches
+    // it internally for every pixel<->latlng conversion after that) — fine
+    // when the container's size is already stable, but this map now lives
+    // inside a flex column nested inside a scrollable Inspector column
+    // (§23), whose size can still be settling at mount time (Detail's own
+    // content above it hasn't finished laying out yet). A stale cached
+    // size doesn't just mis-render tiles, it corrupts every coordinate the
+    // draw-a-bbox tool computes from mouse events — confirmed directly:
+    // drawing the same on-screen rectangle twice produced different latlng
+    // bounds each time. `invalidateSize()` tells Leaflet to re-measure and
+    // recompute; a ResizeObserver on the actual container calls it whenever
+    // the real size changes, not just once on mount.
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize())
+    resizeObserver.observe(el)
+
     return () => {
+      resizeObserver.disconnect()
       map.remove()
       mapRef.current = null
       layerGroupRef.current = null
     }
   }, [])
+
+  // Draw-a-bbox tool: active only while `drawMode` is on (a toggle button,
+  // shown only for API-searchable nodes — drawing a query bbox does
+  // nothing for a static catalog). Disables the map's own drag-to-pan for
+  // the duration so a drag draws a rectangle instead of panning; a real
+  // STAC API can hold tens of millions of Items (Earth Search's
+  // Sentinel-2 collection alone: 51M+), so this is deliberately a manual
+  // draw-then-release gesture, not a live-updating query — see
+  // docs/DESIGN.md §24 and store/query.ts.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !drawMode) return
+    const activeMap = map // stable non-null binding for the nested handlers below
+
+    activeMap.dragging.disable()
+    const container = activeMap.getContainer()
+    container.style.cursor = 'crosshair'
+
+    function onDown(e: L.LeafletMouseEvent) {
+      drawStartRef.current = e.latlng
+      // Hardcoded, not `var(--color-selection)` — Leaflet's SVG renderer
+      // sets fill/stroke as plain attributes, which don't resolve CSS
+      // custom properties the way this app's own SVG elements do
+      // elsewhere (see the note on PALETTE above).
+      drawingRectRef.current = L.rectangle(L.latLngBounds(e.latlng, e.latlng), {
+        color: '#2563eb',
+        weight: 2,
+        dashArray: '4,3',
+        fillOpacity: 0.08,
+      }).addTo(activeMap)
+    }
+    function onMove(e: L.LeafletMouseEvent) {
+      const start = drawStartRef.current
+      const rect = drawingRectRef.current
+      if (!start || !rect) return
+      rect.setBounds(L.latLngBounds(start, e.latlng))
+    }
+    function onUp() {
+      const rect = drawingRectRef.current
+      if (rect) {
+        setQueryBbox(boundsToQueryBbox(rect.getBounds()))
+        rect.remove()
+      }
+      drawingRectRef.current = null
+      drawStartRef.current = null
+      clearDrawRequest()
+    }
+
+    map.on('mousedown', onDown)
+    map.on('mousemove', onMove)
+    map.on('mouseup', onUp)
+    return () => {
+      map.off('mousedown', onDown)
+      map.off('mousemove', onMove)
+      map.off('mouseup', onUp)
+      map.dragging.enable()
+      container.style.cursor = ''
+      drawingRectRef.current?.remove()
+      drawingRectRef.current = null
+      drawStartRef.current = null
+    }
+  }, [drawMode, setQueryBbox, clearDrawRequest])
+
+  // Renders the current query bbox (if any) as its own persistent overlay
+  // — independent of layerGroupRef, which gets fully cleared/rebuilt
+  // whenever the visible item set changes (below).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    queryLayerRef.current?.remove()
+    queryLayerRef.current = null
+    if (!queryBbox) return
+    const rect = L.rectangle(
+      bboxToBounds([queryBbox.west, queryBbox.south, queryBbox.east, queryBbox.north]),
+      { color: '#2563eb', weight: 2, dashArray: '4,3', fillOpacity: 0.05 },
+    ).addTo(map)
+    queryLayerRef.current = rect
+  }, [queryBbox])
 
   // Dark mode is a CSS filter on the tile pane, not a separate tile source
   // — see the note on TILE_URL above.
@@ -175,12 +294,39 @@ export function SpaceLens() {
       : target.status === 'loading'
         ? 'loading…'
         : itemsWithBbox.length === 0 && !statedBbox
-          ? 'No spatial data available.'
+          ? "No stated bbox, and no footprints visible yet — open Detail Panel to browse this collection's items."
           : undefined
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+    // `zIndex: 0` (not just `position: relative`) is load-bearing, not
+    // decorative — it's what actually creates a new stacking context here.
+    // `position: relative` alone does not; without an explicit z-index,
+    // Leaflet's internal panes (z-index up to 700 for popups, all Leaflet's
+    // own CSS) and this component's own overlay buttons (z-index 10/11)
+    // stack directly in whatever the *nearest* ancestor stacking context
+    // is — the document root, in this app, since nothing between here and
+    // it creates one either. Confirmed directly: the map and its overlay
+    // buttons were painting on top of the page header and Structure Lens
+    // once Space Lens moved inside the Inspector column (§23) and started
+    // visually overlapping screen regions the old full-width-row layout
+    // never shared with them. Containing it here stops that regardless of
+    // whatever layout changes happen above this component in the future.
+    <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 0 }}>
+      {/* `position: relative` + `zIndex: 0` here too, not just on the
+       * outer div above — Leaflet's own CSS sets `position: relative` on
+       * this element (`.leaflet-container`) but no `z-index`, so *it*
+       * doesn't create its own stacking context either; without one,
+       * Leaflet's internal panes/controls (z-index up to 1000 — its
+       * control-container) aren't actually contained by their own map
+       * element, and stack as direct siblings of whatever's outside it
+       * instead — which is exactly why the overlay elements below needed
+       * their own z-index bumped past 1000 rather than just being "above"
+       * this div in DOM order. Giving the map's own container a stacking
+       * context fixes it at the source: everything Leaflet renders inside
+       * it is now bounded by *this* z-index, however high Leaflet's own
+       * internal values go, so nothing here needs to keep chasing that
+       * number upward by hand. */}
+      <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
       <div
         style={{
           position: 'absolute',
@@ -193,7 +339,15 @@ export function SpaceLens() {
           background: 'var(--color-surface)',
           opacity: 0.92,
           pointerEvents: 'none',
-          zIndex: 10,
+          // Leaflet's own internal panes/controls go up to z-index 1000
+          // (its control-container, e.g. the zoom buttons) — confirmed via
+          // computed-style inspection, same fact already documented on
+          // Time Lens's tooltip (which clears it at 2000). This overlay
+          // and the draw-area button below shared that same local
+          // stacking context (once §23's containment fix stopped it from
+          // escaping to the page root) but stayed at a low z-index that
+          // Leaflet's own layers could still outrank within it.
+          zIndex: 1001,
         }}
       >
         {node ? (
@@ -206,6 +360,29 @@ export function SpaceLens() {
           statusMessage
         )}
       </div>
+      {/* Only meaningful for an API-searched node — drawing a bbox does
+       * nothing for a static catalog, which has no query to apply it to. */}
+      {node?.items.kind === 'cursor' && (
+        <button
+          onClick={() => requestDraw('bbox')}
+          title={drawMode ? 'Click and drag on the map to draw; click again to cancel' : 'Draw a bbox for the query'}
+          style={{
+            position: 'absolute',
+            top: 40,
+            right: 10,
+            zIndex: 1002,
+            fontSize: 12,
+            padding: '4px 10px',
+            borderRadius: 999,
+            border: `1px solid ${drawMode ? '#2563eb' : 'var(--color-border)'}`,
+            background: drawMode ? '#2563eb' : 'var(--color-surface)',
+            color: drawMode ? '#fff' : 'var(--color-text)',
+            cursor: 'pointer',
+          }}
+        >
+          {drawMode ? 'Drawing… (drag on map)' : queryBbox ? 'Redraw area' : 'Draw area'}
+        </button>
+      )}
     </div>
   )
 }

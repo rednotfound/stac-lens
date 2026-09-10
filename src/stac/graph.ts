@@ -1,4 +1,4 @@
-import type { SchemaHints, StacNode, StacNodeType, StacSourceKind } from './types'
+import type { ItemEnumeration, SchemaHints, StacNode, StacNodeType, StacSourceKind } from './types'
 import {
   normalizeCollectionTemporalExtent,
   normalizeItemTemporal,
@@ -74,6 +74,29 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const itemHrefs = dedupe(
     links.filter((l) => l.rel === 'item' && l.href).map((l) => resolveHref(href, l.href!)),
   )
+  const itemsLink = links.find((l) => l.rel === 'items' && l.href)
+  const sourceKind = detectSourceKind(raw, href)
+  // Three ways a node's own direct items can be enumerated, tried in this
+  // order: flat `rel:item` links (a real, enumerable array — static
+  // catalogs, confirmed to reach into the thousands with no pagination of
+  // their own, see docs/DESIGN.md §19's third update); a `rel:items` link
+  // (the OGC API - Features query endpoint STAC APIs put on individual
+  // Collections instead — confirmed directly on Earth Search and Microsoft
+  // Planetary Computer, neither of which has a single `rel:item` link
+  // anywhere, only `rel:items`, see §22); or, only for a node that is
+  // itself an API root (`conformsTo`/`rel:search` on its own landing
+  // page), its own cross-collection `/search` endpoint — a Catalog-typed
+  // landing page has no items of its own to flatly list, but the spec's
+  // own example shows exactly this pattern (browse via `child` links,
+  // search across everything via the same root).
+  const items: ItemEnumeration =
+    itemHrefs.length > 0
+      ? { kind: 'links', hrefs: itemHrefs }
+      : itemsLink
+        ? { kind: 'cursor', endpoint: resolveHref(href, itemsLink.href!) }
+        : sourceKind.kind === 'api-search'
+          ? { kind: 'cursor', endpoint: sourceKind.searchHref }
+          : { kind: 'links', hrefs: [] }
   // Kept as two separate source facts rather than one `.find()` over both
   // rel types — the two can genuinely disagree (a file crawled from one
   // directory structure via `rel:parent` while its `collection` field/link
@@ -85,8 +108,10 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   // `rel:parent` is the fallback for nodes with no formal Collection.
   const collectionLink = links.find((l) => l.rel === 'collection' && l.href)
   const parentLink = links.find((l) => l.rel === 'parent' && l.href)
+  const rootLink = links.find((l) => l.rel === 'root' && l.href)
   const declaredCollectionHref = collectionLink ? resolveHref(href, collectionLink.href!) : undefined
   const declaredParentHref = parentLink ? resolveHref(href, parentLink.href!) : undefined
+  const declaredRootHref = rootLink ? resolveHref(href, rootLink.href!) : undefined
 
   const namespaceScans = [scanNamespaces(raw.properties)]
   if (raw.assets) {
@@ -102,8 +127,10 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     parentHref: declaredCollectionHref ?? declaredParentHref,
     declaredCollectionHref,
     declaredParentHref,
+    declaredRootHref,
     childHrefs,
-    items: { kind: 'links', hrefs: itemHrefs },
+    items,
+    sourceKind,
     raw,
 
     spatial:

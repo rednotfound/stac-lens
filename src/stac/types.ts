@@ -69,8 +69,25 @@ export interface StacNode {
    *  a different, thematically-organized Collection — observed directly in
    *  Capella Open Data's static catalog). */
   declaredParentHref?: string
+  /** Source fact: this node's own `rel:root` link, if any — per
+   *  `commons/links.md`, "STAC entities SHALL have no more than one parent
+   *  entity... therefore usually just one root entity." Lets a deep-linked
+   *  node (fetched directly, in isolation, from a shared URL) find its way
+   *  back to the catalog it belongs to in one hop, instead of walking
+   *  `parentHref` all the way up one fetch at a time — that walk is kept as
+   *  the fallback for publishers who omit this optional-but-recommended
+   *  link. */
+  declaredRootHref?: string
   childHrefs: string[]
   items: ItemEnumeration
+  /** This node's own API capability — a landing page/root declaring
+   *  `conformsTo`/`rel:search` is `api-search`; everything else is
+   *  `static-links`, the default. Independent of `items.kind`: a STAC API
+   *  root is `api-search` but may have no direct items of its own (it's a
+   *  landing page), while a plain Collection nested under it inherits no
+   *  `conformsTo` of its own yet still gets `items.kind === 'cursor'` via
+   *  its own `rel:items` link — see `buildNode`. */
+  sourceKind: StacSourceKind
   /** Original JSON, untouched. SOURCE layer — never mutated. */
   raw: unknown
 

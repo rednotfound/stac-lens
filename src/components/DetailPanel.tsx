@@ -7,7 +7,13 @@ import { KNOWN_EXTENSION_PREFIXES } from '../stac/namespaces'
 /** Bare-bones inspector: derived facts first, raw JSON always available
  *  underneath. No Human/JSON toggle yet — that needs extension-specific
  *  interpreters (v0.2+); for now everything shown is either a direct
- *  source field or a clearly-labeled derived one. */
+ *  source field or a clearly-labeled derived one.
+ *
+ *  Deliberately no forced `height: '100%'` on the root — this renders as
+ *  one section of a scrollable column shared with Time/Space Lens
+ *  (App.tsx), not the sole occupant of its container; forcing full height
+ *  here would claim all of that column's space and leave none for the
+ *  sections stacked after it. See docs/DESIGN.md §23's update. */
 export function DetailPanel() {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   // Synchronous cache read — the node is already loaded by the time it's
@@ -30,7 +36,7 @@ export function DetailPanel() {
   const shape = classifyNodeShape(node)
 
   return (
-    <div style={{ padding: 16, fontSize: 13, overflow: 'auto', height: '100%' }}>
+    <div style={{ padding: 16, fontSize: 13 }}>
       <div style={{ marginBottom: 4 }}>
         <strong>{node.title ?? node.id}</strong>
       </div>
@@ -57,6 +63,50 @@ export function DetailPanel() {
           <em>none</em>
         )}
       </Field>
+
+      {(node.items.kind === 'links' ? node.items.hrefs.length > 0 : true) && (
+        <Field
+          label={
+            <>
+              Items in this collection
+              {node.items.kind === 'cursor' && (
+                // Same tag as Structure Lens's own tree node and Item Set
+                // panel (StructureTree.tsx/ItemSetBrowser.tsx) — one
+                // consistent signal across every surface that shows it:
+                // "得有一个标签也好,highlight也好什么东西" (it needs a tag or
+                // highlight of some kind).
+                <span
+                  style={{
+                    display: 'inline-block',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: 999,
+                    background: 'var(--color-badge-api-bg)',
+                    color: 'var(--color-badge-api-text)',
+                    marginLeft: 6,
+                  }}
+                >
+                  API
+                </span>
+              )}
+              {node.items.kind === 'links' && ` (${node.items.hrefs.length})`}
+            </>
+          }
+        >
+          <span style={{ color: 'var(--color-text-muted)' }}>
+            {node.items.kind === 'cursor' && (
+              <>
+                No static <code>rel:item</code> links here — this node is API-searched (
+                <span title={node.items.endpoint}>{new URL(node.items.endpoint).host}</span>), count
+                unknown until queried. {' '}
+              </>
+            )}
+            Browse and search them inline in Structure Lens — selecting this node opens an Item Set
+            box right at its position in the tree, not duplicated here.
+          </span>
+        </Field>
+      )}
 
       {(node.declaredCollectionHref || node.declaredParentHref) && (
         <Field label="Containment (source)">
@@ -134,7 +184,7 @@ export function DetailPanel() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div
