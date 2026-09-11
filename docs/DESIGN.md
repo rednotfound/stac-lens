@@ -3647,7 +3647,32 @@ Verified live: scrolled the real Inspector down (confirmed via a real
 confirmed `scrollTop` read back as exactly `0` afterward, screenshotted
 showing the new node's Inspector rendered from its own header down.
 
-## 50. What's deliberately deferred (not forgotten)
+## 50. The header shows the catalog's own name, not just its URL
+
+"打开一份数据之后，有没有可能把数据的名字页做得更加显眼一点？在header上面呢？
+现在我只在header看到了数据链接，所以作用也不大" (after opening a dataset, could
+its name be made more prominent in the header? right now I only see the
+data's link there, which isn't very useful).
+
+The header (`App.tsx`) showed only `rootHref` — a real fact, but not what
+anyone actually orients by, especially for a long S3/API URL that doesn't
+read as a name at all. Added a small cache-then-fetch effect (same shape
+`useSelectedItems.ts` already uses) that resolves the root node itself,
+then shows `node.title ?? node.id` as a bold, prominent line, with the
+href demoted underneath it — small and muted, not removed, since it's
+still a real, sometimes-useful reference (and is how the header already
+behaved for a moment before the title resolves). Rarely triggers its own
+network request in practice: Structure Lens's own root-expand effect
+fetches the identical node via the same shared `loader` cache.
+
+Verified against two real, differently-shaped roots: a static catalog
+(Africa Agriculture Adaptation Atlas → "Africa Agriculture Adaptation
+Atlas Catalog") and a live STAC API root (Earth Search → "Earth Search by
+Element 84"), plus the brief in-between state (artificially delayed via
+Playwright route interception) confirmed to fall back to showing just the
+href, not an empty or duplicated line, until the title resolves.
+
+## 51. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant

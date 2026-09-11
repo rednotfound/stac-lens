@@ -6,6 +6,8 @@ import { useSelectionStore } from './store/selection'
 import { useElementSize } from './hooks/useElementSize'
 import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
 import { Spinner } from './components/Spinner'
+import { loader } from './stac/loaderInstance'
+import type { StacNode } from './stac/types'
 
 // Inspector's width is a plain pixel number, not a boolean — 0 means fully
 // collapsed. Direct-manipulation (drag the divider, same "drag not
@@ -125,6 +127,41 @@ function App() {
     setRootHref(href)
   }
 
+  // The header used to show only the raw href — real, but not what a
+  // person actually orients by: "现在我只在header看到了数据链接，所以作用也不大"
+  // (right now the header only shows the data's link, which isn't very
+  // useful). Same cache-then-fetch shape `useSelectedItems` already uses:
+  // Structure Lens's own root-expand effect fetches this exact node, so
+  // this rarely does its own network request in practice — it's here so
+  // the header has *something* to show the moment the href itself resolves,
+  // not only once Structure Lens gets around to it.
+  const [rootNode, setRootNode] = useState<StacNode | undefined>(undefined)
+  useEffect(() => {
+    if (!rootHref) {
+      setRootNode(undefined)
+      return
+    }
+    const cached = loader.get(rootHref)
+    if (cached) {
+      setRootNode(cached)
+      return
+    }
+    let cancelled = false
+    setRootNode(undefined)
+    loader
+      .load(rootHref)
+      .then((node) => {
+        if (!cancelled) setRootNode(node)
+      })
+      .catch(() => {
+        // Structure Lens's own root fetch already surfaces this failure
+        // (rootError) — the header just quietly falls back to the href.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [rootHref])
+
   if (booting) {
     return (
       <div
@@ -192,18 +229,44 @@ function App() {
         >
           STAC Lens
         </button>
-        <span
-          style={{
-            fontSize: 12,
-            color: 'var(--color-text-muted)',
-            fontFamily: 'var(--font-mono)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {rootHref}
-        </span>
+        <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', flexShrink: 0 }} />
+        {/* The catalog's own name, not its URL, is what actually orients
+         * someone here — the href alone "作用也不大" (isn't very useful) on
+         * its own, per direct feedback. Falls back to the raw href until
+         * the root node itself resolves (rarely more than an instant —
+         * Structure Lens's own root-expand effect fetches the same node),
+         * and again if a catalog genuinely has no `title`/`id` to show
+         * (never actually seen, but STAC requires neither on a bare
+         * Catalog). The href stays visible underneath, once there's a
+         * real title to distinguish it from — demoted, not removed. */}
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, justifyContent: 'center' }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--color-text)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {rootNode?.title ?? rootNode?.id ?? rootHref}
+          </span>
+          {rootNode && (
+            <span
+              style={{
+                fontSize: 11,
+                color: 'var(--color-text-faint)',
+                fontFamily: 'var(--font-mono)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {rootHref}
+            </span>
+          )}
+        </div>
       </header>
       {/* Show only what's needed right now: nothing selected means Structure
        * is the whole story so far, full width — the Inspector column only
