@@ -4,7 +4,7 @@ import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
 import { useSelectionStore } from './store/selection'
 import { useElementSize } from './hooks/useElementSize'
-import { useDeepLinkBootstrap, useShareableUrlSync } from './hooks/useShareableUrl'
+import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
 
 // Inspector's width is a plain pixel number, not a boolean — 0 means fully
 // collapsed. Direct-manipulation (drag the divider, same "drag not
@@ -96,6 +96,15 @@ function App() {
     if (target.selectedHref) select(target.selectedHref)
   }, [target, select])
   useShareableUrlSync(rootHref, selectedHref, booting)
+  // The browser's own Back/Forward — previously did nothing at all (the
+  // address bar changed, but nothing on screen did), which combined with
+  // `useShareableUrlSync` only ever having one history entry per app
+  // session meant a single Back press left the app outright, however much
+  // had been explored: "浏览器的返回按钮按下之后就回到了浏览器的默认页...这个
+  // 真的没有办法么" (pressing the browser's back button goes straight to
+  // the browser's own default page — is there really no way around
+  // this?). See both hooks' own docs for the full mechanism.
+  usePopStateSync(setRootHref, select)
 
   function openCatalog(href: string) {
     select(null) // a selection from a previous catalog can't mean anything here
@@ -138,24 +147,34 @@ function App() {
           background: 'var(--color-surface)',
         }}
       >
+        {/* Replaced a separate "← Catalogs" button — the title itself is
+         * the back-to-landing-page control now, the same convention
+         * countless real websites already use (their own logo/site name
+         * in the header is always a link home): "我觉得我们似乎不需要返回
+         * 按钮,因为我觉得按下网站标题STAC Lens就可以回到初始页" (I don't think
+         * we need a back button — clicking the "STAC Lens" title itself
+         * should return to the initial page). No border/background of its
+         * own, so it doesn't read as a second, competing button next to
+         * the title it *is*. */}
         <button
           onClick={() => {
             select(null)
             setRootHref(null)
           }}
+          title="Back to catalogs"
           style={{
-            fontSize: 13,
-            padding: '4px 10px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
+            fontSize: 14,
+            fontWeight: 700,
+            flexShrink: 0,
+            padding: 0,
+            border: 'none',
+            background: 'none',
             color: 'var(--color-text)',
             cursor: 'pointer',
           }}
         >
-          ← Catalogs
+          STAC Lens
         </button>
-        <strong style={{ fontSize: 14, flexShrink: 0 }}>STAC Lens</strong>
         <span
           style={{
             fontSize: 12,

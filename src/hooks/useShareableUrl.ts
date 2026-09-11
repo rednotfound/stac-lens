@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
 
 export interface DeepLinkTarget {
@@ -27,14 +27,24 @@ function readHashHref(): string {
   return window.location.hash.slice(1)
 }
 
+/** Fetches the node a hash names and finds the catalog root it belongs to
+ *  — the one piece of async resolution both the initial-load bootstrap
+ *  and back/forward navigation (`usePopStateSync`, below) need identically,
+ *  so it exists exactly once rather than copied into both. */
+async function resolveHashTarget(hash: string): Promise<DeepLinkTarget> {
+  const node = await loader.load(hash)
+  const rootHref = await loader.resolveRoot(node)
+  return { rootHref, selectedHref: node.href === rootHref ? null : node.href }
+}
+
 /** Resolves the hash-encoded node href (if present) into a catalog root to
  *  open plus an optional selection within it — read side of the
  *  deep-linking mechanism; `useShareableUrlSync` below is the write side.
  *  A node fetched this way is fetched in isolation, with nothing else
  *  loaded yet, so finding "which catalog does this belong to" needs its
  *  own step — see `StacLoader.resolveRoot`. Only ever reads the URL once,
- *  on mount; doesn't react to `popstate` (no back/forward support yet, see
- *  docs/DESIGN.md). */
+ *  on mount — subsequent browser back/forward navigation is
+ *  `usePopStateSync`'s job instead, not this hook's. */
 export function useDeepLinkBootstrap(): BootstrapState {
   const [state, setState] = useState<BootstrapState>(() => {
     const hash = readHashHref()
@@ -48,14 +58,9 @@ export function useDeepLinkBootstrap(): BootstrapState {
     let cancelled = false
     void (async () => {
       try {
-        const node = await loader.load(nodeHref)
-        const rootHref = await loader.resolveRoot(node)
+        const target = await resolveHashTarget(nodeHref)
         if (cancelled) return
-        setState({
-          booting: false,
-          error: null,
-          target: { rootHref, selectedHref: node.href === rootHref ? null : node.href },
-        })
+        setState({ booting: false, error: null, target })
       } catch (err) {
         if (cancelled) return
         setState({
@@ -73,32 +78,96 @@ export function useDeepLinkBootstrap(): BootstrapState {
   return state
 }
 
+/** Reacts to the browser's own Back/Forward buttons — not handled at all
+ *  before this (this project's own "not yet built" note said exactly that:
+ *  `popstate` does nothing useful). `useDeepLinkBootstrap` only ever reads
+ *  the hash once, on the very first mount, so navigating back used to
+ *  change the address bar without the app ever noticing. Paired with
+ *  `useShareableUrlSync`'s own push-vs-replace change below, this is what
+ *  makes pressing Back, once, from inside an open catalog return to this
+ *  app's own landing page instead of leaving the app outright on the very
+ *  first press: "浏览器的返回按钮按下之后就回到了浏览器的默认页...这个真的没有
+ *  办法么" (pressing the browser's back button goes straight to the
+ *  browser's own default page — is there really no way around this?). A
+ *  hash that can no longer resolve (a dead link, now that we've navigated
+ *  back to it) degrades to the landing page rather than a silent failure
+ *  — the same safe fallback an invalid hash already gets on a fresh load. */
+export function usePopStateSync(
+  setRootHref: (href: string | null) => void,
+  select: (href: string | null) => void,
+): void {
+  useEffect(() => {
+    function handlePopState() {
+      const hash = readHashHref()
+      if (!hash) {
+        setRootHref(null)
+        select(null)
+        return
+      }
+      void (async () => {
+        try {
+          const target = await resolveHashTarget(hash)
+          setRootHref(target.rootHref)
+          select(target.selectedHref)
+        } catch {
+          setRootHref(null)
+          select(null)
+        }
+      })()
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [setRootHref, select])
+}
+
 /** Keeps the address bar in sync with whatever's currently open, so copying
- *  it at any point reproduces the same view — the write side. Uses
- *  `history.replaceState`, not `pushState`: updating on every selection
- *  would otherwise flood browser back/forward with one entry per click,
- *  which isn't what "back" should mean for this app (see docs/DESIGN.md).
+ *  it at any point reproduces the same view — the write side.
  *
- *  `booting` must be true for as long as `useDeepLinkBootstrap` is still
- *  resolving a hash-encoded href — `rootHref` is still `null` at that point
- *  (the fetch hasn't set it yet), and syncing "nothing's open" would strip
- *  the very hash the bootstrap is mid-flight reading. Confirmed as a real,
- *  reproducible failure, not just a theoretical race: the bootstrap re-reads
- *  the hash on retry (React StrictMode's dev-only double-effect-invoke), so
- *  a hash stripped out from under it here made every deep link hang on
- *  "Opening shared link…" forever in dev. */
+ *  Pushes a real history entry only at a *logical page* boundary — the
+ *  landing page and an open catalog, or one catalog and a different one —
+ *  and replaces the current entry for everything else (selecting a
+ *  different node within the same catalog). Plain `replaceState` for
+ *  everything was the original design, on purpose, specifically to avoid
+ *  flooding back/forward with one entry per click — still correct for
+ *  *within* a catalog, since nobody wants to page back through fifty
+ *  individual Item selections. But it also meant there was only ever one
+ *  history entry for the entire app session, so the browser's Back button
+ *  left the app outright on the very first press regardless of how much
+ *  had been explored — reported directly, and confirmed as the actual
+ *  cause here (not assumed): "这个太容易让人误操作了" (this makes it far too
+ *  easy to trigger by accident). Pushing only at the root-catalog boundary
+ *  keeps both properties: exploring one catalog stays a single entry, and
+ *  Back still means something a user would actually want ("the catalog/
+ *  page I was on before this one"). */
 export function useShareableUrlSync(
   rootHref: string | null,
   selectedHref: string | null,
   booting: boolean,
 ): void {
+  // `undefined` means "hasn't synced yet" — distinct from `null` (synced,
+  // and landed on the landing page) so the very first sync after mount
+  // (settling into whatever a deep link/fresh load already resolved to)
+  // never counts as a root *change* to push, only ones a user actually
+  // triggers afterward.
+  const prevRootHrefRef = useRef<string | null | undefined>(undefined)
+
   useEffect(() => {
     if (booting) return
     const current = rootHref ? (selectedHref ?? rootHref) : null
-    if (readHashHref() === (current ?? '')) return
+    if (readHashHref() === (current ?? '')) {
+      prevRootHrefRef.current = rootHref
+      return
+    }
 
     const url = new URL(window.location.href)
     url.hash = current ?? ''
-    window.history.replaceState(null, '', url)
+
+    const isRootChange = prevRootHrefRef.current !== undefined && prevRootHrefRef.current !== rootHref
+    if (isRootChange) {
+      window.history.pushState(null, '', url)
+    } else {
+      window.history.replaceState(null, '', url)
+    }
+    prevRootHrefRef.current = rootHref
   }, [rootHref, selectedHref, booting])
 }

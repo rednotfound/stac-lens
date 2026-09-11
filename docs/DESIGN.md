@@ -918,14 +918,19 @@ that arrives with *nothing else loaded yet*.
   catalog root — prefers `declaredRootHref`, falls back to walking
   `parentHref` upward (bounded at 50 hops against a malformed/cyclic chain
   in an arbitrary, unverified catalog).
-- `useShareableUrl.ts` — two small hooks, no router library:
+- `useShareableUrl.ts` — small hooks, no router library:
   `useDeepLinkBootstrap()` reads the URL's hash fragment (`location.hash`)
   once on mount as the target node's raw absolute href, fetches that node,
   resolves its root, and hands back `{ rootHref, selectedHref }` for
   `App.tsx` to open into; `useShareableUrlSync()` keeps the hash matched to
-  whatever's currently open, via `history.replaceState` — deliberately not
-  `pushState`, which would turn every click into a browser-history entry
-  (no back/forward support is being built here, on purpose).
+  whatever's currently open, originally via `history.replaceState` always
+  — deliberately not `pushState` for *every* click, which would turn one
+  click into one browser-history entry (still true, still the right call
+  within one catalog) — but at the time this meant no back/forward support
+  at all, on purpose. §45 revisited that once real usage showed the actual
+  cost of "on purpose": it now pushes only at a landing-page/catalog or
+  catalog/catalog boundary, paired with a new `usePopStateSync` that
+  actually reacts to Back/Forward instead of ignoring it.
 - Chose a **raw hash fragment** over both STAC Browser's path-based
   `/external/...` and an initial version of this feature that used a
   `?node=<href>` query param through `URLSearchParams`. The query-param
@@ -982,10 +987,10 @@ actually load the URL fresh, not when reading the code):
    the way down to the Item, correctly highlighted, with Detail/Time/Space
    all showing the same context — no manual navigation at all.
 
-**Not yet built**: `popstate` handling (back/forward do nothing useful
-right now — only forward navigation via a fresh load or in-app selection
-updates the URL); encoding panel visibility (§17) or which Structure Lens
-nodes are expanded into the URL — a shared link reproduces the *selection*,
+**Not yet built** (update: `popstate` handling was built later, see §45 —
+Back/Forward now do something useful): encoding panel visibility (§17) or
+which Structure Lens nodes are expanded into the URL — a shared link
+reproduces the *selection*,
 not the exact expand/collapse state of the tree around it.
 
 ## 19. Growing the known-catalog list to match STAC Browser's breadth
@@ -3398,7 +3403,68 @@ past the *high* end clamped to exactly 50% of a 1400px viewport (700px),
 not beyond; and `TimeLens`'s own unrelated use of the same now-rewritten
 hook still measured and rendered its timeline correctly throughout.
 
-## 45. What's deliberately deferred (not forgotten)
+## 45. The title is the back button, and Back finally does something useful
+
+Two more small requests, both about accidental/redundant navigation
+controls. "我觉得我们似乎不需要返回按钮,因为我觉得按下网站标题STAC Lens就可以
+回到初始页" (I don't think we need a back button — clicking the "STAC
+Lens" title itself should return to the initial page) — the separate "←
+Catalogs" button is gone; the header's own title is now that control,
+matching how countless real websites already treat their own logo/site
+name (a link home), so there's one fewer redundant element rather than a
+title *and* a button doing the same thing side by side.
+
+The second was a real, specific complaint, not a feature request out of
+nowhere: "浏览器的返回按钮按下之后就回到了浏览器的默认页...这个真的没有办法么?
+因为这个太容易让人误操作了" (pressing the browser's own Back button goes
+straight to the browser's default page — is there really no way around
+this? It's far too easy to trigger by accident). Checked what was
+actually happening rather than assuming: `useShareableUrlSync` (§18) uses
+`history.replaceState`, deliberately, "on purpose" per its own original
+comment — specifically to avoid turning every node selection into a
+browser-history entry. That's still the right call for browsing *within*
+one catalog (nobody wants to page back through fifty individual Item
+clicks), but its side effect was that the entire app session — however
+much exploring happened — collapsed to exactly one history entry, so
+Back always meant "leave the app," never "go back one step within it."
+Not a fundamental limitation of building this as an "application" rather
+than a multi-page site (asked about directly, and the honest answer is
+no) — real single-page apps get real Back/Forward behavior all the time,
+via the standard `pushState`/`popstate` pair; this project's own original
+scoping note simply said plainly "no back/forward support is being built
+here, on purpose" (§18) and never revisited it once actual usage made the
+tradeoff visible.
+
+**Implemented**, without reopening the original "don't flood history"
+concern: `useShareableUrlSync` now pushes a real history entry only at a
+*logical page* boundary — landing page ↔ an open catalog, or one catalog
+↔ a different one — and keeps using `replaceState` for everything within
+the same catalog (selecting different nodes), tracked via a
+`prevRootHrefRef` that distinguishes "never synced yet" (`undefined`,
+so the very first sync after a fresh load or deep link never counts as
+a push-worthy change) from "actually navigated to a different root."
+`useDeepLinkBootstrap` (mount-once, unchanged) is now paired with a new
+`usePopStateSync`, which listens for `popstate` for the app's entire
+lifetime and re-resolves whatever hash the browser's own Back/Forward
+just navigated to — the missing half of the mechanism: before this,
+Back/Forward changed the address bar but the app itself never reacted to
+it at all (§18's own "not yet built" note said exactly that). A hash that
+can no longer resolve (a dead link, now that we've navigated back to it)
+degrades to the landing page rather than a silent failure, the same safe
+fallback an unresolvable hash already got on a fresh load.
+
+Verified against real, sequential browser navigation, not just the code
+reading right: opened Earth Search, selected a Collection then an Item
+(hash updated each time, still one history entry — confirmed via
+`page.url()` after each step); clicked the title — back to the landing
+page instantly, in-app, no full reload; reopened the same catalog and
+selected the Collection again (a genuinely new history entry this time);
+one real browser Back landed exactly on the landing page (not outside the
+app); a second Back landed on the *earlier* session's Item selection,
+with Inspector correctly showing that Item's own Human tab again — not
+just the right URL in the bar, the actual UI re-rendered to match.
+
+## 46. What's deliberately deferred (not forgotten)
 
 - Type icons (§44) in Structure Lens's own tree, not just Inspector —
   asked about directly right after §44 landed: "有没有可能在tree view里面也
