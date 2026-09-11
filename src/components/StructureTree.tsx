@@ -717,12 +717,15 @@ function TreeNodeView({
   }
 
   const { node } = datum
-  // Only sub-Catalogs/Collections (childHrefs) are structural children here
-  // — direct Items never are (see useStructureTree's top-level comment), so
-  // a Collection that's all Items (Capella's SLC, say) has nothing to
-  // expand into; its content is reached via Item Set (Detail Panel), shown
-  // below as a count, not a click-to-expand affordance.
-  const canExpand = node.childHrefs.length > 0
+  // Only sub-Catalogs/Collections are structural children here — direct
+  // Items never are (see useStructureTree's top-level comment), so a
+  // Collection that's all Items (Capella's SLC, say) has nothing to expand
+  // into; its content is reached via Item Set (Detail Panel), shown below
+  // as a count, not a click-to-expand affordance. `collectionsEndpoint` is
+  // the fallback discovery path for a node with no static `rel:child`
+  // links at all (Microsoft Planetary Computer's root, e.g.) — expandable
+  // exactly the same way once found, just fetched differently.
+  const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint
   // Classic tidy-tree convention: filled = collapsed with more to reveal,
   // hollow = already expanded or a genuine leaf with nothing further.
   const filled = canExpand && !hasRenderedChildren

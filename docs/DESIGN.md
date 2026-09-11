@@ -3257,8 +3257,169 @@ substantial, user-facing rewrite work — several paragraphs plus the file
 tree — not a small comment fix, so it's reported here rather than rewritten
 without being asked to.
 
-## 43. What's deliberately deferred (not forgotten)
+## 43. A real gap, previously researched but never closed: Collections-only API roots
 
+Pointed at a specific real URL — a STAC Browser instance opened on
+Microsoft Planetary Computer — and asked directly, with real frustration:
+"这个数据,在stac browser就有,但是我们就没有,我们两次说至少要尽可能地支持之后,
+还是没有,我就很困惑" (this data shows up in STAC Browser but not in ours,
+even after we said twice we'd support this as much as possible — I'm just
+confused). §22 had already researched and *documented* the actual
+mechanism ("Planetary Computer's root has no `child`/`children` links at
+all — API-only from the very top"), but the implication — that this
+makes its Collections completely undiscoverable by a tree that only
+understands `rel:child` — was never flagged as a follow-up or fixed. A
+real, confirmed gap, not a mystery: re-fetched the actual root directly
+(`curl`, not the STAC-Browser-wrapped URL the user linked, which is an
+HTML page, not STAC JSON) — CORS wide open (`access-control-allow-origin:
+*`), valid STAC JSON, `conformsTo` present, but genuinely zero `rel:child`
+links; only a `rel:data` link to `/collections`. Loaded directly in this
+app: the root appeared as a single leaf with no way to reach any of its
+~136 real Collections (Sentinel-2, Landsat, NAIP, MODIS, Daymet, ...) —
+confirmed via Playwright, not assumed from reading the code.
+
+**What `/collections` actually is**, checked directly rather than
+guessed: an OGC API - Features "Collections" listing endpoint. One
+request returns every Collection already fully formed (not a bare href
+needing its own fetch) — confirmed 136 real Collection objects in a
+single response, `numberMatched: 137`/`numberReturned: 137` (a real,
+harmless off-by-one in PC's own reporting), and a `?limit=` param that PC
+silently ignores entirely (no `rel:next` link ever appeared, at any limit
+tried) — unlike Item Search, which genuinely paginates.
+
+**Implemented:** `StacNode` gained `collectionsEndpoint?: string`
+(`graph.ts`'s `buildNode()`: a `rel:data` link, only consulted when
+`childHrefs` is empty — a node with a real static child tree never needs
+the fallback). `apiSearch.ts` gained `fetchCollectionsPage()`, a sibling
+to `fetchSearchPage()` for this different response shape (`collections`
+array instead of `features`, `rel:next` still checked and followed rather
+than assumed absent, per the same "don't assume a uniform contract"
+principle §22 already established for Item Search pagination).
+`useStructureTree.ts`'s `expand()` now tries, in order: static
+`childHrefs` (existing path) → `collectionsEndpoint` (new: fetches every
+page up to a defensive `COLLECTIONS_SAFETY_CAP`, caching each Collection
+via `cachePreFetched` the same way a search response's Items already do)
+→ empty. `classifyNodeShape`'s `hasChildren` and `StructureTree.tsx`'s
+`canExpand` both now check `collectionsEndpoint` alongside `childHrefs`,
+so a Collections-only root renders as a normal expandable tree node, no
+special-casing needed anywhere else — `buildDatum`'s existing "+N more"
+logic already falls out correctly (`node.childHrefs.length` stays 0, so
+`totalChildren > loadedChildren` never spuriously fires once everything's
+been fetched in one `expand()` call).
+
+Also added "Microsoft Planetary Computer" to the landing page's known-
+catalog list (69th entry) — a live, working second example of a
+pure-API-only root, parallel to Earth Search but with the opposite
+discovery mechanism (Earth Search's root genuinely has real `rel:child`
+links; Planetary Computer's has none at all).
+
+Verified against the real Planetary Computer API, not the STAC-Browser
+URL originally linked: opening the root shows all ~136 real Collections
+as expandable tree nodes; drilling into "Sentinel-2 Level-2A" (a real
+Collection reachable *only* through this new path) shows a fully correct
+Inspector — description, license, keywords, providers, assets, declared
+extensions — and a working Item Set that auto-loads 250 real Items with
+correct common-extension/namespace annotations, identical in every way to
+how Earth Search's own Collections already worked. Zero page errors
+throughout.
+
+## 44. Type icons for a general audience, and a draggable/collapsible Inspector
+
+Two requests together, both aimed at making the app more approachable for
+someone who isn't already fluent in STAC's own vocabulary — "因为我们这个是
+偏一般用户的嘛,然后偏帮大家理解数据的嘛" (because this project skews toward
+general users, toward helping people understand the data).
+
+**Type icons.** "把这个三个层级,或者是四个层级吧,Collection,Catalog,Item,和
+Asset,都用一些...简单的icon去代替...用一个icon去,非常明显地就告诉大家这也是一个
+什么东西" (give Collection/Catalog/Item/Asset simple icons each, so an icon
+alone makes obvious what kind of thing this is) — color alone (the
+existing per-type border/label) only helps once someone has already
+learned "teal means Collection"; a shape-based icon doesn't require that.
+Implemented as `TypeIcon.tsx` — four small hand-drawn SVGs (this project
+has no icon-library dependency, matching `tokens.css`'s own "not a
+component library" framing), one deliberately distinct metaphor each: a
+folder (Catalog), a stack of cards (Collection), a single photo frame
+(Item), a file with a folded corner (Asset) — plus a fourth color token,
+`--color-node-asset` (muted plum, kept out of the blue family already
+claimed by `--color-selection`), since Assets never had a tree-node color
+of their own before. Rendered at a prominent size next to Inspector's own
+title (the type-color border/label already existed there — this adds the
+shape signal on top, not a replacement), and at a small size on every row
+of the Asset list.
+
+**A draggable, collapsible Inspector, replacing the header toggle.**
+"我们现在这个Inspector的开关在右上角,但是我觉得完全没有必要...我希望我能够用我的
+鼠标去拖拽那个分界线...拖到边缘的地方,它就自己就吸附消失" (the Inspector
+toggle is in the top-right corner, but I don't think we need it at all —
+I want to drag the dividing line itself, and dragging it to the edge
+should snap it away on its own) — matching the same "drag, not sliders or
+buttons" language the tree's own pan/zoom already uses (docs/DESIGN.md,
+early sections). `App.tsx`'s `showDetail` boolean became `inspectorWidth`,
+a plain pixel number (`0` = fully collapsed): a thin draggable handle sits
+between Structure Lens and Inspector, continuous mousedown/mousemove/
+mouseup (not d3-drag — a single linear value on a plain HTML divider
+doesn't need it) resizes it in real time, snapping to fully collapsed
+below `MIN_INSPECTOR_WIDTH` and capped at 50% of the window's own width;
+double-clicking the handle is a quick collapse/restore shortcut that
+doesn't require dragging all the way. The header's old toggle button is
+gone entirely — the handle is the only control now, doubling as the
+"bring it back" affordance once collapsed (it's still there, at width 0,
+to be dragged open again).
+
+**A real bug this surfaced, in shared code, not new code:** the drag
+silently refused to grow past its own starting width — every attempt
+clamped straight back. Traced with real instrumentation (console logging
+at each layer, not guessed) to `useElementSize.ts`'s `containerWidth`
+staying `0` forever, which fed a `containerWidth > 0 ? ... : fallback`
+cap check that fell back to a hardcoded value indistinguishable from "no
+resize happened." Root cause: that hook's `ResizeObserver` was created
+inside a `useEffect(() => {...}, [])` — empty deps, runs exactly once, on
+the calling component's own first mount. `TimeLens.tsx` (the hook's other
+caller) never hit this because its ref'd div exists unconditionally
+whenever `TimeLens` renders at all; `App.tsx`'s new ref'd div does not — it
+only exists once a catalog is open, well after `App`'s own first mount
+(which happens while still showing `LandingPage`). That first-and-only
+effect run found `ref.current` still `null`, never created a
+`ResizeObserver` at all, and — because of the empty deps array — never got
+a second chance to. Fixed properly, not patched around in `App.tsx`:
+`useElementSize` now uses a callback ref instead of a plain object ref plus
+a mount-only effect — React invokes a callback ref exactly when the node
+attaches or detaches, correctly handling a ref target that starts absent
+and appears later, which a `useEffect(..., [])` structurally cannot.
+
+Verified against real interaction, not just the code reading right:
+dragging the handle left by a measured 200px grew Inspector by exactly
+200px (confirmed via `getBoundingClientRect`, both before and after this
+fix — the fix is what took it from "clamped to no-op" to "exactly
+correct"); dragging far past the low threshold snapped it to fully
+collapsed; double-clicking restored the last open width; dragging far
+past the *high* end clamped to exactly 50% of a 1400px viewport (700px),
+not beyond; and `TimeLens`'s own unrelated use of the same now-rewritten
+hook still measured and rendered its timeline correctly throughout.
+
+## 45. What's deliberately deferred (not forgotten)
+
+- Type icons (§44) in Structure Lens's own tree, not just Inspector —
+  asked about directly right after §44 landed: "有没有可能在tree view里面也
+  使用icon呢?" (could the tree view use icons too?). A real design conflict
+  surfaced before agreeing on an approach: the tree's node circle already
+  carries several signals at once (type color, filled-vs-hollow for
+  "collapsed with more to expand" vs. "expanded/leaf," a dashed ring for
+  invalid geometry, a solid/dashed ring for selected/contains-selection) —
+  swapping the circle itself for a shaped icon would lose the filled/
+  hollow expand-affordance, which has no equally-legible icon equivalent.
+  Agreed direction instead: leave the circle exactly as it is, and add the
+  type icon as a *separate* small glyph next to the node's text label —
+  same pattern already used for Inspector's title and each Asset row, not
+  a replacement of a working signal. Not yet implemented — the label's own
+  position (`labelDx`) already feeds real downstream geometry (the Item
+  Set box's connector line via `boxNearX`/`boxOffset`), so placing an icon
+  without disturbing that math needs its own careful pass, and the node
+  radius (6-7px) leaves too little room to simply tuck an icon into the
+  existing circle-to-label gap at a legible size. Confirmed as the shared
+  understanding to build from later: "先按你说的这么理解可以" (let's go with
+  that understanding for now).
 - §34/§34's update built the Human/JSON toggle and standard-extension
   interpreters for `eo`/`view`/`proj`/`sat`/`sar`/`sci`/`processing`/`grid`/
   `s2`, plus a per-asset `gsd`/`raster:bands` data-type badge — still open:

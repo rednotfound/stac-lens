@@ -131,6 +131,16 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const childHrefs = dedupe(
     links.filter((l) => l.rel === 'child' && l.href).map((l) => resolveHref(href, l.href!)),
   )
+  // Fallback child-discovery for a node with no static `rel:child` links at
+  // all — an OGC API - Features "Collections" endpoint (`rel:data`), real
+  // and not hypothetical: Microsoft Planetary Computer's own root has zero
+  // `child` links (confirmed directly, §22) but a `rel:data` link to
+  // `/collections`, which returns ~136 real Collections in one response.
+  // Only consulted when `childHrefs` is empty — a node with a genuine
+  // static tree never needs it.
+  const dataLink = links.find((l) => l.rel === 'data' && l.href)
+  const collectionsEndpoint =
+    childHrefs.length === 0 && dataLink ? resolveHref(href, dataLink.href!) : undefined
   const itemHrefs = dedupe(
     links.filter((l) => l.rel === 'item' && l.href).map((l) => resolveHref(href, l.href!)),
   )
@@ -197,6 +207,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     declaredParentHref,
     declaredRootHref,
     childHrefs,
+    collectionsEndpoint,
     items,
     sourceKind,
     raw,

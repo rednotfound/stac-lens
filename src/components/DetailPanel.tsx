@@ -9,6 +9,7 @@ import { isInlinePreviewAsset, describeAssetType } from '../stac/assets'
 import { summarizeItemSet } from '../stac/itemSetSummary'
 import { TimeLens } from './TimeLens'
 import { SpaceLens } from './SpaceLens'
+import { TypeIcon } from './TypeIcon'
 import type { ResolvedAsset } from '../stac/types'
 
 type Tab = 'human' | 'json'
@@ -110,7 +111,14 @@ export function DetailPanel() {
 
   return (
     <div style={{ padding: 16, paddingLeft: 13, fontSize: 13, borderLeft: `3px solid ${typeColor}` }}>
-      <div style={{ marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        {/* The icon carries the "what kind of thing is this" signal on its
+         * own shape, not just color — someone who hasn't yet learned "teal
+         * means Collection" still sees a stack vs. a folder vs. a photo
+         * frame. Sized deliberately larger than the inline per-asset icons
+         * below, since this is the one thing that should be unmissable at
+         * a glance. */}
+        <TypeIcon type={node.type} size={20} color={typeColor} />
         <strong>{node.title ?? node.id}</strong>
       </div>
       <div style={{ color: 'var(--color-text-muted)', marginBottom: 10 }}>
@@ -408,6 +416,7 @@ function AssetList({ assets }: { assets: ResolvedAsset[] }) {
             fontSize: 12,
           }}
         >
+          <TypeIcon type="Asset" size={13} color="var(--color-node-asset)" />
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {asset.title ?? asset.key}
           </span>

@@ -1,9 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
 import { useSelectionStore } from './store/selection'
+import { useElementSize } from './hooks/useElementSize'
 import { useDeepLinkBootstrap, useShareableUrlSync } from './hooks/useShareableUrl'
+
+// Inspector's width is a plain pixel number, not a boolean — 0 means fully
+// collapsed. Direct-manipulation (drag the divider, same "drag not
+// sliders/buttons" language the tree's own pan/zoom already uses) replaced
+// a header show/hide button entirely: "我觉得完全没有必要...我希望我能够用我
+// 的鼠标去拖拽那个分界线...拖到边缘的地方,它就自己就吸附消失" (I don't think we
+// need [the button] at all — I want to drag the dividing line itself with
+// my mouse, and dragging it to the edge should snap it away on its own).
+const DEFAULT_INSPECTOR_WIDTH = 460
+// Below this, a drag snaps straight to fully collapsed instead of leaving
+// a barely-usable sliver.
+const MIN_INSPECTOR_WIDTH = 220
+const HANDLE_WIDTH = 8
 
 function App() {
   const [rootHref, setRootHref] = useState<string | null>(null)
@@ -21,7 +35,52 @@ function App() {
   // interactive bbox/datetime query tool that used to live alongside
   // Time/Space Lens was dropped entirely in the same pass, not folded in
   // here either — see DetailPanel.tsx/ItemSetBrowser.tsx.
-  const [showDetail, setShowDetail] = useState(true)
+  const [containerRef, { width: containerWidth }] = useElementSize<HTMLDivElement>()
+  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH)
+  // Remembers the last non-zero width so double-clicking the handle while
+  // collapsed restores whatever size was actually in use, not always the
+  // same default.
+  const lastOpenWidthRef = useRef(DEFAULT_INSPECTOR_WIDTH)
+  useEffect(() => {
+    if (inspectorWidth > 0) lastOpenWidthRef.current = inspectorWidth
+  }, [inspectorWidth])
+
+  // Manual mousedown/mousemove/mouseup, not d3-drag — this is a single
+  // linear pixel value on a plain HTML divider, not an SVG element bound
+  // to d3 selections the way the tree's own draggable nodes are; d3-drag
+  // would add a dependency here for no real benefit over a few native
+  // listeners. Attached to `window`, not the handle itself, so the drag
+  // keeps tracking correctly even if the cursor briefly leaves the thin
+  // handle strip mid-drag — a real, common case for a fast mouse movement.
+  const beginResize = useCallback(
+    (startEvent: React.MouseEvent) => {
+      startEvent.preventDefault()
+      const startX = startEvent.clientX
+      const startWidth = inspectorWidth
+
+      function onMove(e: MouseEvent) {
+        // Handle sits to the *left* of Inspector, so dragging left (cursor
+        // x decreases) should grow it — the delta is inverted relative to
+        // a plain "drag right to grow" control.
+        const delta = startX - e.clientX
+        const cap = containerWidth > 0 ? containerWidth * 0.5 : DEFAULT_INSPECTOR_WIDTH
+        let next = Math.min(startWidth + delta, cap)
+        if (next < MIN_INSPECTOR_WIDTH) next = 0
+        setInspectorWidth(Math.max(next, 0))
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    [inspectorWidth, containerWidth],
+  )
+
+  const toggleCollapse = useCallback(() => {
+    setInspectorWidth((w) => (w > 0 ? 0 : lastOpenWidthRef.current || DEFAULT_INSPECTOR_WIDTH))
+  }, [])
 
   // A `?node=<href>` URL opens straight into that node — same idea as STAC
   // Browser's shareable links (see docs/DESIGN.md), adapted to how this app
@@ -109,30 +168,26 @@ function App() {
         >
           {rootHref}
         </span>
-        {hasSelection && (
-          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-            <PanelToggle label="Inspector" on={showDetail} onClick={() => setShowDetail((v) => !v)} />
-          </div>
-        )}
       </header>
       {/* Show only what's needed right now: nothing selected means Structure
        * is the whole story so far, full width — the Inspector column only
-       * earns its space once there's something for it to actually show,
-       * and the user can turn it back off (PanelToggle above) to make
-       * Structure the main view again without losing the selection.
+       * earns its space once there's something for it to actually show.
+       * No header button any more to turn it back off — the divider itself
+       * (below) is dragged to 0 or double-clicked instead, so there is
+       * exactly one thing to interact with, not a button *and* a divider
+       * that both claim to control the same width.
        *
        * Time/Space used to live in this column as their own stacked
        * sections below Detail's facts, each independently toggleable, then
        * briefly as Inspector's own tabs — now folded a level deeper still,
        * directly into Inspector's Human tab (DetailPanel.tsx), so there is
-       * exactly one thing to show/hide here regardless of what's rendering
-       * inside Inspector. */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+       * exactly one thing to resize/collapse here regardless of what's
+       * rendering inside Inspector. */}
+      <div ref={containerRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div
           style={{
-            width: hasSelection && showDetail ? '55%' : '100%',
-            borderRight: hasSelection && showDetail ? '1px solid var(--color-border)' : 'none',
-            transition: 'width 0.25s ease',
+            flex: 1,
+            minWidth: 0,
             // The tree's own SVG doesn't clip content panned/zoomed past
             // its column's edge — normally invisible off-screen, but the
             // Item Set box (foreignObject, real HTML) can land close
@@ -151,33 +206,37 @@ function App() {
         >
           <StructureTree key={rootHref} rootHref={rootHref} />
         </div>
-        {hasSelection && showDetail && (
-          <div style={{ width: '45%', overflow: 'auto' }}>
-            <DetailPanel />
-          </div>
+        {hasSelection && (
+          <>
+            {/* The one control for Inspector's width — grab to resize
+             * continuously, drag past `MIN_INSPECTOR_WIDTH` to snap it
+             * fully away, drag it back out from the right edge to bring it
+             * back, or double-click for a quick collapse/restore without
+             * dragging at all. */}
+            <div
+              onMouseDown={beginResize}
+              onDoubleClick={toggleCollapse}
+              title={
+                inspectorWidth > 0
+                  ? 'Drag to resize · double-click to hide Inspector'
+                  : 'Drag left, or double-click, to show Inspector'
+              }
+              style={{
+                width: HANDLE_WIDTH,
+                flexShrink: 0,
+                cursor: 'col-resize',
+                background: 'var(--color-border)',
+              }}
+            />
+            {inspectorWidth > 0 && (
+              <div style={{ width: inspectorWidth, flexShrink: 0, overflow: 'auto' }}>
+                <DetailPanel />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
-  )
-}
-
-function PanelToggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title={`${on ? 'Hide' : 'Show'} ${label}`}
-      style={{
-        fontSize: 12,
-        padding: '3px 10px',
-        borderRadius: 999,
-        border: `1px solid ${on ? 'var(--color-selection)' : 'var(--color-border)'}`,
-        background: on ? 'var(--color-selection)' : 'var(--color-surface)',
-        color: on ? 'var(--color-bg)' : 'var(--color-text-faint)',
-        cursor: 'pointer',
-      }}
-    >
-      {label}
-    </button>
   )
 }
 

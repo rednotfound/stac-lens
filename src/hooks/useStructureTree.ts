@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
+import { fetchCollectionsPage } from '../stac/apiSearch'
 import { useSelectionStore } from '../store/selection'
 import type { StacNode } from '../stac/types'
 
@@ -11,6 +12,13 @@ const CHILD_PAGE_SIZE = 100
  *  firing an unbounded number of fetches — remaining nodes just wait for a
  *  manual click, same as any other collapsed node. */
 const EXPAND_ALL_BUDGET = 60
+/** Safety backstop for a `collectionsEndpoint` fetch (`rel:data`) — every
+ *  real implementation checked so far (Microsoft Planetary Computer, ~136
+ *  Collections) returns everything in one unpaginated response regardless
+ *  of a `limit` param, so this is a defensive cap against a hypothetical
+ *  implementation with many thousands of Collections, not a limit expected
+ *  to actually bind today. */
+const COLLECTIONS_SAFETY_CAP = 2000
 
 interface NodeUiState {
   expanded: boolean
@@ -30,6 +38,27 @@ export interface TreeDatum {
   /** Synthetic trailing leaf for a bounded child page — "+N more (not loaded)". */
   moreCount?: number
   children?: TreeDatum[]
+}
+
+/** Fetches every Collection from a `collectionsEndpoint` (`rel:data`),
+ *  following `rel:next` until exhausted or `COLLECTIONS_SAFETY_CAP` is hit
+ *  — a full fetch-to-completion, not a scroll-paged "load more" the way
+ *  Item Set handles a real API search, since a Collections listing is
+ *  realistically a few hundred entries at most in any real implementation
+ *  checked so far, unlike Items (which can be tens of millions). Caches
+ *  each result via `cachePreFetched` the same way a search response's
+ *  Items already do, since each Collection here arrives whole, not as a
+ *  bare href needing its own follow-up fetch. */
+async function loadAllCollections(endpoint: string): Promise<StacNode[]> {
+  const all: StacNode[] = []
+  let nextHref: string | undefined
+  do {
+    const page = await fetchCollectionsPage(endpoint, { limit: COLLECTIONS_SAFETY_CAP, nextHref })
+    for (const node of page.items) loader.cachePreFetched(node)
+    all.push(...page.items)
+    nextHref = page.nextHref
+  } while (nextHref && all.length < COLLECTIONS_SAFETY_CAP)
+  return all
 }
 
 /** Owns the lazily-expanded subset of the STAC graph currently visible in
@@ -60,7 +89,12 @@ export function useStructureTree(rootHref: string) {
 
     try {
       const node = loader.get(href) ?? (await loader.load(href))
-      const children = node.childHrefs.length > 0 ? await loader.loadChildren(node, CHILD_PAGE_SIZE) : []
+      const children =
+        node.childHrefs.length > 0
+          ? await loader.loadChildren(node, CHILD_PAGE_SIZE)
+          : node.collectionsEndpoint
+            ? await loadAllCollections(node.collectionsEndpoint)
+            : []
 
       setUiState((prev) => {
         const next = new Map(prev)

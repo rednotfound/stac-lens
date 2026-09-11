@@ -19,6 +19,12 @@ const KNOWN_CATALOGS = [
       'A real STAC API, not a static catalog — Sentinel-2, Landsat, and more, queried live rather than link-walked.',
     href: 'https://earth-search.aws.element84.com/v1',
   },
+  {
+    title: 'Microsoft Planetary Computer',
+    description:
+      '~136 real-world Collections (Sentinel, Landsat, MODIS, Daymet, and more) via a pure STAC API with no static rel:child links at all — discovered through its OGC "Collections" listing endpoint instead.',
+    href: 'https://planetarycomputer.microsoft.com/api/stac/v1/',
+  },
   // The rest are static catalogs sourced from STAC Index (stacindex.org) —
   // the same public directory STAC Browser itself defers to rather than
   // maintaining its own list — each individually checked here for CORS and

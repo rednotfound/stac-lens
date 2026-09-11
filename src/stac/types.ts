@@ -117,6 +117,19 @@ export interface StacNode {
    *  link. */
   declaredRootHref?: string
   childHrefs: string[]
+  /** An OGC API - Features "Collections" listing endpoint (`rel:data`) —
+   *  an alternative way to discover this node's child Collections when
+   *  there are no static `rel:child` links at all. Real, not hypothetical:
+   *  confirmed directly against Microsoft Planetary Computer's STAC API
+   *  root, which has zero `child` links (API-only from the very top —
+   *  already noted in docs/DESIGN.md §22) yet lists ~136 real Collections
+   *  via this endpoint, each returned as a complete, ready-to-use
+   *  Collection object in one response rather than a href to fetch
+   *  separately (see `stac/apiSearch.ts`'s `fetchCollectionsPage`). Only
+   *  set when `childHrefs` is empty — a node with a real static child tree
+   *  never needs this fallback. `undefined` on any node without a `data`
+   *  link, never a placeholder. */
+  collectionsEndpoint?: string
   items: ItemEnumeration
   /** This node's own API capability — a landing page/root declaring
    *  `conformsTo`/`rel:search` is `api-search`; everything else is
@@ -179,7 +192,7 @@ export type NodeShape =
   | 'leaf-empty' // has neither — a real, valid terminal state, not "unloaded"
 
 export function classifyNodeShape(node: StacNode): NodeShape {
-  const hasChildren = node.childHrefs.length > 0
+  const hasChildren = node.childHrefs.length > 0 || !!node.collectionsEndpoint
   const hasItems =
     node.items.kind === 'links'
       ? node.items.hrefs.length > 0

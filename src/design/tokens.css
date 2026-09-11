@@ -12,6 +12,15 @@
   --color-node-catalog: #55524a;
   --color-node-collection: #0f766e;
   --color-node-item: #b45309;
+  /* Not a tree-node type (Assets are never tree nodes) — a fourth hue for
+   * Inspector's own type iconography only, alongside the three above,
+   * requested directly: "把这个三个层级...Collection,Catalog,Item,和Asset,
+   * 都用一些...简单的icon去代替" (give these levels — Collection, Catalog,
+   * Item, and Asset — simple icons each). Muted plum, matching the same
+   * desaturated-earthy register as the other three rather than a bright
+   * accent, and deliberately outside the blue family already claimed by
+   * `--color-selection`/the API badge. */
+  --color-node-asset: #7c4a72;
   --color-node-warning: #b45309;
   --color-selection: #2563eb;
   --color-selection-bg: #eaf1fd;
@@ -58,6 +67,7 @@
     --color-node-catalog: #b8b2a3;
     --color-node-collection: #2dd4bf;
     --color-node-item: #f0a253;
+    --color-node-asset: #d199c4;
     --color-node-warning: #f0a253;
     --color-selection: #60a5fa;
     --color-selection-bg: #1e2c42;

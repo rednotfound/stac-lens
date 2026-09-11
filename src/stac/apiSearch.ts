@@ -90,3 +90,55 @@ export async function fetchSearchPage(
     matched,
   }
 }
+
+interface RawCollectionsResponse {
+  collections?: RawStacObject[]
+  links?: RawSearchLink[]
+}
+
+export interface CollectionsPage {
+  items: StacNode[]
+  nextHref?: string
+}
+
+/** Fetches one page from an OGC API - Features "Collections" listing
+ *  endpoint (`rel:data`) — the fallback children-discovery mechanism for a
+ *  node with no static `rel:child` links at all (`StacNode.
+ *  collectionsEndpoint`, `graph.ts`). Real, not hypothetical: Microsoft
+ *  Planetary Computer's root has zero `child` links but lists ~136
+ *  Collections this way — and unlike a static child link (a bare href to
+ *  fetch separately), each entry here already arrives as a complete,
+ *  ready-to-use Collection object, so no per-Collection follow-up fetch is
+ *  needed at all (confirmed directly: PC's own `?limit=` param is silently
+ *  ignored and every Collection comes back in one response regardless —
+ *  `rel:next` is still checked and followed rather than assumed absent,
+ *  since a different implementation may genuinely paginate this). */
+export async function fetchCollectionsPage(
+  endpoint: string,
+  opts: { limit: number; nextHref?: string },
+): Promise<CollectionsPage> {
+  const url = opts.nextHref ?? withQuery(endpoint, { limit: String(opts.limit) })
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`Collections request failed: ${res.status} ${res.statusText}`)
+  }
+  const raw = (await res.json()) as RawCollectionsResponse
+  const collections = raw.collections ?? []
+
+  const items = collections.map((collection) => {
+    const selfLink = (collection.links ?? []).find((l) => l.rel === 'self' && l.href)
+    // Same fallback reasoning as `fetchSearchPage` above — not every
+    // implementation's listed Collection carries its own `rel:self` link.
+    const collectionHref = selfLink
+      ? resolveHref(url, selfLink.href!)
+      : resolveHref(endpoint.endsWith('/') ? endpoint : `${endpoint}/`, String(collection.id ?? ''))
+    return buildNode(collectionHref, collection)
+  })
+
+  const nextLink = (raw.links ?? []).find((l) => l.rel === 'next' && l.href)
+
+  return {
+    items,
+    nextHref: nextLink?.href,
+  }
+}
