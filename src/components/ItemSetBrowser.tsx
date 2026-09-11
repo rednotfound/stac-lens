@@ -2,22 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useItemSet } from '../hooks/useItemSet'
 import { useSelectionStore } from '../store/selection'
 import { useItemSetStore } from '../store/itemSet'
-import { useQueryStore } from '../store/query'
 import { describeTemporal } from '../stac/describe'
 import type { StacNode } from '../stac/types'
-
-function formatBboxSummary(bbox: { west: number; south: number; east: number; north: number }): string {
-  const f = (n: number) => n.toFixed(2)
-  return `${f(bbox.west)}, ${f(bbox.south)} → ${f(bbox.east)}, ${f(bbox.north)}`
-}
-
-function formatDatetimeSummary(start: string | null, end: string | null): string {
-  const f = (iso: string) => iso.slice(0, 10)
-  if (start && end) return `${f(start)} → ${f(end)}`
-  if (start) return `${f(start)} → …`
-  if (end) return `… → ${f(end)}`
-  return ''
-}
 
 const SCROLL_LOAD_THRESHOLD = 120
 // Was 260 (~3-4 visible rows) — called out directly: "我们明明可能加载到上千
@@ -42,19 +28,10 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
   const setVisible = useItemSetStore((s) => s.setVisible)
-  const aggregateSelected = useItemSetStore((s) => s.aggregateSelected)
-  const setAggregateSelected = useItemSetStore((s) => s.setAggregateSelected)
+  const setShowOnLenses = useItemSetStore((s) => s.setShowOnLenses)
   const [query, setQuery] = useState('')
 
   const isApiSearched = node.items.kind === 'cursor'
-  const queryBbox = useQueryStore((s) => s.bbox)
-  const queryDatetimeStart = useQueryStore((s) => s.datetimeStart)
-  const queryDatetimeEnd = useQueryStore((s) => s.datetimeEnd)
-  const triggerSearch = useQueryStore((s) => s.triggerSearch)
-  const clearQueryDraft = useQueryStore((s) => s.clearDraft)
-  const drawRequest = useQueryStore((s) => s.drawRequest)
-  const requestDraw = useQueryStore((s) => s.requestDraw)
-  const hasQueryDraft = !!queryBbox || !!queryDatetimeStart || !!queryDatetimeEnd
 
   const items = state.status === 'ready' ? state.items : EMPTY_ITEMS
   const filtered = useMemo(() => {
@@ -78,13 +55,13 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
   // the moment browsing moves elsewhere and remounts fresh if you come
   // back, regardless of whether the Collection(s) in between had any
   // direct items of their own. That makes "on mount" the right place to
-  // reset the explicit "show all in Time/Space Lens" selection back to
-  // off, rather than trying to detect the change in the store itself —
-  // browsing through a Collection with no items never calls `setVisible`
-  // at all, which left a stale `aggregateSelected: true` surviving a round
-  // trip back to the same Item Set (confirmed directly before this fix).
+  // reset the "show on Time/Space Lens" toggle back to off, rather than
+  // trying to detect the change in the store itself — browsing through a
+  // Collection with no items never calls `setVisible` at all, which left a
+  // stale `showOnLenses: true` surviving a round trip back to the same
+  // Collection (confirmed directly before this fix).
   useEffect(() => {
-    setAggregateSelected(false)
+    setShowOnLenses(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.href])
 
@@ -142,128 +119,29 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
           API
         </span>
       )}
-      {/* The Item Set's own explicit selection state — merely opening/
-       * browsing this Collection used to publish `visibleHrefs` straight
-       * to Time/Space Lens the moment its first page loaded, no action of
-       * the user's own required in between: "选择了collection这个节点,他就
-       * 不应该看到collection下面所有的item...它得单独做一个对象可以去选它"
-       * (selecting the Collection node shouldn't show every Item under
-       * it — Item Set needs to be its own separate, selectable object).
-       * This checkbox is that selection: off by default (and reset to off
-       * whenever a different Collection is browsed — see store/itemSet.ts),
-       * so Time/Space Lens show only this Collection's own stated extent
-       * until the user deliberately opts into seeing the aggregate. */}
-      {state.status === 'ready' && filtered.length > 0 && (
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginBottom: 8,
-            fontSize: 12,
-            color: 'var(--color-text-muted)',
-            cursor: 'pointer',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={aggregateSelected}
-            onChange={(e) => setAggregateSelected(e.target.checked)}
-          />
-          Show {query ? `these ${filtered.length}` : `all ${filtered.length}`} in Time/Space Lens
-        </label>
-      )}
-      {/* The real search, for an API-backed node — a bbox drawn on Space
-       * Lens and/or a datetime range dragged on Time Lens, applied here.
-       * id/title text search (below) stays as a secondary, loaded-results-
-       * only filter, not the primary way in — asked about directly:
-       * "让用户搜索id和title是不现实的,因为id和title是没用的" (asking a user to
-       * search by opaque, machine-generated ids/titles is unrealistic). */}
-      {isApiSearched && (
-        <div
-          style={{
-            marginBottom: 8,
-            padding: 8,
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-bg)',
-            fontSize: 11,
-          }}
-        >
-          <div style={{ color: 'var(--color-text-muted)', marginBottom: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              <span style={{ flex: 1 }}>
-                {queryBbox ? `area: ${formatBboxSummary(queryBbox)}` : 'area: none drawn'}
-              </span>
-              {/* Arms the same `drawRequest` Space Lens's own "Draw area"
-               * button does (store/query.ts) — the actual drag gesture
-               * still happens on the real map (a bbox-entry field here
-               * would be a worse way to specify one), but starting it no
-               * longer means leaving Item Set to go find that button:
-               * "为什么不能将search bar...放入item set里面...一定要分两块？"
-               * (why can't the search bar live inside Item Set — does it
-               * have to be two separate places?). App.tsx brings Space
-               * Lens on screen automatically once this arms it. */}
-              <ToolButton
-                active={drawRequest === 'bbox'}
-                label={drawRequest === 'bbox' ? 'Drawing… (drag on map)' : queryBbox ? 'Redraw area' : 'Draw area'}
-                onClick={() => requestDraw('bbox')}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ flex: 1 }}>
-                {queryDatetimeStart || queryDatetimeEnd
-                  ? `range: ${formatDatetimeSummary(queryDatetimeStart, queryDatetimeEnd)}`
-                  : 'range: none selected'}
-              </span>
-              <ToolButton
-                active={drawRequest === 'datetime'}
-                label={
-                  drawRequest === 'datetime'
-                    ? 'Selecting… (drag below)'
-                    : queryDatetimeStart || queryDatetimeEnd
-                      ? 'Reselect range'
-                      : 'Select range'
-                }
-                onClick={() => requestDraw('datetime')}
-              />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={triggerSearch}
-              disabled={!hasQueryDraft}
-              style={{
-                fontSize: 11,
-                padding: '3px 10px',
-                borderRadius: 999,
-                border: '1px solid var(--color-selection)',
-                background: hasQueryDraft ? 'var(--color-selection)' : 'var(--color-surface)',
-                color: hasQueryDraft ? 'var(--color-bg)' : 'var(--color-text-faint)',
-                cursor: hasQueryDraft ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Search
-            </button>
-            {hasQueryDraft && (
-              <button
-                onClick={clearQueryDraft}
-                style={{
-                  fontSize: 11,
-                  padding: '3px 10px',
-                  borderRadius: 999,
-                  border: '1px solid var(--color-border)',
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-text-muted)',
-                  cursor: 'pointer',
-                }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* The "show on Time/Space Lens" toggle used to live here as a
+       * button, then moved into the Collection Inspector's "Provided by
+       * this app" section — which was then removed entirely once it
+       * turned out redundant with the always-on Temporal/Spatial widgets
+       * it fed (docs/DESIGN.md §41): "按钮和Browse this Collection's
+       * items其实也都可以不要了,我会放在其他的部分" (the button can go too —
+       * I'll put it somewhere else). There is currently no UI anywhere
+       * that sets `showOnLenses` to `true`. This component still owns its
+       * reset-on-remount (below) regardless, since that's tied to *this*
+       * component's own lifecycle, not wherever the toggle eventually
+       * lands. */}
+      {/* The interactive bbox/datetime-range query tool (draw on Space
+       * Lens / drag on Time Lens, "Search"/"Clear") that used to live here
+       * has been pulled out entirely, not just moved: "我现在连select Area、
+       * Select Range的功能都应该不要...API查询这部分功能整个先搁置" (I don't
+       * even want the Select Area/Select Range functionality anymore — the
+       * whole API-querying-by-drawing feature is shelved for now) — folded
+       * into the same still-open question as the "API sources may need an
+       * entirely different UI/navigation paradigm" thread (docs/DESIGN.md),
+       * rather than kept half-working here. For an API-searched node, only
+       * whatever the API's own default (unfiltered) first page returns is
+       * browsable below, via scroll/load-more/load-all — same id/title text
+       * filter as always, now the *only* way to narrow what's shown. */}
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -395,29 +273,5 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
         </div>
       )}
     </div>
-  )
-}
-
-/** Mirrors Space/Time Lens's own draw/select-range button styling exactly
- *  — same tool, same visual language, regardless of which of the (now
- *  three) places it's clicked from. */
-function ToolButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        flexShrink: 0,
-        fontSize: 10,
-        padding: '2px 8px',
-        borderRadius: 999,
-        border: `1px solid ${active ? '#2563eb' : 'var(--color-border)'}`,
-        background: active ? '#2563eb' : 'var(--color-surface)',
-        color: active ? '#fff' : 'var(--color-text-muted)',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </button>
   )
 }

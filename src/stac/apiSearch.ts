@@ -50,33 +50,19 @@ function withQuery(base: string, params: Record<string, string>): string {
  *  Planetary Computer returns neither `context` nor `numberMatched` —
  *  `hasMore` must be judged solely from the presence of a `rel:next` link,
  *  never from comparing a running total against an assumed-present count
- *  (confirmed directly against both — see docs/DESIGN.md §22). */
-export interface SearchQuery {
-  /** `[west, south, east, north]`, WGS84 — the Item Search spec's own bbox
-   *  format (SW corner then NE corner). */
-  bbox?: [number, number, number, number]
-  /** RFC 3339 interval, `start/end` — either side may be `..` for an
-   *  open-ended bound, per the spec's own examples. Built by the caller
-   *  (`useItemSet`) from separately-tracked start/end values, since only
-   *  it knows which sides are actually set. */
-  datetime?: string
-}
-
-/** Only applied when starting a *fresh* query (no `nextHref`) — a page
- *  requested via `nextHref` is followed verbatim (see the note above) and
- *  must not have query params layered onto it, since a well-formed
- *  `rel:next` link already encodes whatever filters produced it. */
+ *  (confirmed directly against both — see docs/DESIGN.md §22).
+ *
+ *  Every fresh query (no `nextHref` yet) is unfiltered — this used to
+ *  accept a `bbox`/`datetime` filter (a `SearchQuery` opt) built from the
+ *  interactive draw-a-bbox/select-a-range tool, but that whole tool was
+ *  dropped entirely (docs/DESIGN.md §39), and with it the only caller that
+ *  ever populated a filter here. Removed rather than left as a parameter
+ *  nothing ever passes. */
 export async function fetchSearchPage(
   endpoint: string,
-  opts: { limit: number; nextHref?: string; query?: SearchQuery },
+  opts: { limit: number; nextHref?: string },
 ): Promise<SearchPage> {
-  const url =
-    opts.nextHref ??
-    withQuery(endpoint, {
-      limit: String(opts.limit),
-      ...(opts.query?.bbox ? { bbox: opts.query.bbox.join(',') } : {}),
-      ...(opts.query?.datetime ? { datetime: opts.query.datetime } : {}),
-    })
+  const url = opts.nextHref ?? withQuery(endpoint, { limit: String(opts.limit) })
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`Search request failed: ${res.status} ${res.statusText}`)

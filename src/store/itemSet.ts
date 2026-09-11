@@ -9,40 +9,53 @@ interface ItemSetStoreState {
   forHref: string | null
   visibleHrefs: string[]
   setVisible: (forHref: string, hrefs: string[]) => void
-  /** Whether the user has explicitly selected "all currently visible items"
-   *  as their own selection — the Item Set's own selected/unselected state,
-   *  distinct from merely having it open or loaded. Opening/browsing a
-   *  Collection used to publish `visibleHrefs` straight to Time/Space Lens
-   *  the moment its first page loaded, with no action of the user's own in
-   *  between — reported directly: "选择了collection这个节点,他就不应该看到
-   *  collection下面所有的item...它得单独做一个对象可以去选它" (selecting the
-   *  Collection node shouldn't show every Item under it — [the Item Set]
-   *  needs to be its own separate object you can actually select). Reset to
-   *  `false` whenever `ItemSetBrowser` (re)mounts for any node — see its own
-   *  mount effect, not this store — deliberately *not* keyed off whether
-   *  `forHref` itself changed: browsing through an intermediate Collection
-   *  with no direct items of its own never calls `setVisible` at all, which
-   *  left a stale `true` surviving a round trip back to the same Item Set
-   *  (confirmed directly via Playwright before this fix). Tying the reset
-   *  to the browser component's own lifecycle instead — it fully unmounts/
-   *  remounts every time `browsingHref` changes, regardless of whether the
-   *  new target has items — closes that gap at the actual source. */
-  aggregateSelected: boolean
-  setAggregateSelected: (v: boolean) => void
+  /** Whether the currently-visible items are also being shown on Time/Space
+   *  Lens — a plain feature toggle, *not* a "selection" of Item Set as its
+   *  own object. That framing (an earlier `aggregateSelected` field, plus a
+   *  whole discussion of giving Item Set its own synthetic selectable href)
+   *  was deliberately retired: "既然整个STAC的技术架构里面...就三个东西,一个是
+   *  Item,一个是Catalog,一个是Collection...我们就应该为这三个对象设计这个
+   *  对象所专有的Inspector...那在这个程度上,其实我们又似乎都不需要这个
+   *  Item Set这个概念了" (STAC's own architecture only has three real
+   *  objects — Item, Catalog, Collection — so we should design each its own
+   *  dedicated Inspector; at that point we don't really need "Item Set" as
+   *  its own concept anymore).
+   *
+   *  Its own UI briefly lived as a button inside the Collection Inspector's
+   *  "Provided by this app" section, then got removed along with the rest
+   *  of that section once it turned out redundant with the always-on
+   *  Temporal/Spatial widgets it fed — "按钮和Browse this Collection's
+   *  items其实也都可以不要了,我会放在其他的部分" (the button can go too —
+   *  I'll put it somewhere else). There is currently no UI anywhere that
+   *  sets this to `true` — see docs/DESIGN.md §41.
+   *
+   *  Reset to `false` whenever `ItemSetBrowser` (the tree-embedded browse
+   *  panel, rendered inline in Structure Lens) (re)mounts for any node —
+   *  see its own mount effect, not this store — deliberately *not* keyed
+   *  off whether `forHref` itself changed: browsing through an intermediate
+   *  Collection with no direct items of its own never calls `setVisible` at
+   *  all, which left a stale `true` surviving a round trip back to the same
+   *  Item Set (confirmed directly via Playwright before this fix). Tying
+   *  the reset to the browser component's own lifecycle instead — it fully
+   *  unmounts/remounts every time `browsingHref` changes, regardless of
+   *  whether the new target has items — closes that gap at the actual
+   *  source. */
+  showOnLenses: boolean
+  setShowOnLenses: (v: boolean) => void
 }
 
-/** What Item Set (`ItemSetBrowser`, mounted in Detail Panel) currently has
- *  loaded and search-filtered — i.e. "which of this Collection's items are
- *  actually in view right now." Time/Space Lens read this instead of doing
- *  their own independent bulk fetch: selecting a Collection alone shows only
- *  its own stated extent; browsing/searching in Item Set is what populates
- *  individual marks/footprints, and only once `aggregateSelected` is true —
- *  see docs/DESIGN.md §21 and its update in the same section for this
- *  explicit-selection requirement. */
+/** What `ItemSetBrowser` (the tree-embedded browse panel, rendered inline
+ *  in Structure Lens at a Collection's own position) currently has loaded
+ *  and search-filtered — i.e. "which items are actually in view right
+ *  now." Time/Space Lens read this instead of doing their own independent
+ *  bulk fetch, and only once `showOnLenses` is on; the Collection
+ *  Inspector's own Declared-extensions/Property-namespaces fields also
+ *  read it (via `visibleHrefs`) to annotate what's common across the
+ *  browsed set, regardless of `showOnLenses`. */
 export const useItemSetStore = create<ItemSetStoreState>((set) => ({
   forHref: null,
   visibleHrefs: [],
-  aggregateSelected: false,
+  showOnLenses: false,
   setVisible: (forHref, hrefs) => set({ forHref, visibleHrefs: hrefs }),
-  setAggregateSelected: (v) => set({ aggregateSelected: v }),
+  setShowOnLenses: (v) => set({ showOnLenses: v }),
 }))

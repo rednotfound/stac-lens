@@ -2656,6 +2656,32 @@ path — the same class of stale-reference testing mistake this project has
 hit before, caught the same way: by re-checking with a more precise,
 non-reactive reference rather than trusting the first read.
 
+**Update — two more standard extensions, and per-asset facts.** Continuing
+§34's deferred extension-coverage list, grounded in a real Earth Search
+Sentinel-2 Item fetched directly (not assumed field names): `grid` (already
+in `KNOWN_EXTENSION_PREFIXES`) reads `grid:code` — a single, complete tile
+designator (e.g. `MGRS-13XDJ`) — deliberately *not* also decomposing the
+separate `mgrs:utm_zone`/`mgrs:latitude_band`/`mgrs:grid_square` fields
+into their own group, since real data confirmed they encode the exact same
+tile a second time; showing both would repeat one fact twice, not add a
+new one. `s2` (community extension) gets a curated subset of its ~20 real
+fields — product type, processing baseline, and four scene-composition
+percentages (vegetation/water/snow-ice/cloud-shadow) — skipping the rest
+(datastrip/datatake IDs, generation timestamps, a bare sequence number) as
+pipeline bookkeeping, not something worth surfacing to a person glancing
+at this panel.
+
+Also extended past Item-level `properties` for the first time: `gsd` and
+`raster:bands[0].data_type` are *per-asset* fields (a real, confirmed case
+— the same Sentinel-2 Item's own Blue band is 10m/uint16 while its SWIR
+bands are 20m/uint16 and its Aerosol/Coastal bands are 60m/uint16),
+captured on `ResolvedAsset` itself (`graph.ts`'s `buildAssets()`) and shown
+as a compact "10m · uint16" badge next to each asset's existing type badge
+— not a full band table, which would be far too much detail repeated
+across a 38-asset list. Verified directly against the real Item: every
+band's badge showed its own real, correct, *varying* resolution and dtype,
+not a single value copy-pasted across all of them.
+
 ## 35. Item Set as a genuinely selectable object, not just a code-level one
 
 A direct, pointed critique, worth quoting in full because it's the actual
@@ -2717,17 +2743,545 @@ items-less Collection and back reset the checkbox to unchecked (the exact
 scenario the second bug was found in) — re-run after the fix and confirmed
 correct.
 
-## 36. What's deliberately deferred (not forgotten)
+**Update — the checkbox changed Time/Space Lens, but Inspector gave zero
+feedback that anything had changed.** Sharp follow-up, pushing the same
+principle one level deeper: "你有一个Checkbox,然后Checked了以后,右侧的
+Inspector仿佛还是在inspect一个Collection...用户操作跟它的反馈非常地不直观,不
+了解,就是不吻合" (you have a checkbox, and once checked, Inspector on the
+right still looks like it's inspecting a Collection — the action and its
+feedback don't line up). Also raised, and rejected on its own terms: should
+checking the box make Inspector show a literal per-field *intersection*
+across every selected Item, the way a file manager's multi-select property
+panel does? Discussed directly and agreed this doesn't transfer to STAC's
+own field types as-is — a strict intersection of timestamps or bboxes
+across a real Item Set is almost always empty (no real Items share an
+identical instant or an identical footprint) and isn't the useful fact
+anyway; what's actually wanted is *range* for temporal ("what span does
+this whole set cover") and *union* for spatial ("what area does it cover
+in total"). Intersection stays the right operation only for categorical
+fields — declared extensions, observed namespaces — where "what do all of
+them share" is a real, meaningful question.
 
-- §34 built the Human/JSON toggle and standard-extension interpreters for
-  `eo`/`view`/`proj`/`sat`/`sar`/`sci`/`processing` — still open: a
-  per-extension interpreter for `raster` (asset-level `raster:bands`) and
-  `classification`/`table`/`mgrs`/`grid`/`s2`, plus extensions the official
-  registry has that this project hasn't added yet (`datacube`, `version`,
-  `timestamps`, `alternate-assets`, `storage`, `label`, `render`). Custom/
-  unrecognized property namespaces are explicitly out of scope for this
-  pass entirely — deliberately deferred to be handled "一个一个" (one at a
-  time), not a bulk pass.
+**Implemented**: `stac/itemSetSummary.ts`'s `summarizeItemSet()` computes
+count, temporal range (min start → max end across whatever bounds are
+defined, flagging if any member is open-ended), spatial union bbox, and
+true set-intersections of declared extensions and observed namespaces.
+`DetailPanel.tsx` switches to a distinct `ItemSetSummaryView` whenever the
+Item Set's "Show all N in Time/Space Lens" checkbox is checked *and* the
+Collection itself (not a drilled-down Item within it) is what's currently
+selected — selecting one specific Item still shows that Item's own facts
+regardless of the checkbox, exactly like Time/Space Lens's own guard.
+This view has no JSON tab at all: there is no single source document for a
+computed aggregate across many Items, unlike everything else this panel
+ever inspects, so keeping that tab would itself misrepresent what the view
+is.
+
+Verified against a real Collection (Capella's "IEEE Data Contest 2026," 40
+real Items): unchecked, Inspector showed the Collection's own facts as
+before; checked, it switched to "Item Set — 40 items" with a real computed
+temporal range (`2025-10-27 → 2025-11-12`) and a real union bbox spanning
+Hawaii to the western US mainland (not a copy-pasted placeholder — the
+actual footprint bounds of 40 real Items); selecting one specific Item
+while the box stayed checked correctly switched back to that Item's own
+single-object view; unchecking and reselecting the Collection went back to
+its own facts. The action (checking the box) and Inspector's own visible
+state now agree at every step.
+
+## 36. Retiring "Item Set" as a selectable object — three type-specific Inspectors instead
+
+§35 made Item Set a genuinely selectable object specifically so that
+selecting it (via a checkbox) would give Inspector something concrete to
+reflect. Pushed one level deeper, that framing itself came apart: "我恰恰
+关于这个选择checkbox这个问题,就是我再回到UI里面去讨论,我们为什么要有checkbox
+呢?...这一套语言是整体性的...所以在这套完整的语言里面,那个checkbox...并没有
+能够选择到这个Item Set的本身这个对象上去" (going back to the UI itself — why
+have a checkbox at all? The whole selection language across this app is
+unified [click a tree node → it highlights; click an Item row → it
+highlights], and inside that language a checkbox doesn't actually select
+the Item Set object itself). Before implementing a fix, a real technical
+risk was surfaced and discussed rather than silently worked around: making
+Item Set selectable via the existing `selectedHref` mechanism would need a
+synthetic value (e.g. `href + '#itemset'`), which would embed a literal
+`#` inside `useShareableUrl.ts`'s own hash-encoded URL — an ambiguous
+nested fragment — and would key the loader's cache for one real resource
+under two different string identities.
+
+Rather than resolve that specific risk, the question was reopened at a
+higher level and answered with a simplifying pivot: "既然整个STAC的技术架构
+里面...就三个东西,一个是Item,一个是Catalog,一个是Collection...我们就应该为
+这三个对象设计这个对象所专有的Inspector。我不再需要有通用的部分...那么这个
+Collection的Inspector,如果它这个Collection下面有非常多的Item,那我们就可以
+把这个Item的预览呀什么东西就放在Collection这一级的Inspector的UI里面去完成...
+在这个程度上,其实我们又似乎都不需要这个Item Set这个概念了。但是需要做的是要
+把这个UI做得非常清楚,哪个部分是Collection自既有的,哪个部分是通过...我们这个
+系统所提供的...功能,就要做非常完整的区分" (STAC's own architecture really
+only has three objects — Item, Catalog, Collection — so each should get its
+own dedicated Inspector, no generic middle ground; a Collection's Inspector
+can fold its own item-browsing right into its UI. At that point "Item Set"
+doesn't need to be its own concept at all — what matters is making very
+clear which part of that UI is the Collection's own and which part is a
+capability this app provides). Confirmed directly: "我觉得理解是对的."
+
+**Implemented:**
+
+- `store/itemSet.ts`'s `aggregateSelected`/`setAggregateSelected` were
+  renamed to `showOnLenses`/`setShowOnLenses` — same boolean, same reset-
+  on-remount behavior from §35's second bug fix, but reframed in its own
+  docstring as a plain feature toggle rather than a step toward "selecting"
+  Item Set as an object. `ItemSetBrowser.tsx`'s checkbox became a
+  `ToolButton` (the same control already used for "Draw area"/"Select
+  range" in the same panel) — one consistent visual language for "arm a
+  feature," not a selection.
+- `DetailPanel.tsx` no longer has an `ItemSetSummaryView` full-panel
+  replacement gated on that toggle. Instead every Inspector now carries a
+  colored left border plus a colored, bold type label (`Catalog`/
+  `Collection`/`Item`) reusing Structure Lens's own existing tree-node
+  color tokens (`--color-node-catalog`/`-collection`/`-item`) — so the
+  three object kinds are visually distinguishable at a glance, confirmed
+  via computed style against a real page (Catalog `rgb(85,82,74)`,
+  Collection `rgb(15,118,110)`, Item `rgb(180,83,9)`).
+- A Collection's own Inspector always shows a "Browse this Collection's
+  items" field once it has any — not gated by any selection or toggle —
+  followed, once items are actually loaded/searched, by an inline derived
+  summary (the same `summarizeItemSet()` range/union/intersection logic
+  §35 built, unchanged) reusing `visibleHrefs` from `useItemSetStore`
+  directly rather than requiring `showOnLenses` to be on. Both sit under
+  one `SectionDivider` labeled "Provided by this app," visually separating
+  them from the fields above (`Temporal (source)`, `Spatial (source)`,
+  declared extensions, etc.) that come straight from the Collection's own
+  JSON — the "哪个部分是Collection自既有的,哪个部分是...我们这个系统所提供的"
+  distinction made structural, not just verbal. `showOnLenses` now controls
+  only one separate, narrower question: whether that same browsed/filtered
+  set is *also* pushed onto Time/Space Lens.
+- Selecting one specific Item still shows that Item's own dedicated,
+  amber-bordered Inspector with none of the above — the same "selecting an
+  object shows exactly that object" scoping this whole redesign is built
+  around, unchanged from §35's own guard.
+
+Verified directly against real Earth Search data (Sentinel-2 L2A, a live
+STAC API, not a static fixture): opening the Collection showed its own
+stated temporal/spatial extent with an empty (0-loaded) browse section;
+drawing a bbox and searching loaded 500 real items and the inline summary
+correctly showed a real combined temporal range, a real union bbox, and
+real common declared-extensions/namespaces across them — all while
+Time/Space Lens still showed "0 items" (the separate toggle still off);
+clicking "Show all 500 on Time/Space Lens" then showed "showing 500 items"
+there, confirmed as a distinct action from browsing; drilling into one
+specific Item switched Inspector to that Item's own single-object facts
+(different border color, no browse/summary section) with Time/Space Lens
+correctly scoped to just that one Item too.
+
+**Update — the toggle button itself moved out of the tree-embedded panel
+entirely.** Even after the button above was restyled to match Draw
+area/Select range, it still physically lived in `ItemSetBrowser.tsx` — the
+box embedded in Structure Lens's tree — rather than in the Collection
+Inspector it now sits directly below — pointed out directly: "我这个时候
+反而觉得按钮不应该
+配置在tree view的panel上了。应该直接放置在collection的inspector那边的下边之类
+的。没有按下的时候都是空的" (I now think the button shouldn't be on the tree
+view's panel — it should sit directly below the Collection's own
+Inspector; when not pressed, [Time/Space Lens] stays empty). `ToolButton`
+was exported from `ItemSetBrowser.tsx` and the button itself now renders in
+`DetailPanel.tsx`, directly under `ItemSetSummaryFields`, reading
+`browsedItems.length` (already computed there) rather than the browsing
+component's own local `filtered`/`query` state — `ItemSetBrowser.tsx` keeps
+only `setShowOnLenses`'s reset-on-remount effect, since that's tied to its
+own mount lifecycle, not Inspector's. Verified: the button is entirely
+absent from the tree-embedded panel and appears exactly once, inside the
+Inspector column (confirmed at its DOM x-position), still empty (0 items)
+on both Lenses until pressed and still correctly flips to "showing 500
+items" once it is.
+
+## 37. Inspector field-completeness audit — license, providers, description, and a real namespace-scan gap
+
+A different kind of critique than the previous two sections' UI-language
+questions: whether the Human tab is actually *complete*, not just well
+organized. Raised with a concrete, real example rather than a general
+complaint: "比如说，我在看非洲的这份数据，我选择了一个collection...这个
+collection明显在JSON里面有很多其他的数据，除了我们现在展示的，还有什么license
+啊这些数据。为什么现在我在inspector里面我也看不到它呢" (looking at the Africa
+data, I selected a Collection — its JSON clearly has plenty of other fields
+besides what we currently show, like `license` — why can't I see that in
+Inspector either). Framed as the actual precondition for everything else:
+"我首先还是应该把...我们先把整个这个每一个节点的它的inspector先做充分吧。我觉得
+我不做充分，我很难往下走，而且我也不知道你到底哪个做了哪个没做...这个东西还是
+核心" (we should first make every node type's Inspector genuinely thorough
+— without that I can't move forward, and I don't even know what's done and
+what isn't; this is still the core thing). A related, explicitly *not yet
+decided* idea was raised in the same message — embedding Time/Space Lens's
+own map/timeline UI directly inside Inspector's Human tab as "a way of
+reading the data," rather than as separate top-level views, possibly
+hiding the standalone Lenses to try it — but immediately followed by "关于
+time和space的lens那个东西，我得再想一下，应该放在哪里" (I need to think more
+about where that should go) — parked, not implemented.
+
+**Audit, grounded in real fetched JSON, not assumption:** a live Adaptation
+Atlas Collection (`hazard_timeseries_annual/collection.json`) and a live
+Earth Search Collection/Item were fetched directly via `curl` and diffed
+field-by-field against what `DetailPanel.tsx` actually rendered. Confirmed
+missing entirely: `description` (shown nowhere — not even for a Catalog,
+where it's the only required prose field), `license`/`providers`/
+`keywords` (Collection spec fields), `created`/`updated` (Common Metadata),
+and Item-level `platform`/`instruments`/`constellation`/`mission`/`gsd`
+(Common Metadata fields, unprefixed so they don't fit the per-namespace
+`INTERPRETERS` table §34 built). A second, structural bug was found in the
+same pass, not just a missing-Field oversight: `graph.ts`'s namespace scan
+(`propertyNamespaces`, feeding "Property namespaces observed") only ever
+scanned `properties`/each asset/`summaries` — never a Catalog/Collection's
+own top-level keys. Real data showed exactly why that's wrong: Adaptation
+Atlas's `contact:*`/`atlas:*` fields sit directly on the Collection object
+itself (confirmed via `curl` — no `properties`, `summaries`, or `assets` on
+that Collection at all), so they were completely invisible to Inspector,
+not merely miscategorized.
+
+**Implemented:**
+
+- `StacNode` (types.ts) gained `description`, `license`, `providers`
+  (`StacProvider[]`), `keywords`, `created`, `updated` — populated in
+  `graph.ts`'s `buildNode()` per-type: `description`/`created`/`updated`
+  read from the raw object's top level for Catalog/Collection but from
+  `properties` for Item (Common Metadata puts them there instead — verified
+  against a real Earth Search Item: absent at Feature top level, present
+  under `properties`); `license`/`providers`/`keywords` are Collection-only
+  per the spec.
+- `graph.ts`'s `namespaceScans` now also scans the raw object's own top
+  level (`scanNamespaces(raw as Record<string, unknown>)`), not just
+  `properties`/assets/summaries — safe to do unconditionally since no real
+  STAC core field name contains a colon, so this only ever picks up
+  genuine custom namespaces like `atlas:*`/`contact:*` sitting directly on
+  a Catalog/Collection.
+- `extensionFacts.ts` gained `interpretCommonMetadataFacts()`, a sibling to
+  the per-namespace `INTERPRETERS` table for the *unprefixed* Common
+  Metadata fields (`platform`/`instruments`/`constellation`/`mission`/
+  `gsd`), rendered under its own "Common metadata" Field group.
+- `DetailPanel.tsx` renders all of the above as new source-tier Fields
+  ("Description," "License," "Keywords," "Providers" with clickable
+  provider URLs, "Created / updated," "Common metadata") — placed among
+  the existing Temporal/Spatial source fields, at the same tier, not
+  buried after the app-provided browse/summary section.
+
+Verified directly against the real Adaptation Atlas Collection that
+prompted this: Inspector now shows `Description: "Annual hazard
+timeseries"`, `License: proprietary`, three real `Providers` (The Alliance
+of Bioversity and CIAT — processor, Pete Steward — processor, AWS — host,
+the first as a real clickable link), real `created`/`updated` timestamps,
+and — confirming the namespace-scan fix — "Property namespaces observed"
+now correctly lists `contact` and `atlas` where it previously showed
+`none`. A live Earth Search Item was checked too: `Common metadata` showed
+real `Platform: sentinel-2b`, `Instruments: msi`, `Constellation:
+sentinel-2` (no placeholder for the genuinely-absent `mission`/`gsd`,
+matching the existing "never show a placeholder for a missing field"
+convention every other fact group already follows).
+
+## 38. Folding Time/Space Lens into Inspector as tabs, and a real Leaflet crash it surfaced
+
+Picking back up the idea floated alongside §37 but explicitly left
+undecided at the time — a concrete decision to actually build it, not just
+keep discussing it: "Time/Space Lens 折进Inspector当'阅读方式'这件事虽然我还
+没有决定,但是我现在就想先把现有Time/Space Lens隐藏,然后在inspector先做出来支持
+他的Time view和Space view" (I still haven't decided on folding Time/Space
+Lens into Inspector as a "way of reading" the data, but I want to go ahead
+now and hide the existing Time/Space Lens, then build Time view/Space view
+support directly inside Inspector).
+
+**Implemented:** `DetailPanel.tsx`'s tab bar grew from two tabs (Human/
+JSON) to four (Human/JSON/Time/Space). `TimeLens`/`SpaceLens` needed *zero*
+changes to work as tab content — both were already fully self-contained,
+reading everything from `useSelectedItems()`/global stores rather than
+props, so mounting them one level deeper renders identically. `App.tsx`
+dropped `showTime`/`showSpace` state, the two separate header toggle
+buttons, and the `drawRequest`-driven "bring a hidden panel back into view
+and scroll to it" choreography entirely — arming the draw-bbox/select-range
+tool from Item Set's own query section now just switches which of
+Inspector's own tabs is active (`DetailPanel`'s own new effect watching
+`useQueryStore`'s `drawRequest`), which needs no scrolling since it's the
+same panel, not a separate one further down the column. The single
+remaining header toggle was renamed `Detail` → `Inspector` to match, since
+it now gates one thing (the whole Inspector column) rather than being one
+of three.
+
+**A real, reproducible crash this surfaced, not a hypothetical:** clicking
+Item Set's "Draw area" now switches straight into a *freshly mounting*
+Space tab with the draw tool already armed — impossible before, when Space
+Lens was always mounted well before anyone could reach for that button.
+The very first real drag after that crashed inside Leaflet's own internals
+(`getSizedParentNode`, called from `Draggable._onDown`, reading
+`.offsetWidth` off `null`) — confirmed via a real stack trace, then traced
+to its actual mechanism by instrumenting both of `SpaceLens`'s effects
+directly (not guessed): React StrictMode's dev-only mount→cleanup→remount
+replay of the initial commit runs the map-creation effect's cleanup
+(`map.remove()`) *before* the draw-tool effect's own cleanup in this case,
+so that cleanup's `activeMap.dragging.enable()` was running against a map
+that had *already been removed* — reviving Leaflet's own internal pan
+handler on the shared, React-persistent container div, bound to an inner
+pane element (`_mapPane`) that `.remove()` had already detached from the
+DOM. That orphaned, re-armed listener stayed live, and the next real drag
+hit it, walking a detached element's now-null ancestor chain. Fixed by
+checking that `mapRef.current` is still the exact map instance this
+cleanup belongs to before touching it — a no-op once that map is already
+gone, confirmed directly by disabling StrictMode as a diagnostic (crash
+disappeared, confirming the mechanism) and re-enabling it afterward (fix
+holds with StrictMode back on, which is the correct end state, not the
+diagnostic one).
+
+Verified end to end against real Earth Search data: drawing a bbox
+immediately after switching into a freshly-mounted Space tab, searching
+(500 real items loaded), cycling rapidly through all four tabs several
+times, and drawing again on a specific Item's own single-object Space
+view — zero page errors across all of it, where the crash above had been
+reliably reproducible before the fix.
+
+## 39. Past tabs entirely — Time/Space inline in Human's own field flow, and the query tool dropped
+
+§38's Time/Space tabs lasted about as long as it took to look at them.
+Pushed one more level, rejecting the tab model itself, not just where its
+content lived: "为什么我们不能把这个,比如说面向用户human readable的那一个页面
+做成一个很长的东西,然后不同的属性进来呢,我就可以用不同的viewer,或者是渲染器去把
+那个数据给渲染出来。比如说Time,对吧,那它就是排在现在按你的方法,就是排在
+Description下边的Temporal的下边,就做成一个Time的UI。然后Spatial就是一个静态的
+Spatial的一个范围,当然用户可以去zoom in、zoom out...这样不会更好吗?那我就不需要
+用Tag去切换Time和Space了。那么从结构和语义上面来说,那就是给人类读的。那另外一个
+JSON是给数据,或者是数据给机器读也好" (why can't the human-readable page just be
+one long scroll, where each property is rendered by whatever viewer suits
+it — Time right where Temporal already sits, made into an actual Time UI;
+Spatial as a static-but-zoomable area. Then I wouldn't need a tab to
+switch between Time and Space at all — structurally, Human is for people,
+JSON is for machines/data). Explicitly asked, and answered directly rather
+than assumed: whether Leaflet itself could even work this way, embedded
+inline in a long scrolling page rather than as its own dedicated panel —
+yes, with no fundamental blocker; a map just needs a non-zero-size
+container, which an inline field section provides same as a tab ever did.
+
+In the same message, a second, separable decision: drop the interactive
+bbox/datetime query tool (draw-on-map, drag-on-timeline, "Search"/"Clear")
+entirely, not fold it in here either — confirmed explicitly when asked
+directly whether this meant only removing the redundant *button* from
+Inspector while keeping the underlying drag-to-query capability working
+elsewhere, or dropping the whole interactive tool: "彻底去掉整个交互式查询
+工具" (get rid of the whole interactive query tool). Filed alongside the
+still-open, separately-sized "API sources may need an entirely different
+UI/navigation paradigm" question (§37's deferred list) rather than kept
+half-working.
+
+**Implemented:**
+
+- `DetailPanel.tsx` is back to two tabs (Human/JSON). Its "Temporal"/
+  "Spatial" fields now render `<TimeLens/>`/`<SpaceLens/>` directly inline
+  (capped/fixed heights, `INLINE_TIME_MAX_HEIGHT`/`INLINE_SPACE_HEIGHT`),
+  in the exact position the old plain-text versions occupied — no separate
+  tab, no `drawRequest`-driven tab-switching effect (deleted along with
+  the tabs it drove).
+- `TimeLens.tsx`/`SpaceLens.tsx` had their entire query-tool halves
+  removed: `rangeMode`/`dragRange`/`svgX`/`handleRange*`/`queryRangePx`
+  and the "Select range" button (Time); `drawMode`/the draw-a-bbox mouse
+  handlers/`queryLayerRef`'s overlay effect and the "Draw area" button
+  (Space). What's left is pure visualization — axis, grouped/lane-packed
+  marks, tooltip, click-to-select for Time; tiles, item-footprint layer,
+  fit-bounds, fly-to-selected for Space — both still fully self-contained
+  (`useSelectedItems()`/global selection store only, no props), which is
+  exactly why embedding them inline needed zero changes to *that* part.
+  §38's StrictMode/Leaflet crash fix (the `mapRef.current !== activeMap`
+  guard) went with the draw-tool effect it protected — the effect that
+  crashed no longer exists at all, not just relocated.
+- `ItemSetBrowser.tsx` lost the whole "area/range drawn, Search, Clear"
+  block; `useItemSet.ts` no longer reads a query draft or a search-trigger
+  nonce from anywhere — every cursor-mode fetch is simply unfiltered now
+  (the API's own default first page, paged via `rel:next` as before).
+  `store/query.ts` was deleted outright once nothing referenced it
+  anymore, not left as unreachable plumbing.
+
+Verified against real Earth Search data end to end: the Collection
+Inspector's Human tab now shows Description, then a live timeline right
+under "Temporal" and a live, zoomable/pannable map right under "Spatial"
+(confirmed interactive via a real scroll-to-zoom gesture), then License/
+Keywords/Providers, all in one continuous scroll with zero tabs to
+switch for any of it; drilling into one specific Item shows that Item's
+own dedicated, correctly-scoped Time/Space widgets ("scoped to just this
+Item, not its neighbors") alongside its Common Metadata/extension facts;
+and a repo-wide check confirmed zero remaining occurrences of "Draw area,"
+"Select range," or a "Search" button anywhere in the running app. Zero
+page errors throughout.
+
+## 40. A real Collection-level leak into a single Item's own inline Time/Space
+
+Pointed at a specific, real deep link rather than a general complaint —
+"http://192.168.0.53:5173/#https://digital-atlas.s3.amazonaws.com/stac/
+public_stac/adaptive-capacity/women-and-gender/female-empowerment/
+EmpowermentIndex_1995/EmpowermentIndex_1995.json 在item级别就真的不用再显示
+collection级别的时间和范围了吧,因为item的metadata里面也没有这部分的数据呀" (at
+the Item level we really shouldn't be showing the Collection-level time
+and range anymore, since the Item's own metadata doesn't have that data).
+
+Checked the real Item first, not assumed: `curl`'d it directly — it has a
+perfectly good `properties.datetime` (`1995-01-01T00:00:00Z`) and its own
+`geometry`/`bbox` (all of Africa). So the complaint wasn't "this Item has
+no temporal/spatial of its own" — the Item's own facts were fine and
+already rendering correctly. The actual bug: `useSelectedItems()` resolves
+`node` to the *Collection* whenever the original selection is an Item (by
+design — see its own docstring, §21), and `TimeLens`/`SpaceLens` both read
+that `node`'s `temporal`/`spatial` to draw a "stated extent (source)"
+dashed reference row/rectangle *alongside* the Item's own mark — genuinely
+useful while browsing many Items ("does this one stray outside what the
+Collection claims"), but a real Collection-level fact silently injected
+into what's supposed to be one Item's own, fully-scoped Inspector widget.
+Exactly the same "selection scoping" principle this whole session's
+redesign has been built around, just found in one more place it hadn't
+been checked yet.
+
+**Implemented:** both `TimeLens.tsx` and `SpaceLens.tsx` now derive their
+`statedBounds`/`statedBbox` as `undefined` whenever `highlightHref` is set
+(true if and only if the original selection was an Item, per
+`useSelectedItems`) — regardless of what the resolved Collection's own
+`node.temporal`/`node.spatial` actually contain. This single change
+correctly cascades through everything downstream that used to read those
+values: the dashed reference row/rectangle itself, the domain calculation
+feeding the timeline's axis, the reserved vertical space for that row, the
+`fitBounds` boundsList on the map, and the "actual Item range extends
+beyond the collection's stated extent" conflict warning — all silently
+inert instead of needing separate suppression at each site.
+
+Verified against the exact real Item URL given: Temporal now shows only
+`EmpowermentIndex_1995`'s own single 1995 instant (no dashed collection
+range beside it), Spatial shows only its own Africa-wide bbox rectangle (no
+fainter collection-wide one around it) — a repo-wide check confirmed zero
+occurrences of "stated extent" text anywhere on that Item's own page.
+Reselecting the parent Collection itself was checked right after, to
+confirm this didn't overcorrect: its own Inspector still correctly shows
+"stated extent (source)" on its Temporal widget and the matching reference
+rectangle on Spatial, exactly as before — the fix is scoped to "a specific
+Item is selected," not "stated extent never renders again."
+
+## 41. Retiring "Provided by this app" as its own section
+
+Asked directly, as a question rather than a complaint, right after §40's
+fix made the Temporal/Spatial widgets fully correct: "Provided by this
+app 还需要么?" (do we still need "Provided by this app"?). Looked at what
+was actually still under that divider and found a real redundancy, not
+just a stylistic question: its own "Temporal (combined range across the N
+browsed)"/"Spatial (union bbox across the browsed set)" text fields were
+now saying the *exact same thing*, in plain text, that the Temporal/
+Spatial widgets above (§39) already show visually the moment their own
+"show on Time/Space Lens" toggle is on — the same class of duplication
+§35 originally existed to fix, just reintroduced by the widgets moving
+inline without anyone revisiting this section. Reflected this back with a
+recommendation (drop the redundant text, fold the two fields that have no
+visual equivalent — common declared extensions/namespaces across the
+browsed set — into their existing sibling fields instead of a separate
+divider) and asked which way to go; the user pushed further in the same
+direction: "按钮和Browse this Collection's items其实也都可以不要了,我会放在
+其他的部分" (the button and "Browse this Collection's items" can go too —
+I'll put them somewhere else).
+
+**Implemented:** the entire `SectionDivider label="Provided by this app"`
+block — the "Browse this Collection's items" pointer field, the derived
+Temporal/Spatial summary text, and the "Show these N on Time/Space Lens"
+`ToolButton` — was removed from `DetailPanel.tsx` outright, along with the
+now-dead `SectionDivider`/`ItemSetSummaryFields`/`ApiTag`/`formatDate`
+helper functions and the `ToolButton`/`showOnLenses`/`setShowOnLenses`
+imports that only served it. What's left of that block's *information*
+(common declared extensions / common property namespaces across whatever
+Item Set currently has loaded for this Collection) now renders as a small
+annotation directly under the existing "Declared extensions"/"Property
+namespaces observed" fields — "Common to the N currently browsed: ..." —
+instead of a separately-labeled, separately-derived duplicate section.
+
+The button and browse-pointer are a deliberate, acknowledged gap, not an
+oversight: `useItemSetStore`'s `showOnLenses` flag and its gating inside
+`useSelectedItems.ts` were left completely untouched (still defaulting to
+`false`, so the inline Temporal/Spatial widgets show only each object's own
+single stated extent until it's flipped on) — there is simply no UI left
+anywhere that can flip it, until the user places one "elsewhere" per their
+own stated intent above. Not this session's decision to make.
+
+Verified against real Earth Search data: "Provided by this app," "Browse
+this Collection's items," and any "on Time/Space Lens" button text are
+all gone from the running app entirely (checked via direct text-search
+across the rendered page, not just visual inspection); after Item Set
+auto-loads its first unfiltered page, "Declared extensions"/"Property
+namespaces observed" correctly grew a "Common to the 250 currently
+browsed: ..." line each, with real, correct values.
+
+## 42. A cleanup audit after §35–§41's rapid pivots
+
+Asked directly after several fast pivots in a row (Item Set as selectable
+→ three type-specific Inspectors → Time/Space as tabs → Time/Space inline
+→ dropping the query tool → dropping "Provided by this app"): "我们哪里还
+有代码等等逻辑没有清理干净么?" (help me check whether there's code or logic
+anywhere that's not been cleaned up). Swept the whole `src` tree (every
+exported symbol cross-referenced against its actual call sites, not just
+`tsc`'s own unused-*local*-variable check, which doesn't catch an unused
+*export*) plus every file this stretch had touched, read in full for stale
+comments describing a since-superseded state.
+
+**Found and fixed, real dead code (not just comments):**
+- `ItemSetBrowser.tsx`'s `ToolButton` — exported, but its last real call
+  site (DetailPanel's "show on Time/Space Lens" button) was removed in
+  §41 without anyone deleting the function itself.
+- `apiSearch.ts`'s `SearchQuery` interface and `fetchSearchPage`'s `query`
+  option — nothing has populated `query` since §39 dropped the interactive
+  bbox/datetime tool; the two conditional spreads building `bbox`/
+  `datetime` params were permanently no-ops.
+- `itemSetSummary.ts`'s `count`/`temporalRange`/`spatialUnionBbox` —
+  computed on every call, read by nothing: `DetailPanel.tsx` only ever
+  consumes `commonExtensions`/`commonNamespaces` from it (uses
+  `browsedItems.length` directly instead of `.count`). Cut the interface
+  and the computation down to just the two fields actually rendered.
+
+**A false positive, caught before "fixing" it wrongly:** `temporal.ts`'s
+`isOpenEnded` looked unused by the same `src`-only grep — removed, then
+`tsc -b` (which also compiles `scripts/`) immediately caught
+`scripts/verify-fixtures.ts` actually importing it. Restored. A reminder
+that an export search needs to cover the whole project, not just the app
+source tree, and that `tsc -b`'s own real compile is the actual check, not
+a substitute for it.
+
+**Stale comments fixed** (each still described an earlier, since-
+superseded state as if current): `useSelectedItems.ts` and
+`store/itemSet.ts` still said the "show on Time/Space Lens" toggle lived
+in the Collection Inspector's own browse section (removed in §41);
+`ItemSetBrowser.tsx` still described the toggle as having "moved into the
+Collection's own Inspector" (same); `App.tsx` still described Time/Space
+as Inspector tabs (superseded by §39's inline-in-Human-tab pivot);
+`StructureTree.tsx` still cited "the API-search query section" and
+"(query section, footer)" as reasons behind `ITEM_SET_BOX_HEIGHT`'s sizing
+and its overflow safety net — that section no longer exists there at all.
+
+**Not fixed, deliberately flagged instead of touched:** `README.md`. It
+describes Time Lens and Space Lens as permanent, always-visible top-level
+panels with independent header toggles, an entire "The real Space↔Time
+query loop" section for the now-fully-removed interactive bbox/datetime
+tool, a project-layout tree still listing `store/query.ts` (deleted), and
+a "not yet built" list claiming the Human/JSON toggle and extension
+interpreters don't exist yet (they've existed since §34). This is
+substantial, user-facing rewrite work — several paragraphs plus the file
+tree — not a small comment fix, so it's reported here rather than rewritten
+without being asked to.
+
+## 43. What's deliberately deferred (not forgotten)
+
+- §34/§34's update built the Human/JSON toggle and standard-extension
+  interpreters for `eo`/`view`/`proj`/`sat`/`sar`/`sci`/`processing`/`grid`/
+  `s2`, plus a per-asset `gsd`/`raster:bands` data-type badge — still open:
+  `classification`/`table` (neither has shown real populated data in any
+  fixture checked yet — add when one actually does, not speculatively),
+  plus extensions the official registry has that this project hasn't added
+  yet (`datacube`, `version`, `timestamps`, `alternate-assets`, `storage`,
+  `label`, `render`). Custom/unrecognized property namespaces are
+  explicitly out of scope for this pass entirely — deliberately deferred to
+  be handled "一个一个" (one at a time), not a bulk pass.
+- A genuinely different UI/navigation paradigm for API-backed data sources,
+  raised directly and explicitly parked for its own dedicated discussion
+  rather than folded into §35's Inspector fix: "如果一个数据有API的话...我们
+  应该根据那个API可以提供完全另一套UI...如果我有了API,又使用API的时候,我就是在
+  时间线和纯地图上就随便画,然后找到Item。那个时候就打破了所谓的树状结构了" (if a
+  data source has an API, we should offer an entirely different UI for it —
+  once you're actually using the API, you're drawing freely on the
+  timeline/map to find Items, which breaks the whole tree-structure
+  navigation model). Not yet researched or designed — the current model
+  (a Catalog/Collection tree with Item Set as one embedded box) still
+  applies uniformly regardless of `sourceKind`; whether API-backed sources
+  deserve their own, query-first entry point instead is a real, separately-
+  sized architectural question for later.
 - In-browser COG/GeoTIFF rendering — real Item assets are routinely COG
   (`visual`/`overview`/individual bands), which no browser decodes natively;
   today these get a trustworthy copy-paste link (§34), not a rendered

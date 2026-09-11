@@ -149,6 +149,67 @@ const INTERPRETERS: Record<string, { title: string; interpret: Interpreter }> = 
       return facts
     },
   },
+  grid: {
+    title: 'Grid',
+    interpret: (p) => {
+      const facts: ExtensionFact[] = []
+      // `grid:code` already reads as a complete tile designator (e.g.
+      // "MGRS-12XWP", confirmed against a real Earth Search Sentinel-2
+      // Item) — `mgrs:utm_zone`/`mgrs:latitude_band`/`mgrs:grid_square`
+      // decompose the exact same tile into three separate fields on the
+      // same real Item, so showing both would just repeat one fact twice;
+      // `grid:code` alone is kept as the single source of truth here.
+      if (typeof p['grid:code'] === 'string') {
+        facts.push({ label: 'Tile', value: p['grid:code'] as string })
+      }
+      return facts
+    },
+  },
+  s2: {
+    title: 'Sentinel-2 (community)',
+    interpret: (p) => {
+      const facts: ExtensionFact[] = []
+      // A curated subset, not all ~20 real `s2:*` fields a Sentinel-2 Item
+      // can carry (confirmed directly) — the rest (datastrip/datatake IDs,
+      // generation timestamps, a bare sequence number) are pipeline
+      // bookkeeping, not something a person glancing at this panel needs.
+      if (typeof p['s2:product_type'] === 'string') {
+        facts.push({ label: 'Product type', value: p['s2:product_type'] as string })
+      }
+      if (typeof p['s2:processing_baseline'] === 'string') {
+        facts.push({ label: 'Processing baseline', value: p['s2:processing_baseline'] as string })
+      }
+      const pct = (key: string, label: string) => {
+        if (isNumber(p[key])) facts.push({ label, value: `${p[key]}%` })
+      }
+      pct('s2:vegetation_percentage', 'Vegetation')
+      pct('s2:water_percentage', 'Water')
+      pct('s2:snow_ice_percentage', 'Snow/ice')
+      pct('s2:cloud_shadow_percentage', 'Cloud shadow')
+      return facts
+    },
+  },
+}
+
+/** Item Common Metadata fields (item-spec.md's "Common Metadata" section)
+ *  — unprefixed, so they don't fit the per-namespace `INTERPRETERS` table
+ *  above, but they're just as standard: confirmed against a real Earth
+ *  Search Item (`platform: "sentinel-2b"`, `instruments: ["msi"]`,
+ *  `constellation: "sentinel-2"`; `mission`/`gsd` genuinely absent on that
+ *  particular Item, not a bug — Common Metadata fields are all optional). */
+export function interpretCommonMetadataFacts(properties: Record<string, unknown> | undefined): ExtensionFact[] {
+  if (!properties) return []
+  const facts: ExtensionFact[] = []
+  if (typeof properties.platform === 'string') facts.push({ label: 'Platform', value: properties.platform })
+  if (Array.isArray(properties.instruments) && properties.instruments.length) {
+    facts.push({ label: 'Instruments', value: (properties.instruments as string[]).join(', ') })
+  }
+  if (typeof properties.constellation === 'string') {
+    facts.push({ label: 'Constellation', value: properties.constellation })
+  }
+  if (typeof properties.mission === 'string') facts.push({ label: 'Mission', value: properties.mission })
+  if (isNumber(properties.gsd)) facts.push({ label: 'GSD', value: `${properties.gsd}m` })
+  return facts
 }
 
 /** All standard-extension facts found on an Item's properties, grouped by

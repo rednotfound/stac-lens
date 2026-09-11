@@ -3,7 +3,6 @@ import { scaleUtc } from 'd3-scale'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
 import { useElementSize } from '../hooks/useElementSize'
-import { useQueryStore } from '../store/query'
 import { temporalBounds } from '../stac/temporal'
 import type { StacNode, TemporalShape } from '../stac/types'
 import { EmptyState } from './EmptyState'
@@ -193,24 +192,25 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   const target = useSelectedItems()
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
-  // Driven by the shared store, not local state — Item Set's own query
-  // section can arm this same tool (see docs/DESIGN.md §27), so there is
-  // exactly one place tracking whether it's currently armed, regardless of
-  // which UI started it.
-  const rangeMode = useQueryStore((s) => s.drawRequest === 'datetime')
-  const requestDraw = useQueryStore((s) => s.requestDraw)
-  const clearDrawRequest = useQueryStore((s) => s.clearDrawRequest)
-  const [dragRange, setDragRange] = useState<{ startX: number; currentX: number } | null>(null)
-  const setDatetimeRange = useQueryStore((s) => s.setDatetimeRange)
-  const queryDatetimeStart = useQueryStore((s) => s.datetimeStart)
-  const queryDatetimeEnd = useQueryStore((s) => s.datetimeEnd)
 
   const items = target.status === 'ready' ? target.items : EMPTY_ITEMS
   const node = target.status === 'ready' ? target.node : undefined
 
   const sortedItems = useMemo(() => [...items].sort((a, b) => sortKey(a) - sortKey(b)), [items])
 
-  const statedBounds = node?.temporal ? temporalBounds(node.temporal) : undefined
+  const highlightHref = target.status === 'ready' ? target.highlightHref : undefined
+  // The *Collection's own* declared extent — genuinely useful context while
+  // browsing many Items ("does this one stray outside what the Collection
+  // claims"), but not a fact about a single selected Item at all: real data
+  // confirmed this directly (Adaptation Atlas's `EmpowermentIndex_1995`
+  // Item has its own perfectly good `datetime`/`geometry` — the Collection's
+  // stated extent showing up here regardless was pure noise, not something
+  // missing from the Item's own metadata). `highlightHref` is set if and
+  // only if the original selection was an Item (see `useSelectedItems`), so
+  // suppressing this whenever it's set keeps a single Item's own Inspector
+  // widgets scoped to exactly that Item — same principle as everywhere
+  // else in this app.
+  const statedBounds = !highlightHref && node?.temporal ? temporalBounds(node.temporal) : undefined
 
   const domain = useMemo(() => {
     const dates: Date[] = []
@@ -236,7 +236,6 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
 
   const groups = useMemo(() => groupByTemporalShape(sortedItems), [sortedItems])
 
-  const highlightHref = target.status === 'ready' ? target.highlightHref : undefined
   const selectedItem = highlightHref ? sortedItems.find((i) => i.href === highlightHref) : undefined
 
   // What's actually displayed on the axis — the full collection range by
@@ -336,53 +335,13 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   const tickCount = Math.max(2, Math.floor((viewWidth - LABEL_WIDTH) / 110))
   const ticks = x.ticks(tickCount)
 
-  // Drag-to-select-a-datetime-range tool: active only while `rangeMode` is
-  // on (a toggle button, shown only for API-searchable nodes — selecting a
-  // range does nothing for a static catalog). The SVG's viewBox width
-  // equals `viewWidth` (the measured container width, no CSS scaling), so
-  // a pointer's position relative to the SVG's own bounding box maps
-  // directly to this scale's user-space x coordinates — no separate
-  // coordinate transform needed. Manual draw-then-release, not
-  // live-as-you-drag, for the same reason as Space Lens's bbox tool: a
-  // real API query firing on every mouse-move would be wasteful (see
-  // store/query.ts).
-  function svgX(clientX: number): number {
-    const rect = svgRef.current?.getBoundingClientRect()
-    return rect ? clientX - rect.left : 0
-  }
-  function handleRangeDown(e: React.MouseEvent) {
-    if (!rangeMode) return
-    const px = svgX(e.clientX)
-    setDragRange({ startX: px, currentX: px })
-  }
-  function handleRangeMove(e: React.MouseEvent) {
-    if (!rangeMode || !dragRange) return
-    setDragRange({ startX: dragRange.startX, currentX: svgX(e.clientX) })
-  }
-  function handleRangeUp() {
-    if (!rangeMode || !dragRange) return
-    const [px1, px2] = [dragRange.startX, dragRange.currentX].sort((a, b) => a - b)
-    if (px2 - px1 > 2) {
-      setDatetimeRange(x.invert(px1).toISOString(), x.invert(px2).toISOString())
-    }
-    setDragRange(null)
-    clearDrawRequest()
-  }
-  // The currently-applied query range (if any), in the *current* pixel
-  // space — recomputed against whatever `displayDomain` is now, so it
-  // stays correctly positioned even if the axis has since re-focused.
-  const queryRangePx =
-    queryDatetimeStart || queryDatetimeEnd
-      ? [
-          queryDatetimeStart ? x(new Date(queryDatetimeStart)) : LABEL_WIDTH,
-          queryDatetimeEnd ? x(new Date(queryDatetimeEnd)) : viewWidth - RIGHT_PAD,
-        ]
-      : undefined
-
   // Compare the collection's stated extent against the actual range of the
   // (possibly bounded) loaded items — a real, not hypothetical, conflict:
   // Adaptation Atlas's hazard_timeseries_mean_annual states 1995–2020 while
-  // its own Items run to 2060.
+  // its own Items run to 2060. `statedBounds` is already `undefined` while
+  // scoped to one selected Item (above), so this — like the stated-extent
+  // row itself — naturally has nothing to compare against and stays silent
+  // there, not just visually hidden.
   const actualDates: Date[] = []
   for (const item of sortedItems) {
     if (!item.temporal) continue
@@ -400,7 +359,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
 
   const laneCount = assignments.length ? Math.max(...assignments.map((a) => a.lane)) + 1 : 0
   const statedRowY = AXIS_HEIGHT
-  const itemsStartY = AXIS_HEIGHT + (node?.temporal ? STATED_ROW_HEIGHT + 8 : 0)
+  const itemsStartY = AXIS_HEIGHT + (statedBounds ? STATED_ROW_HEIGHT + 8 : 0)
   const height = itemsStartY + laneCount * ROW_HEIGHT + 12
 
   return (
@@ -444,42 +403,8 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
             </div>
           )}
         </div>
-        {/* Only meaningful for an API-searched node — selecting a range
-         * does nothing for a static catalog, which has no query to apply
-         * it to. */}
-        {node?.items.kind === 'cursor' && (
-          <button
-            onClick={() => requestDraw('datetime')}
-            title={
-              rangeMode
-                ? 'Click and drag across the timeline to select a range; click again to cancel'
-                : 'Select a datetime range for the query'
-            }
-            style={{
-              flexShrink: 0,
-              fontSize: 12,
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: `1px solid ${rangeMode ? '#2563eb' : 'var(--color-border)'}`,
-              background: rangeMode ? '#2563eb' : 'var(--color-surface)',
-              color: rangeMode ? '#fff' : 'var(--color-text)',
-              cursor: 'pointer',
-            }}
-          >
-            {rangeMode ? 'Selecting… (drag below)' : queryDatetimeStart || queryDatetimeEnd ? 'Reselect range' : 'Select range'}
-          </button>
-        )}
       </div>
-      <svg
-        ref={svgRef}
-        width="100%"
-        viewBox={`0 0 ${viewWidth} ${height}`}
-        style={{ display: 'block', cursor: rangeMode ? 'crosshair' : undefined }}
-        onMouseDown={handleRangeDown}
-        onMouseMove={handleRangeMove}
-        onMouseUp={handleRangeUp}
-        onMouseLeave={handleRangeUp}
-      >
+      <svg ref={svgRef} width="100%" viewBox={`0 0 ${viewWidth} ${height}`} style={{ display: 'block' }}>
         {/* axis */}
         {ticks.map((t) => (
           <g key={t.getTime()} transform={`translate(${x(t)}, 0)`}>
@@ -490,30 +415,6 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
           </g>
         ))}
 
-        {/* The currently-applied query datetime range (if any) — rendered
-         * first so it sits behind marks, not on top of them. */}
-        {queryRangePx && (
-          <rect
-            x={Math.min(queryRangePx[0], queryRangePx[1])}
-            y={0}
-            width={Math.abs(queryRangePx[1] - queryRangePx[0])}
-            height={height}
-            style={{ fill: '#2563eb', opacity: 0.08, stroke: '#2563eb', strokeWidth: 1, strokeDasharray: '4,3' }}
-            pointerEvents="none"
-          />
-        )}
-        {/* Live preview while dragging a new range. */}
-        {rangeMode && dragRange && (
-          <rect
-            x={Math.min(dragRange.startX, dragRange.currentX)}
-            y={0}
-            width={Math.abs(dragRange.currentX - dragRange.startX)}
-            height={height}
-            style={{ fill: '#2563eb', opacity: 0.15 }}
-            pointerEvents="none"
-          />
-        )}
-
         {/* stated extent reference row — right-aligned ending at
          * LABEL_WIDTH - 10, matching every item row's own label below it
          * (see the `assignments.map` block). This one used to sit at a
@@ -521,7 +422,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
          * with no padding at all — the only label in this whole view
          * without one — called out directly as looking cramped/"顶头"
          * (jammed right up against the edge). */}
-        {node?.temporal && statedBounds && (
+        {statedBounds && node?.temporal && (
           <g transform={`translate(0, ${statedRowY})`}>
             <text
               x={LABEL_WIDTH - 10}

@@ -1,33 +1,58 @@
 import { useState } from 'react'
 import { loader } from '../stac/loaderInstance'
-import { classifyNodeShape } from '../stac/types'
+import { classifyNodeShape, type StacNode } from '../stac/types'
 import { useSelectionStore } from '../store/selection'
-import { describeTemporal } from '../stac/describe'
+import { useItemSetStore } from '../store/itemSet'
 import { KNOWN_EXTENSION_PREFIXES } from '../stac/namespaces'
-import { interpretExtensionFacts } from '../stac/extensionFacts'
+import { interpretExtensionFacts, interpretCommonMetadataFacts } from '../stac/extensionFacts'
 import { isInlinePreviewAsset, describeAssetType } from '../stac/assets'
+import { summarizeItemSet } from '../stac/itemSetSummary'
+import { TimeLens } from './TimeLens'
+import { SpaceLens } from './SpaceLens'
 import type { ResolvedAsset } from '../stac/types'
 
 type Tab = 'human' | 'json'
 
-/** Two tabs: "Human" (derived, readable facts — the default) and "JSON"
- *  (the untouched source, always one click away — "很重要,因为整个STAC都是
- *  base在这个逻辑里面的" (important, since the whole STAC spec's logic is
- *  based on this)). Everything under Human is either a direct source field
- *  or a clearly-labeled derived one — no silent interpretation. Standard
- *  STAC extensions get a human-readable rendering pass (`extensionFacts.ts`,
+// Untuned, like every other fixed panel size in this app — just enough to
+// be genuinely useful without a single field eating the whole scroll.
+// Time hugs its own content up to this cap (real data is often much
+// shorter than this); Space gets a fixed height since a map has no natural
+// "short" state the way an empty/simple timeline does.
+const INLINE_TIME_MAX_HEIGHT = 240
+const INLINE_SPACE_HEIGHT = 320
+
+/** Two tabs: "Human" (derived, readable facts) and "JSON" (the untouched
+ *  source) — Time and Space briefly lived as two more tabs alongside these,
+ *  then got folded a level deeper still, directly into Human's own field
+ *  flow, right where "Temporal"/"Spatial" already were. Asked for
+ *  directly, rejecting the tab model itself: "为什么我们不能把这个...human
+ *  readable的那一个页面做成一个很长的东西,然后不同的属性进来呢,我就可以用不同的
+ *  viewer...去把那个数据给渲染出来。比如说Time...就排在Description下边的
+ *  Temporal的下边,就做成一个Time的UI...那我就不需要用Tag去切换Time和Space了。
+ *  那么从结构和语义上面来说,那就是给人类读的。那另外一个JSON是给...机器读" (why
+ *  can't the human-readable page just be one long scroll, where each
+ *  property gets rendered by whatever viewer fits it — Time right where
+ *  Temporal already is, made into an actual Time UI; then I wouldn't need
+ *  a tab to switch between Time and Space at all. Structurally: one page
+ *  for humans, JSON for machines). `TimeLens`/`SpaceLens` needed no
+ *  changes to work here beyond dropping their own interactive query tool
+ *  (see their own files) — both were already self-contained, reading
+ *  everything from `useSelectedItems()`/global stores rather than props.
+ *
+ *  Everything under Human is either a direct source field or a clearly-
+ *  labeled derived one — no silent interpretation. Standard STAC
+ *  extensions get a human-readable rendering pass (`extensionFacts.ts`,
  *  scoped to extensions actually observed in this project's own fixtures
  *  and confirmed against the official registry); custom/unrecognized
  *  namespaces stay in "Property namespaces observed" unchanged — that's
  *  explicitly later, separate work, not this pass.
  *
- *  Deliberately no forced `height: '100%'` on the root — this renders as
- *  one section of a scrollable column shared with Time/Space Lens
- *  (App.tsx), not the sole occupant of its container; forcing full height
- *  here would claim all of that column's space and leave none for the
- *  sections stacked after it. See docs/DESIGN.md §23's update. */
+ *  Deliberately no forced `height: '100%'` on the root — this is the sole
+ *  occupant of its own scrollable column (App.tsx). */
 export function DetailPanel() {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
+  const forHref = useItemSetStore((s) => s.forHref)
+  const visibleHrefs = useItemSetStore((s) => s.visibleHrefs)
   // Synchronous cache read — the node is already loaded by the time it's
   // selectable in Structure Lens, so this never needs its own effect.
   const node = selectedHref ? loader.get(selectedHref) : undefined
@@ -49,15 +74,48 @@ export function DetailPanel() {
   const shape = classifyNodeShape(node)
   const properties = (node.raw as { properties?: Record<string, unknown> } | null)?.properties
   const extensionFactGroups = interpretExtensionFacts(properties)
+  const commonMetadataFacts = interpretCommonMetadataFacts(properties)
   const previewAsset = node.assets.find(isInlinePreviewAsset)
+  // STAC only really has three kinds of object — Item, Catalog, Collection
+  // — so each gets its own recognizable identity here rather than one
+  // undifferentiated panel: "我们就应该为这三个对象设计这个对象所专有的
+  // Inspector...可以做得彼此之间有识别度" (each of these three objects should
+  // get its own dedicated Inspector — make them mutually recognizable).
+  // Reuses the exact colors Structure Lens's own tree nodes already use for
+  // the same types, so the association is immediate, not a new color to
+  // learn.
+  const typeColor =
+    node.type === 'Catalog'
+      ? 'var(--color-node-catalog)'
+      : node.type === 'Collection'
+        ? 'var(--color-node-collection)'
+        : 'var(--color-node-item)'
+  // Whatever Item Set (the tree-embedded browse panel) currently has
+  // loaded/filtered for this exact Collection — used below only to
+  // annotate the Declared-extensions/Property-namespaces fields with what's
+  // common across the browsed set, not to render a browse UI of its own
+  // here (that, and the "show on Time/Space Lens" toggle, moved out of
+  // Inspector entirely — "按钮和Browse this Collection's items其实也都可以不
+  // 要了,我会放在其他的部分" (the button and "Browse this Collection's
+  // items" can go too — I'll put them somewhere else)).
+  const browsedItems =
+    node.type === 'Collection' && forHref === node.href
+      ? visibleHrefs.map((h) => loader.get(h)).filter((n): n is StacNode => !!n)
+      : []
+  // Not `useMemo` — this runs after two early returns above, where a hook
+  // can't legally sit; `summarizeItemSet` is cheap enough over a Collection
+  // Inspector's own browsed-item count that memoizing it isn't worth
+  // reintroducing that constraint for.
+  const browsedSummary = summarizeItemSet(browsedItems)
 
   return (
-    <div style={{ padding: 16, fontSize: 13 }}>
+    <div style={{ padding: 16, paddingLeft: 13, fontSize: 13, borderLeft: `3px solid ${typeColor}` }}>
       <div style={{ marginBottom: 4 }}>
         <strong>{node.title ?? node.id}</strong>
       </div>
       <div style={{ color: 'var(--color-text-muted)', marginBottom: 10 }}>
-        {node.type} · {shape} · <span title="canonical fetch URL">{node.href}</span>
+        <span style={{ color: typeColor, fontWeight: 600 }}>{node.type}</span> · {shape} ·{' '}
+        <span title="canonical fetch URL">{node.href}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: '1px solid var(--color-border)' }}>
@@ -82,6 +140,8 @@ export function DetailPanel() {
         </pre>
       ) : (
         <>
+          {node.description && <Field label="Description (source)">{node.description}</Field>}
+
           {previewAsset && (
             <div style={{ marginBottom: 12 }}>
               <img
@@ -98,25 +158,90 @@ export function DetailPanel() {
             </div>
           )}
 
-          <Field label="Temporal (source)">
-            {node.temporal ? describeTemporal(node.temporal) : <em>none</em>}
+          {/* The Temporal/Spatial source facts render as an actual Time/
+           * Space UI right here, not a number or a bbox array — the whole
+           * point of pulling Time/Space Lens in this deep: "我就可以用不同的
+           * viewer...去把那个数据给渲染出来" (I can use a different viewer to
+           * render that data). Each still degrades to an honest empty
+           * state (no items, no selection) via its own existing handling —
+           * nothing new needed for a Catalog or an items-less Collection. */}
+          <Field label="Temporal">
+            <div
+              style={{
+                maxHeight: INLINE_TIME_MAX_HEIGHT,
+                overflow: 'auto',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
+              <TimeLens />
+            </div>
           </Field>
 
-          <Field label="Spatial (source)">
-            {node.spatial ? (
-              <>
-                bbox: {node.spatial.bbox ? JSON.stringify(node.spatial.bbox) : <em>none</em>}
-                {node.spatial.geometryInvalid && (
-                  <div style={{ color: 'var(--color-node-warning)' }}>
-                    ⚠ raw `geometry` field is present but is not valid GeoJSON — falling back to bbox
-                    only.
-                  </div>
-                )}
-              </>
-            ) : (
-              <em>none</em>
+          <Field label="Spatial">
+            <div
+              style={{
+                height: INLINE_SPACE_HEIGHT,
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                overflow: 'hidden',
+              }}
+            >
+              <SpaceLens />
+            </div>
+            {node.spatial?.geometryInvalid && (
+              <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
+                ⚠ raw `geometry` field is present but is not valid GeoJSON — falling back to bbox
+                only.
+              </div>
             )}
           </Field>
+
+          {node.license && <Field label="License (source)">{node.license}</Field>}
+
+          {node.keywords && node.keywords.length > 0 && (
+            <Field label="Keywords (source)">{node.keywords.join(', ')}</Field>
+          )}
+
+          {node.providers && node.providers.length > 0 && (
+            <Field label="Providers (source)">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {node.providers.map((p, i) => (
+                  <div key={`${p.name}-${i}`}>
+                    {p.url ? (
+                      <a href={p.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+                        {p.name}
+                      </a>
+                    ) : (
+                      p.name
+                    )}
+                    {p.roles && p.roles.length > 0 && (
+                      <span style={{ color: 'var(--color-text-muted)' }}> — {p.roles.join(', ')}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Field>
+          )}
+
+          {(node.created || node.updated) && (
+            <Field label="Created / updated (source)">
+              {node.created && <div>created: {node.created}</div>}
+              {node.updated && <div>updated: {node.updated}</div>}
+            </Field>
+          )}
+
+          {commonMetadataFacts.length > 0 && (
+            <Field label="Common metadata">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {commonMetadataFacts.map((fact) => (
+                  <div key={fact.label}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>{fact.label}:</span> {fact.value}
+                  </div>
+                ))}
+              </div>
+            </Field>
+          )}
 
           {extensionFactGroups.map((group) => (
             <Field key={group.prefix} label={`${group.title} (${group.prefix})`}>
@@ -129,50 +254,6 @@ export function DetailPanel() {
               </div>
             </Field>
           ))}
-
-          {(node.items.kind === 'links' ? node.items.hrefs.length > 0 : true) && (
-            <Field
-              label={
-                <>
-                  Items in this collection
-                  {node.items.kind === 'cursor' && (
-                    // Same tag as Structure Lens's own tree node and Item
-                    // Set panel (StructureTree.tsx/ItemSetBrowser.tsx) — one
-                    // consistent signal across every surface that shows it:
-                    // "得有一个标签也好,highlight也好什么东西" (it needs a tag
-                    // or highlight of some kind).
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: '1px 6px',
-                        borderRadius: 999,
-                        background: 'var(--color-badge-api-bg)',
-                        color: 'var(--color-badge-api-text)',
-                        marginLeft: 6,
-                      }}
-                    >
-                      API
-                    </span>
-                  )}
-                  {node.items.kind === 'links' && ` (${node.items.hrefs.length})`}
-                </>
-              }
-            >
-              <span style={{ color: 'var(--color-text-muted)' }}>
-                {node.items.kind === 'cursor' && (
-                  <>
-                    No static <code>rel:item</code> links here — this node is API-searched (
-                    <span title={node.items.endpoint}>{new URL(node.items.endpoint).host}</span>), count
-                    unknown until queried. {' '}
-                  </>
-                )}
-                Browse and search them inline in Structure Lens — selecting this node opens an Item Set
-                box right at its position in the tree, not duplicated here.
-              </span>
-            </Field>
-          )}
 
           {(node.declaredCollectionHref || node.declaredParentHref) && (
             <Field label="Containment (source)">
@@ -201,6 +282,16 @@ export function DetailPanel() {
 
           <Field label="Declared extensions (stac_extensions)">
             {node.declaredExtensions.length ? node.declaredExtensions.join(', ') : <em>none</em>}
+            {/* An annotation on this Collection's own field, not a separate
+             * "app-provided" section any more — folded in once the old
+             * derived-summary block (redundant with the Temporal/Spatial
+             * widgets above, which already visualize this once toggled on)
+             * and its own divider were dropped entirely. */}
+            {browsedItems.length > 0 && browsedSummary.commonExtensions.length > 0 && (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                Common to the {browsedItems.length} currently browsed: {browsedSummary.commonExtensions.join(', ')}
+              </div>
+            )}
           </Field>
 
           <Field label="Property namespaces observed (derived)">
@@ -226,6 +317,11 @@ export function DetailPanel() {
               </div>
             ) : (
               <em>none</em>
+            )}
+            {browsedItems.length > 0 && browsedSummary.commonNamespaces.length > 0 && (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                Common to the {browsedItems.length} currently browsed: {browsedSummary.commonNamespaces.join(', ')}
+              </div>
             )}
           </Field>
 
@@ -328,6 +424,16 @@ function AssetList({ assets }: { assets: ResolvedAsset[] }) {
           >
             {describeAssetType(asset.type)}
           </span>
+          {/* Compact, not a full band table — `gsd`/`raster:bands` are
+           * per-asset fields (a 10m visible band vs. a 20m SWIR band on
+           * the same Item, confirmed against real Earth Search assets),
+           * genuinely useful at a glance without needing to expand
+           * anything. */}
+          {(asset.gsd != null || asset.dataType) && (
+            <span style={{ flexShrink: 0, fontSize: 10, color: 'var(--color-text-faint)' }}>
+              {[asset.gsd != null ? `${asset.gsd}m` : null, asset.dataType].filter(Boolean).join(' · ')}
+            </span>
+          )}
           <button
             onClick={() => handleCopy(asset)}
             title={asset.href}

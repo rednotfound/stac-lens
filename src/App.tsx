@@ -1,61 +1,27 @@
 import { useEffect, useState } from 'react'
 import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
-import { TimeLens } from './components/TimeLens'
-import { SpaceLens } from './components/SpaceLens'
 import { LandingPage } from './components/LandingPage'
 import { useSelectionStore } from './store/selection'
-import { useQueryStore } from './store/query'
 import { useDeepLinkBootstrap, useShareableUrlSync } from './hooks/useShareableUrl'
-
-// Time Lens hugs its own content up to this cap (scrolling past it) rather
-// than stretching to match Space Lens's height; Space Lens gets a fixed,
-// generous height independent of Time's — a real map benefits from
-// consistent screen presence regardless of how little/much temporal data
-// there is, unlike a timeline that can genuinely be very short.
-const TIME_LENS_MAX_HEIGHT = 220
-const SPACE_LENS_HEIGHT = 340
 
 function App() {
   const [rootHref, setRootHref] = useState<string | null>(null)
   const select = useSelectionStore((s) => s.select)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
-  // Independent per-panel visibility — Structure is the one lens that's
-  // always there; Detail/Time/Space each earn their space once selected,
-  // but the user may still want Structure alone as the main view and turn
-  // any of the rest back off without losing the selection itself.
+  // Time/Space used to be their own always-visible panels stacked below
+  // Detail's facts, each with its own on/off toggle here, then briefly a
+  // pair of Inspector tabs — now folded directly into the Human tab's own
+  // field flow instead (DetailPanel.tsx: an inline timeline right where
+  // "Temporal" is, an inline map right where "Spatial" is), so there is
+  // only ever one panel to show/hide here: "为什么我们不能把这个...human
+  // readable的那一个页面做成一个很长的东西,然后不同的属性...用不同的viewer...去把
+  // 那个数据给渲染出来" (why can't the human-readable page just be one long
+  // scroll, with each property rendered by whatever viewer fits it). The
+  // interactive bbox/datetime query tool that used to live alongside
+  // Time/Space Lens was dropped entirely in the same pass, not folded in
+  // here either — see DetailPanel.tsx/ItemSetBrowser.tsx.
   const [showDetail, setShowDetail] = useState(true)
-  const [showTime, setShowTime] = useState(true)
-  const [showSpace, setShowSpace] = useState(true)
-  const drawRequest = useQueryStore((s) => s.drawRequest)
-
-  // Item Set's own query section (embedded in Structure Lens) can now arm
-  // Space/Time Lens's draw tool directly (store/query.ts, §27) — but a
-  // panel toggled off is still off, so arming a tool whose Lens is
-  // currently hidden needs to actually bring it back rather than silently
-  // doing nothing. Scrolls it into view too, since both live in one
-  // scrollable Inspector column and Detail's own content can easily push
-  // either one out of the visible area.
-  useEffect(() => {
-    if (drawRequest === 'bbox') setShowSpace(true)
-    else if (drawRequest === 'datetime') setShowTime(true)
-  }, [drawRequest])
-
-  // Split from the effect above, not combined into one — toggling a panel
-  // on and scrolling to it can't happen in the same tick: `setShowSpace`/
-  // `setShowTime` there hasn't committed to the DOM yet, so the panel's
-  // own element doesn't exist to scroll to until after React re-renders.
-  // `requestAnimationFrame` defers just long enough for that commit to
-  // land (a hidden panel was previously unmounted entirely, not just
-  // display:none'd — see the note on Space Lens's mount effect).
-  useEffect(() => {
-    if (!drawRequest) return
-    const id = drawRequest === 'bbox' ? 'space-lens-panel' : 'time-lens-panel'
-    const raf = requestAnimationFrame(() => {
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [drawRequest, showSpace, showTime])
 
   // A `?node=<href>` URL opens straight into that node — same idea as STAC
   // Browser's shareable links (see docs/DESIGN.md), adapted to how this app
@@ -145,38 +111,27 @@ function App() {
         </span>
         {hasSelection && (
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-            <PanelToggle label="Detail" on={showDetail} onClick={() => setShowDetail((v) => !v)} />
-            <PanelToggle label="Time" on={showTime} onClick={() => setShowTime((v) => !v)} />
-            <PanelToggle label="Space" on={showSpace} onClick={() => setShowSpace((v) => !v)} />
+            <PanelToggle label="Inspector" on={showDetail} onClick={() => setShowDetail((v) => !v)} />
           </div>
         )}
       </header>
       {/* Show only what's needed right now: nothing selected means Structure
        * is the whole story so far, full width — the Inspector column only
        * earns its space once there's something for it to actually show,
-       * and the user can turn any of its three sections back off
-       * (PanelToggle above) to make Structure the main view again without
-       * losing the selection.
+       * and the user can turn it back off (PanelToggle above) to make
+       * Structure the main view again without losing the selection.
        *
-       * Time Lens and Space Lens live *inside* this column now, stacked
-       * below Detail's own facts, not in a separate full-width row below
-       * both columns — that full-width version fixed the mismatch between
-       * a timeline's short natural height and a map's tall one, but grew
-       * the *total* footprint and ate directly into Structure Lens's own
-       * height to do it, called out immediately and rightly: "这不是占用了
-       * 更多画面么" (doesn't this just take up even more screen). Folding
-       * them into the Inspector column instead means their combined height
-       * only affects this column's own internal scroll — Structure Lens
-       * keeps its full height regardless of how much Detail/Time/Space
-       * content there is to show. See docs/DESIGN.md §23's update. */}
+       * Time/Space used to live in this column as their own stacked
+       * sections below Detail's facts, each independently toggleable, then
+       * briefly as Inspector's own tabs — now folded a level deeper still,
+       * directly into Inspector's Human tab (DetailPanel.tsx), so there is
+       * exactly one thing to show/hide here regardless of what's rendering
+       * inside Inspector. */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <div
           style={{
-            width: hasSelection && (showDetail || showTime || showSpace) ? '55%' : '100%',
-            borderRight:
-              hasSelection && (showDetail || showTime || showSpace)
-                ? '1px solid var(--color-border)'
-                : 'none',
+            width: hasSelection && showDetail ? '55%' : '100%',
+            borderRight: hasSelection && showDetail ? '1px solid var(--color-border)' : 'none',
             transition: 'width 0.25s ease',
             // The tree's own SVG doesn't clip content panned/zoomed past
             // its column's edge — normally invisible off-screen, but the
@@ -196,40 +151,9 @@ function App() {
         >
           <StructureTree key={rootHref} rootHref={rootHref} />
         </div>
-        {hasSelection && (showDetail || showTime || showSpace) && (
+        {hasSelection && showDetail && (
           <div style={{ width: '45%', overflow: 'auto' }}>
-            {showDetail && <DetailPanel />}
-            {showTime && (
-              <div
-                id="time-lens-panel"
-                style={{
-                  maxHeight: TIME_LENS_MAX_HEIGHT,
-                  overflow: 'auto',
-                  borderTop: showDetail ? '1px solid var(--color-border)' : 'none',
-                }}
-              >
-                <TimeLens />
-              </div>
-            )}
-            {/* Mounted only while selected *and* toggled on, not just
-             * collapsed to zero height — Space Lens's Leaflet map would
-             * otherwise initialize inside a 0×0 container and need an
-             * explicit resize fix-up once it later expands. Toggling Space
-             * off and back on remounts the map fresh (losing pan/zoom
-             * state) rather than hiding it in place — a deliberate
-             * simplification for a first pass at panel visibility; see
-             * docs/DESIGN.md. */}
-            {showSpace && (
-              <div
-                id="space-lens-panel"
-                style={{
-                  height: SPACE_LENS_HEIGHT,
-                  borderTop: showDetail || showTime ? '1px solid var(--color-border)' : 'none',
-                }}
-              >
-                <SpaceLens />
-              </div>
-            )}
+            <DetailPanel />
           </div>
         )}
       </div>

@@ -87,32 +87,35 @@ export function useSelectedItems(): SelectedItemsState {
 
   const forHref = useItemSetStore((s) => s.forHref)
   const visibleHrefs = useItemSetStore((s) => s.visibleHrefs)
-  const aggregateSelected = useItemSetStore((s) => s.aggregateSelected)
+  const showOnLenses = useItemSetStore((s) => s.showOnLenses)
   const items = useMemo(() => {
     // A specific Item is selected (not just its Collection) — show only
     // that one, not the whole neighborhood Item Set has loaded. Comparing
-    // in context is Item Set's job (browsing the Collection, or a
-    // search-filtered subset of it); once you've drilled down to one Item,
-    // "selecting an object stays scoped to that object" applies here too
-    // — asked directly: "既然我选中了一个item,为什么还要显示所有item的时间和
-    // 范围呢?" (having selected one Item, why still show every Item's time
-    // and extent?). Using the Item itself rather than filtering it out of
-    // `visibleHrefs` also sidesteps needing it to actually be a member of
-    // whatever Item Set happens to be open (it may not be — see §21's
-    // `rel:collection`/`rel:parent` mismatch case).
+    // in context is the Collection Inspector's own browse section's job
+    // (browsing the Collection, or a search-filtered subset of it); once
+    // you've drilled down to one Item, "selecting an object stays scoped to
+    // that object" applies here too — asked directly: "既然我选中了一个item,
+    // 为什么还要显示所有item的时间和范围呢?" (having selected one Item, why
+    // still show every Item's time and extent?). Using the Item itself
+    // rather than filtering it out of `visibleHrefs` also sidesteps needing
+    // it to actually be a member of whatever's currently browsed (it may
+    // not be — see §21's `rel:collection`/`rel:parent` mismatch case).
     if (selectedNode?.type === 'Item') return [selectedNode]
     // Merely selecting/browsing a Collection must never show its Items'
     // aggregate on its own — only its own stated extent (`node.temporal`/
     // `node.spatial`, read directly by Time/Space Lens, not through this
-    // hook's `items`). Showing the aggregate requires the user to have
-    // explicitly selected "all of Item Set" as its own object — see the
-    // update on docs/DESIGN.md §21: "选择了collection这个节点,他就不应该看到
-    // collection下面所有的item...它得单独做一个对象可以去选它" (selecting the
-    // Collection node shouldn't show every Item under it — Item Set needs
-    // to be its own separate, selectable object).
-    if (!targetHref || forHref !== targetHref || !aggregateSelected) return EMPTY_ITEMS
+    // hook's `items`). Showing the aggregate requires `showOnLenses` — a
+    // plain feature toggle, not a "selection" of Item Set as its own object
+    // (that framing was retired — see docs/DESIGN.md's three-object-
+    // architecture update: Item, Catalog, Collection, nothing else). Its
+    // own UI was removed from the Collection Inspector along with the rest
+    // of "Provided by this app" (docs/DESIGN.md §41) and has not been
+    // placed anywhere yet — `showOnLenses` currently defaults to `false`
+    // with no way to flip it, so this branch is presently unreachable in
+    // practice until that UI lands somewhere new.
+    if (!targetHref || forHref !== targetHref || !showOnLenses) return EMPTY_ITEMS
     return visibleHrefs.map((h) => loader.get(h)).filter((n): n is StacNode => !!n)
-  }, [selectedNode, targetHref, forHref, visibleHrefs, aggregateSelected])
+  }, [selectedNode, targetHref, forHref, visibleHrefs, showOnLenses])
 
   if (!selectedHref) return { status: 'empty', reason: 'no-selection' }
   if (!targetHref) return { status: 'empty', reason: 'no-direct-items' }

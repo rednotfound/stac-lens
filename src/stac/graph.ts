@@ -4,6 +4,7 @@ import type {
   SchemaHints,
   StacNode,
   StacNodeType,
+  StacProvider,
   StacSourceKind,
 } from './types'
 import {
@@ -25,6 +26,12 @@ export interface RawStacObject {
   id?: string
   type?: string
   title?: string
+  description?: string
+  license?: string
+  providers?: Record<string, unknown>[]
+  keywords?: string[]
+  created?: string
+  updated?: string
   links?: StacLink[]
   stac_extensions?: string[]
   properties?: Record<string, unknown>
@@ -68,6 +75,25 @@ function buildSchemaHints(raw: RawStacObject): SchemaHints | undefined {
   return { summaries: raw.summaries, itemAssets: raw.item_assets }
 }
 
+function strField(obj: Record<string, unknown> | undefined, key: string): string | undefined {
+  const v = obj?.[key]
+  return typeof v === 'string' ? v : undefined
+}
+
+function normalizeProviders(raw: unknown): StacProvider[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const providers = raw
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+    .map((p) => ({
+      name: strField(p, 'name') ?? '',
+      description: strField(p, 'description'),
+      roles: Array.isArray(p.roles) ? (p.roles as string[]) : undefined,
+      url: strField(p, 'url'),
+    }))
+    .filter((p) => p.name)
+  return providers.length > 0 ? providers : undefined
+}
+
 /** Resolves every asset's `href` against this node's own href — the Asset
  *  Object spec permits a relative path (real catalogs use both forms), so
  *  the raw JSON value is never safe to show or copy verbatim. Same
@@ -75,14 +101,24 @@ function buildSchemaHints(raw: RawStacObject): SchemaHints | undefined {
  *  went through it before because nothing rendered them yet. */
 function buildAssets(href: string, raw: RawStacObject): ResolvedAsset[] {
   if (!raw.assets) return []
-  return Object.entries(raw.assets).map(([key, asset]) => ({
-    key,
-    href: resolveHref(href, String(asset.href ?? '')),
-    title: typeof asset.title === 'string' ? asset.title : undefined,
-    description: typeof asset.description === 'string' ? asset.description : undefined,
-    type: typeof asset.type === 'string' ? asset.type : undefined,
-    roles: Array.isArray(asset.roles) ? (asset.roles as string[]) : undefined,
-  }))
+  return Object.entries(raw.assets).map(([key, asset]) => {
+    const rasterBands = Array.isArray(asset['raster:bands'])
+      ? (asset['raster:bands'] as Record<string, unknown>[])
+      : undefined
+    return {
+      key,
+      href: resolveHref(href, String(asset.href ?? '')),
+      title: typeof asset.title === 'string' ? asset.title : undefined,
+      description: typeof asset.description === 'string' ? asset.description : undefined,
+      type: typeof asset.type === 'string' ? asset.type : undefined,
+      roles: Array.isArray(asset.roles) ? (asset.roles as string[]) : undefined,
+      gsd: typeof asset.gsd === 'number' ? asset.gsd : undefined,
+      dataType:
+        rasterBands?.[0] && typeof rasterBands[0].data_type === 'string'
+          ? (rasterBands[0].data_type as string)
+          : undefined,
+    }
+  })
 }
 
 /** Builds a normalized StacNode from raw fetched JSON. `href` must already
@@ -137,7 +173,15 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const declaredParentHref = parentLink ? resolveHref(href, parentLink.href!) : undefined
   const declaredRootHref = rootLink ? resolveHref(href, rootLink.href!) : undefined
 
-  const namespaceScans = [scanNamespaces(raw.properties)]
+  // Scanning the raw object's own top level too — not just `properties` —
+  // is what actually finds a Catalog/Collection's own custom-namespaced
+  // fields (Adaptation Atlas's `atlas:*`/`contact:*` live directly on the
+  // Collection object, not nested under `properties` or `summaries`; a
+  // real gap confirmed directly: these were completely invisible in
+  // Inspector before this fix, not merely uncategorized). Harmless for an
+  // Item, whose own top level never carries namespaced fields in any real
+  // fixture checked (those live in `properties` instead, already scanned).
+  const namespaceScans = [scanNamespaces(raw.properties), scanNamespaces(raw as Record<string, unknown>)]
   if (raw.assets) {
     for (const asset of Object.values(raw.assets)) namespaceScans.push(scanNamespaces(asset))
   }
@@ -173,6 +217,19 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
 
     schemaHints: type === 'Collection' ? buildSchemaHints(raw) : undefined,
     assets: buildAssets(href, raw),
+
+    // `description`/`created`/`updated` are top-level fields on a Catalog/
+    // Collection but live inside an Item's own `properties` instead (Common
+    // Metadata spec) — confirmed against a real Earth Search Item (both
+    // fields absent at Feature top level, present under `properties`) and
+    // a real Collection (the reverse: present at top level, absent under
+    // any nested object).
+    description: type === 'Item' ? strField(raw.properties, 'description') : raw.description,
+    created: type === 'Item' ? strField(raw.properties, 'created') : raw.created,
+    updated: type === 'Item' ? strField(raw.properties, 'updated') : raw.updated,
+    license: type === 'Collection' ? raw.license : undefined,
+    providers: type === 'Collection' ? normalizeProviders(raw.providers) : undefined,
+    keywords: type === 'Collection' && Array.isArray(raw.keywords) ? raw.keywords : undefined,
 
     declaredExtensions: raw.stac_extensions ?? [],
     propertyNamespaces: mergeNamespaceScans(namespaceScans),

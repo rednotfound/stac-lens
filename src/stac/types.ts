@@ -60,6 +60,24 @@ export interface ResolvedAsset {
   description?: string
   type?: string
   roles?: string[]
+  /** Ground sample distance in meters — the common `gsd` field, frequently
+   *  overridden per-asset (a 10m visible band vs. a 20m SWIR band on the
+   *  same Item, confirmed against real Earth Search Sentinel-2 assets). */
+  gsd?: number
+  /** The pixel data type from this asset's own `raster:bands[0].data_type`
+   *  (e.g. "uint16", "float32") — only the first band's type, not a full
+   *  band table; every real per-asset band file checked in this project's
+   *  fixtures is single-band. */
+  dataType?: string
+}
+
+/** STAC Provider Object (Collection spec) — `name` is the only required
+ *  field; everything else is optional and shown only when present. */
+export interface StacProvider {
+  name: string
+  description?: string
+  roles?: string[]
+  url?: string
 }
 
 export interface StacNode {
@@ -114,6 +132,25 @@ export interface StacNode {
   spatial?: SpatialExtent
   temporal?: TemporalShape
   schemaHints?: SchemaHints
+  /** `description` — required on every Catalog/Collection, and (per the
+   *  Common Metadata spec) a valid optional field inside an Item's own
+   *  `properties` too; resolved from whichever of those two locations
+   *  actually applies to this node's type — see `buildNode`. Asked about
+   *  directly after a real Collection (Adaptation Atlas) turned out to
+   *  have several source fields Inspector never showed at all: "为什么现在
+   *  我在inspector里面也看不到它呢" (why can't I see it in Inspector either). */
+  description?: string
+  /** Collection-only source fields (Collection spec — `license` is
+   *  required, `providers`/`keywords` optional); `undefined` on Catalog/
+   *  Item, never a placeholder. */
+  license?: string
+  providers?: StacProvider[]
+  keywords?: string[]
+  /** `created`/`updated` (Common Metadata spec) — top-level on a Catalog/
+   *  Collection, but inside an Item's own `properties` — same per-type
+   *  resolution as `description` above. */
+  created?: string
+  updated?: string
   /** This node's own `assets` object, normalized — every `href` already
    *  resolved to an absolute URL (see `ResolvedAsset`). Present on Items
    *  (their real data/thumbnail files) and occasionally Collections

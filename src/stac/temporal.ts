@@ -41,7 +41,10 @@ export function normalizeCollectionTemporalExtent(extent: unknown): TemporalShap
   return { kind: 'interval', start: start ?? null, end: end ?? null }
 }
 
-/** For UI: does this shape have any bound extending indefinitely? */
+/** For UI: does this shape have any bound extending indefinitely? Used by
+ *  `scripts/verify-fixtures.ts` (a real fixture-verification script, not
+ *  dead — confirmed via `tsc -b`, which compiles that script too, before
+ *  concluding otherwise from an `src`-only grep). */
 export function isOpenEnded(shape: TemporalShape): boolean {
   return shape.kind === 'interval' && (shape.start === null || shape.end === null)
 }

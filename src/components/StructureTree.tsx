@@ -599,10 +599,9 @@ const ITEM_SET_BOX_WIDTH = 320
 // "我们明明可能加载到上千啊,一次性只能看到3个我真的无语...我们这个项目也是需要
 // 让人感受到数据的体量和数量的啊" (we can load up to thousands, but only see 3
 // at once — this project needs to make people actually feel the scale of
-// the data too). Sized generously enough to fit the API-search query
-// section, search input, a much taller list (`LIST_MAX_HEIGHT` in
-// ItemSetBrowser.tsx), and the footer without the box's own wrapper
-// needing to scroll in the common case.
+// the data too). Sized generously enough to fit the search input, a much
+// taller list (`LIST_MAX_HEIGHT` in ItemSetBrowser.tsx), and the footer
+// without the box's own wrapper needing to scroll in the common case.
 const ITEM_SET_BOX_HEIGHT = 760
 // Extra horizontal gap between the node and its Item Set box, beyond the
 // normal label offset — enough room to draw a real connecting curve (see
@@ -968,7 +967,7 @@ function TreeNodeView({
                 cursor: 'default',
                 // Safety net, not the primary mechanism — the list inside
                 // scrolls on its own (LIST_MAX_HEIGHT); this only kicks in
-                // if the box's other content (query section, footer) ever
+                // if the box's other content (search input, footer) ever
                 // pushes the total past ITEM_SET_BOX_HEIGHT.
                 overflow: 'auto',
               }}

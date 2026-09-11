@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
-import { fetchSearchPage, type SearchQuery } from '../stac/apiSearch'
-import { useQueryStore } from '../store/query'
+import { fetchSearchPage } from '../stac/apiSearch'
 import type { StacNode } from '../stac/types'
 
 const LINKS_PAGE_SIZE = 40
@@ -46,15 +45,6 @@ export type ItemSetState =
       loadAll: () => void
     }
 
-/** RFC 3339 interval string for the `datetime` query param — `start/end`,
- *  either side `..` for an open bound, per the Item Search spec's own
- *  examples. `undefined` when neither bound is set at all (no temporal
- *  filter), distinct from an open-ended one-sided filter. */
-function buildDatetimeParam(start: string | null, end: string | null): string | undefined {
-  if (!start && !end) return undefined
-  return `${start ?? '..'}/${end ?? '..'}`
-}
-
 /** Browsable, incrementally-loaded view over a node's own direct items —
  *  the data source behind the Item Set browser embedded in Structure Lens.
  *  Two entirely different loading strategies live behind the same
@@ -71,18 +61,15 @@ function buildDatetimeParam(start: string | null, end: string | null): string | 
  *    querying (see docs/DESIGN.md §22) — so "load more" issues a real
  *    `/search` or `rel:items` request per page, and each page's response
  *    already embeds full Item JSON for every result (no per-Item fetch
- *    needed — see `StacLoader.cachePreFetched`). A fresh cursor-mode query
- *    (no `nextHref` yet) applies whatever bbox/datetime is currently in
- *    `useQueryStore` — bumping `searchNonce` there (the "Search" button)
- *    resets pagination and starts over with the current draft; subsequent
+ *    needed — see `StacLoader.cachePreFetched`). Every request is
+ *    unfiltered — whatever the API's own default ordering returns — since
+ *    the interactive bbox/datetime query tool this used to apply was
+ *    dropped entirely (parked alongside the still-open "API sources may
+ *    need their own UI paradigm" question, docs/DESIGN.md); subsequent
  *    pages just follow the response's own `rel:next` link verbatim. */
 export function useItemSet(node: StacNode | undefined): ItemSetState {
   const nodeHref = node?.href
   const kind = node?.items.kind
-  const bbox = useQueryStore((s) => s.bbox)
-  const datetimeStart = useQueryStore((s) => s.datetimeStart)
-  const datetimeEnd = useQueryStore((s) => s.datetimeEnd)
-  const searchNonce = useQueryStore((s) => s.searchNonce)
 
   const [items, setItems] = useState<StacNode[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
@@ -119,23 +106,15 @@ export function useItemSet(node: StacNode | undefined): ItemSetState {
     setItems([])
     setLoadingMore(false)
     setMatched(undefined)
-  }, [nodeHref, kind, searchNonce])
+  }, [nodeHref, kind])
 
   /** Fetches exactly one cursor-mode page and applies it to state/refs.
    *  Shared by `loadMore` (one page) and `loadAll` (loops this until
    *  exhausted or capped) so the actual fetch/apply logic exists once. */
   async function fetchOneCursorPage(cursorNode: StacNode & { items: { kind: 'cursor' } }) {
-    const isFreshQuery = !nextHrefRef.current
-    const query: SearchQuery | undefined = isFreshQuery
-      ? {
-          bbox: bbox ? [bbox.west, bbox.south, bbox.east, bbox.north] : undefined,
-          datetime: buildDatetimeParam(datetimeStart, datetimeEnd),
-        }
-      : undefined
     const page = await fetchSearchPage(cursorNode.items.endpoint, {
       limit: CURSOR_PAGE_SIZE,
       nextHref: nextHrefRef.current,
-      query,
     })
     for (const item of page.items) loader.cachePreFetched(item)
     nextHrefRef.current = page.nextHref
@@ -218,7 +197,7 @@ export function useItemSet(node: StacNode | undefined): ItemSetState {
     if (node.items.kind === 'links' && node.items.hrefs.length === 0) return
     void loadMore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeHref, kind, searchNonce])
+  }, [nodeHref, kind])
 
   if (!node) return { status: 'empty' }
   if (node.items.kind === 'links' && node.items.hrefs.length === 0) return { status: 'empty' }
