@@ -3,6 +3,8 @@ import { useItemSet } from '../hooks/useItemSet'
 import { useSelectionStore } from '../store/selection'
 import { useItemSetStore } from '../store/itemSet'
 import { describeTemporal } from '../stac/describe'
+import { Spinner } from './Spinner'
+import { LoadingState } from './LoadingState'
 import type { StacNode } from '../stac/types'
 
 const SCROLL_LOAD_THRESHOLD = 120
@@ -172,7 +174,7 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
         }}
       >
         {state.status === 'loading' ? (
-          <div style={{ padding: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>loading…</div>
+          <LoadingState>Loading items…</LoadingState>
         ) : (
           <>
             {filtered.map((item) => {
@@ -212,8 +214,19 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
               </div>
             )}
             {state.loadingMore && (
-              <div style={{ padding: 8, fontSize: 12, textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                loading more…
+              <div
+                style={{
+                  padding: 8,
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                <Spinner size={12} />
+                Loading more…
               </div>
             )}
           </>
@@ -256,7 +269,9 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
               onClick={state.loadAll}
               disabled={state.loadingMore}
               style={{
-                display: 'block',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
                 marginTop: 4,
                 fontSize: 11,
                 padding: '2px 8px',
@@ -267,7 +282,8 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
                 cursor: state.loadingMore ? 'not-allowed' : 'pointer',
               }}
             >
-              {state.loadingMore ? 'loading…' : 'Load all remaining'}
+              {state.loadingMore && <Spinner size={10} />}
+              {state.loadingMore ? 'Loading…' : 'Load all remaining'}
             </button>
           )}
         </div>

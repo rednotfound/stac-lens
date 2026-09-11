@@ -91,7 +91,9 @@ src/
     SpaceLens.tsx       Inspector's inline Spatial widget (Leaflet map, fly-to-bounds on selection)
     DetailPanel.tsx     Inspector (Human/JSON tabs, source + derived facts, embeds TimeLens/SpaceLens)
     ItemSetBrowser.tsx  id/title filter + scroll-to-load-more list over a Collection's own items
-    EmptyState.tsx      shared empty/loading placeholder
+    EmptyState.tsx      shared empty/error placeholder (no spinner)
+    LoadingState.tsx    shared loading placeholder (EmptyState + Spinner)
+    Spinner.tsx         the one spinner animation used everywhere the app is loading something
   design/
     tokens.css          color/spacing/type tokens, light+dark
 scripts/

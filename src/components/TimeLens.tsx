@@ -6,6 +6,7 @@ import { useElementSize } from '../hooks/useElementSize'
 import { temporalBounds } from '../stac/temporal'
 import type { StacNode, TemporalShape } from '../stac/types'
 import { EmptyState } from './EmptyState'
+import { LoadingState } from './LoadingState'
 
 const ROW_HEIGHT = 20
 const AXIS_HEIGHT = 28
@@ -314,7 +315,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
     )
   }
   if (target.status === 'loading') {
-    return <EmptyState>loading…</EmptyState>
+    return <LoadingState>Loading…</LoadingState>
   }
   if (!domain || !displayDomain) {
     // Reachable only once loading is done: no stated extent on the

@@ -5,6 +5,7 @@ import { LandingPage } from './components/LandingPage'
 import { useSelectionStore } from './store/selection'
 import { useElementSize } from './hooks/useElementSize'
 import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
+import { Spinner } from './components/Spinner'
 
 // Inspector's width is a plain pixel number, not a boolean — 0 means fully
 // collapsed. Direct-manipulation (drag the divider, same "drag not
@@ -82,6 +83,19 @@ function App() {
     setInspectorWidth((w) => (w > 0 ? 0 : lastOpenWidthRef.current || DEFAULT_INSPECTOR_WIDTH))
   }, [])
 
+  // Selecting a new node reuses this same scrolled-down container for
+  // completely different content — without this, a selection made while
+  // scrolled into, say, an Item's asset list left the next Item's Inspector
+  // rendered mid-scroll instead of from the top, which reads as the old
+  // content silently mutating in place rather than a new object being
+  // shown: "选择了一个新的对象之后...看到图片在闪变并且留在原位置" (after
+  // selecting a new object... you see the image flash-change while staying
+  // in the same scroll position).
+  const inspectorScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    inspectorScrollRef.current?.scrollTo({ top: 0 })
+  }, [selectedHref])
+
   // A `?node=<href>` URL opens straight into that node — same idea as STAC
   // Browser's shareable links (see docs/DESIGN.md), adapted to how this app
   // already works: every node's href is already absolute, and the loader
@@ -117,13 +131,16 @@ function App() {
         style={{
           minHeight: '100vh',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: 10,
           color: 'var(--color-text-muted)',
           fontSize: 13,
           background: 'var(--color-bg)',
         }}
       >
+        <Spinner size={22} />
         Opening shared link…
       </div>
     )
@@ -248,7 +265,7 @@ function App() {
               }}
             />
             {inspectorWidth > 0 && (
-              <div style={{ width: inspectorWidth, flexShrink: 0, overflow: 'auto' }}>
+              <div ref={inspectorScrollRef} style={{ width: inspectorWidth, flexShrink: 0, overflow: 'auto' }}>
                 <DetailPanel />
               </div>
             )}

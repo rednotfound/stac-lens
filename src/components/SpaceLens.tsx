@@ -3,6 +3,7 @@ import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useSelectionStore } from '../store/selection'
 import { useSelectedItems } from '../hooks/useSelectedItems'
+import { Spinner } from './Spinner'
 import type { StacNode } from '../stac/types'
 
 // The standard OSM tile server — no API key, unlike CARTO's basemap tiles
@@ -192,13 +193,14 @@ export function SpaceLens() {
     map.flyToBounds(bboxToBounds(item.spatial.bbox), { padding: [60, 60], maxZoom: 16, duration: 0.75 })
   }, [highlightHref, itemsWithBbox])
 
+  const isLoadingTarget = target.status === 'loading'
   const statusMessage =
     target.status === 'empty'
       ? target.reason === 'no-selection'
         ? 'Select a Collection or Item in Structure to see where it is.'
         : 'This node has no Items directly — drill into a sub-collection.'
-      : target.status === 'loading'
-        ? 'loading…'
+      : isLoadingTarget
+        ? 'Loading…'
         : itemsWithBbox.length === 0 && !statedBbox
           ? "No stated bbox, and no footprints visible yet — open Detail Panel to browse this collection's items."
           : undefined
@@ -254,6 +256,9 @@ export function SpaceLens() {
           // but stayed at a low z-index that Leaflet's own layers could
           // still outrank within it.
           zIndex: 1001,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
         }}
       >
         {node ? (
@@ -263,7 +268,10 @@ export function SpaceLens() {
             {itemsWithBbox.length} item footprint{itemsWithBbox.length === 1 ? '' : 's'}
           </>
         ) : (
-          statusMessage
+          <>
+            {isLoadingTarget && <Spinner size={12} />}
+            {statusMessage}
+          </>
         )}
       </div>
     </div>

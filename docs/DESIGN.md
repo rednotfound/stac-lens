@@ -3565,8 +3565,106 @@ Still open, not addressed this round: STAC Index's static (non-API) side
 has grown too (85 listed vs. 67 here) — a known, real gap left for a
 possible future pass, not silently closed under cover of this one.
 
-## 48. What's deliberately deferred (not forgotten)
+## 48. A real, consistent loading UI — not just "loading…" text, and not just missing entirely
 
+"当打开一份数据的时候，常常需要加载很久，所以加载的时候需要有加载的UI，动画等等！
+这个原则应该贯穿到整个产品的所有需要加载的地方" (opening a dataset often takes
+a real while, so loading needs its own UI — an animation — and this
+should apply everywhere the app has something to load).
+
+Audited every loading state in the app before changing anything, rather
+than guessing where the gap was. Found two different problems, not one:
+
+- Structure Lens's root-catalog fetch — the single slowest, most-waited-on
+  load in the app (opening a whole new catalog, sometimes a slow API
+  root) — had no visible indicator *at all* while `!layout` (root not yet
+  fetched): the tree column just rendered blank except for a tiny,
+  easy-to-miss "loading…" pinned to the top-left corner.
+- Everywhere else that already tracked a loading state (Inspector,
+  Item Set's initial fetch/"load more"/"load all remaining", Time Lens,
+  Space Lens, per-node tree expansion, the deep-link boot screen) had
+  correct logic but rendered it as static "loading…" text with no
+  animation — easy to mistake for stalled, especially on a slow API.
+
+Built one shared primitive rather than a bespoke spinner per component:
+`Spinner.tsx`, a small hand-drawn SVG arc (not a full ring — a full ring
+spinning in place has rotational symmetry, so the spin isn't actually
+visible; a ~28%-of-circumference arc's leading/trailing ends are what
+read as motion) driven by one shared `stac-lens-spin` CSS keyframe
+(`design/tokens.css`). It's deliberately just an `<svg>` itself, with
+optional `x`/`y` props, so it drops into ordinary HTML flow *and* nests
+directly inside Structure Lens's own tree `<svg>` (positioned the same
+way its sibling `<text dx dy>` elements already are) without needing two
+separate implementations. `LoadingState.tsx` pairs it with text as
+`EmptyState`'s loading counterpart, for the block-level cases (Inspector,
+Item Set's initial load, Time Lens) — kept separate from `EmptyState`
+itself, which also renders genuine non-loading messages with no spinner
+to show.
+
+Applied everywhere a loading state already existed or should have:
+Structure Lens's root fetch (now a centered spinner + "Loading catalog…"
+over the whole canvas, not a corner note — this is the load users
+actually sit and wait on), its per-node expand indicator (spinner next to
+the node label, replacing plain "loading…" text under it), Item Set's
+initial load/"loading more"/"Load all remaining" button, Inspector's own
+node-not-yet-cached state, Time Lens's loading branch, Space Lens's
+status overlay, and the deep-link "Opening shared link…" boot screen.
+
+Verified live, not just read back from the code: real STAC fetches are
+usually too fast to actually observe mid-flight, so verification used
+Playwright's own request interception to add an artificial ~1s delay to
+a real fixture's requests (the STAC spec example catalog, then
+separately the Adaptation Atlas), then screenshotted mid-load. Confirmed
+both the full-canvas root spinner and the per-node expand spinner render
+correctly and clear cleanly once the (real, delayed) fetch resolves —
+not a simulated/mocked loading state, a real one made observable.
+
+## 49. Selecting a new node now resets Inspector's own scroll position
+
+"右侧的inspector在选择了一个新的对象之后，需不需要重新加载一下，滚到头顶啊。不然
+的话，就是看到图片在闪变并且留在原位置" (shouldn't the Inspector on the right
+reset/scroll back to the top after a new object is selected? otherwise you
+just see the image flash-change while staying in the same scroll spot).
+
+A real, easy-to-miss bug: Inspector's own scroll container (the `overflow:
+auto` div in `App.tsx` wrapping `DetailPanel`) persists across selections
+— selecting a different node swaps out what `DetailPanel` renders, but
+never touched the *scroll position* of the div containing it. Scrolled
+partway into one Item's asset list or JSON tab, then clicking a different
+node elsewhere in the tree, left the next Item's Inspector rendered
+already scrolled down into whatever content happened to occupy that same
+pixel range — reading as the old content mutating in place rather than a
+genuinely new object being shown, exactly as described.
+
+Fixed with a ref on that container and a `scrollTo({ top: 0 })` effect
+keyed on `selectedHref` (`App.tsx`) — the minimal, correct fix: the
+container itself doesn't unmount between selections (only its child
+content changes), so nothing else already resets this for free the way,
+say, swapping to a whole new component tree would.
+
+Verified live: scrolled the real Inspector down (confirmed via a real
+`scrollTop` read, not assumed), selected a different Catalog node, and
+confirmed `scrollTop` read back as exactly `0` afterward, screenshotted
+showing the new node's Inspector rendered from its own header down.
+
+## 50. What's deliberately deferred (not forgotten)
+
+- Blocking Inspector's whole render until every async piece (the preview
+  image especially) has finished loading, rather than showing instant
+  content immediately and letting the image pop in on its own — asked
+  about directly right after §49 landed: "需不需要在需要加载的内容都加载之后
+  在将内容显示到inspector里面啊" (shouldn't we wait until everything that
+  needs loading has loaded before showing it in Inspector?). Recommended
+  against it and the user agreed ("明白，那就先不这么做"): most of
+  Inspector's content (description, containment, declared extensions) is
+  already synchronous by the time a node is selectable, and Time/Space
+  are too except for a rare deep-linked-orphan-Item case (§21) — the only
+  real asynchronous pop-in left is the preview `<img>` itself (changing
+  `src` on the same element makes the browser clear it before the new
+  image arrives). The targeted fix discussed instead, not yet built: a
+  fixed-height placeholder + spinner + fade-in scoped to that image alone,
+  so text content still renders instantly rather than everything waiting
+  on one image's network fetch.
 - Type icons (§44) in Structure Lens's own tree, not just Inspector —
   asked about directly right after §44 landed: "有没有可能在tree view里面也
   使用icon呢?" (could the tree view use icons too?). A real design conflict

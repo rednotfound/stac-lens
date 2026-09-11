@@ -10,6 +10,7 @@ import { summarizeItemSet } from '../stac/itemSetSummary'
 import { TimeLens } from './TimeLens'
 import { SpaceLens } from './SpaceLens'
 import { TypeIcon } from './TypeIcon'
+import { LoadingState } from './LoadingState'
 import type { ResolvedAsset } from '../stac/types'
 
 type Tab = 'human' | 'json'
@@ -67,9 +68,7 @@ export function DetailPanel() {
     )
   }
   if (!node) {
-    return (
-      <div style={{ padding: 16, color: 'var(--color-text-muted)', fontSize: 13 }}>loading…</div>
-    )
+    return <LoadingState>Loading…</LoadingState>
   }
 
   const shape = classifyNodeShape(node)

@@ -9,6 +9,7 @@ import { useSelectionStore } from '../store/selection'
 import { loader } from '../stac/loaderInstance'
 import { classifyNodeShape, type StacNode } from '../stac/types'
 import { ItemSetBrowser } from './ItemSetBrowser'
+import { Spinner } from './Spinner'
 
 /** True when a node has direct Items to browse via Item Set — either a
  *  known, non-empty flat `rel:item` array, or a `cursor` (API-searched)
@@ -412,17 +413,29 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
           })}
         </g>
       </svg>
+      {/* Centered, not tucked in a corner — this is the fetch a user is
+       * most likely to actually sit and wait on (opening a whole new
+       * catalog, sometimes a slow API root), so it needs to read as "the
+       * app is working on it" at a glance, not a small note easy to miss:
+       * "当打开一份数据的时候,常常需要加载很久,所以加载的时候需要有加载的UI,
+       * 动画等等" (opening a dataset often takes a long time — loading needs
+       * a real UI and an animation). */}
       {!layout && (
         <div
           style={{
             position: 'absolute',
-            top: 16,
-            left: 16,
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
             color: 'var(--color-text-muted)',
             fontSize: 13,
           }}
         >
-          loading…
+          <Spinner size={22} />
+          Loading catalog…
         </div>
       )}
       {tooltip && (
@@ -857,15 +870,18 @@ function TreeNodeView({
         {labelText}
       </text>
       {loading ? (
-        <text
-          dx={labelDx}
-          dy={18}
-          textAnchor={labelOnLeft ? 'end' : 'start'}
-          fontSize={10}
-          style={{ fill: 'var(--color-text-faint)' }}
-        >
-          loading…
-        </text>
+        <>
+          <Spinner size={10} color="var(--color-text-faint)" x={labelOnLeft ? labelDx - 10 : labelDx} y={11} />
+          <text
+            dx={labelOnLeft ? labelDx - 14 : labelDx + 14}
+            dy={18}
+            textAnchor={labelOnLeft ? 'end' : 'start'}
+            fontSize={10}
+            style={{ fill: 'var(--color-text-faint)' }}
+          >
+            Loading…
+          </text>
+        </>
       ) : (
         !showItemSetBox &&
         (isApiSearched ? (
