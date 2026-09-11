@@ -3464,7 +3464,108 @@ app); a second Back landed on the *earlier* session's Item selection,
 with Inspector correctly showing that Item's own Human tab again — not
 just the right URL in the bar, the actual UI re-rendered to match.
 
-## 46. What's deliberately deferred (not forgotten)
+## 46. Landing-page cards: a real raggedness bug, and an API badge to match STAC Browser
+
+"我觉得我们似乎不需要...卡片里面的文字高高低低,一点都不整齐...我们是不是还能做
+更好呢" (the text inside the cards is uneven, not aligned at all — can we
+do better here too), plus a direct comparison to STAC Browser, which
+shows whether an entry is a static catalog or a live API at a glance.
+
+Checked what was actually rendering rather than assuming a text-align bug:
+titles/descriptions were already left-aligned; the real issue was each
+card's small `href` line sitting at a different height card-to-card in
+the same row, purely because descriptions wrap to different numbers of
+lines — a 1-line description leaves the URL sitting high, a 3-line one
+leaves it much lower, so a row of cards reads as jagged/staggered even
+though nothing was ever actually centered. Fixed by making each card an
+internal flex column and pinning the `href` line to the bottom via
+`marginTop: 'auto'` — every card in a row now ends on the same true
+baseline regardless of its own description length. Also added explicit
+`width: '100%'`/`boxSizing: 'border-box'` to each card `<button>` rather
+than relying on CSS Grid's own default stretch behavior for a form
+control, which some browsers don't apply the same way they would to a
+plain `<div>` — a real, known cross-browser gotcha, not a hypothetical
+one, worth closing defensively even though it wasn't reproducible in the
+one engine tested here.
+
+For the second half: `KNOWN_CATALOGS` entries gained an `isApi` flag (set
+on Earth Search and Microsoft Planetary Computer, the only two actually
+confirmed as live query endpoints — everything else was verified as a
+static catalog per §19/§43's own methodology), rendered as the exact same
+"API" pill already used everywhere else in the app (Structure Lens's
+tree, Item Set) — only the special case gets a badge, matching both this
+app's own established convention and STAC Browser's own, which it was
+originally copied from in the first place (§33).
+
+## 47. Closing the real STAC-Index gap: 33 more verified live APIs
+
+"然后我在看stac browser还是有更多的数据我们没有，原因是?" (I notice STAC
+Browser still has more data than we do — why?), followed by a direct
+choice via three options — verify+add the ~60 (really 42, see below)
+unadded API-type entries; verify+add newly-appeared static entries; or
+check one specific catalog — with "先补 API 类型的这 60 个（推荐）" (fill in
+the API-type ones first) as the answer.
+
+Fetched STAC Index's own directory live (`stacindex.org/api/catalogs`,
+147 entries) rather than trusting a remembered count: 62 are flagged
+`isApi`, but 18 of those are `isPrivate` (auth-required, not real public
+candidates), leaving 44 genuine public API candidates — 42 once Earth
+Search and Planetary Computer (already here) are excluded, not the ~60
+estimated before actually running the query.
+
+Verified each of the 42 the same way §19 verified the static list: a real
+GET with an `Origin` header (not just plain reachability), checking for
+`Access-Control-Allow-Origin` on the response, and confirming the body
+has a genuine `stac_version` rather than a superficially similar OGC API
+- Records response. 34 passed. Excluded from the 34:
+
+- Two GISTDA Thailand entries ("Drought Index", "Flood disaster") whose
+  STAC Index URLs have a literal `?api_key=...` query string baked in —
+  not this project's credential to redistribute by hardcoding into a
+  public source file, decided without asking since it's a clear case, not
+  a judgment call.
+- "SkyServe Mission Data" (an Ellipsis Drive URL), whose path contains
+  what looks like an embedded personal access token — same reasoning,
+  excluded rather than silently added.
+- Five more failed outright at check time (two TLS certificate errors,
+  two timeouts, one HTTP 502, one HTTP 500) — genuinely unreachable, not
+  a false negative worth relitigating: Digital Earth Australia, ESA
+  Catalog, FAIRiCUBE Hub Catalog, FedEO Clearinghouse, KAGIS Katalog, UVT
+  STAC Catalog.
+
+Two of the 34 needed a closer look before trusting the pass:
+
+- Boettiger Lab Geospatial Datasets and ERS open data are both plain
+  static `catalog.json` files (only `child`/`root`/`self` links) that
+  nonetheless declare a `conformsTo` array — enough for this app's own
+  `detectSourceKind` (`graph.ts`) to classify them as `api-search`, same
+  as a real STAC API root. Rather than assume this works, opened both in
+  the actual running app via Playwright: children loaded and rendered
+  correctly, "API" badge included, in both cases — a real, not
+  hypothetical, verification.
+- Google Earth Engine's openEO backend has no `conformsTo` and no
+  `rel:search` at all (so this app's own detection — and the `isApi` flag
+  below — correctly does *not* mark it as an API), but its `rel:data`
+  link points at a real OGC-Collections-shaped endpoint with genuine STAC
+  `Collection` objects (`stac_version`, `extent`, etc.) — 1046 of them.
+  Confirmed by opening it in the real app: took about 10 seconds to load
+  through the `collectionsEndpoint` fallback path built for Planetary
+  Computer in §43, then rendered correctly.
+
+All 33 additions (34 passing minus the token-bearing one) got hand-written
+one-sentence descriptions grounded in each entry's own real `title`/
+`description` fields, not generic filler — and `isApi: true` only where
+this app's own runtime detection would actually treat it as one, checked
+directly against each entry's raw JSON rather than copied from STAC
+Index's own (looser) `isApi` flag. Known catalogs: 69 → 102. Verified via
+Playwright against the real running dev server: card count, API badge
+count, and the search-filter box all behave correctly post-change.
+
+Still open, not addressed this round: STAC Index's static (non-API) side
+has grown too (85 listed vs. 67 here) — a known, real gap left for a
+possible future pass, not silently closed under cover of this one.
+
+## 48. What's deliberately deferred (not forgotten)
 
 - Type icons (§44) in Structure Lens's own tree, not just Inspector —
   asked about directly right after §44 landed: "有没有可能在tree view里面也
@@ -3529,19 +3630,13 @@ just the right URL in the bar, the actual UI re-rendered to match.
   is rather than flagging what's missing. Would need `loadChildren`/
   `loadItems` to return failures alongside successes, and a synthetic
   "failed to load" tree leaf similar to the existing "+N more" one.
-- Growing the landing page's known-catalog list further — now at 68 (§11's
-  original 8 plus §19's 61, minus 2 removed after closer inspection, plus
-  Earth Search added in §22), essentially all of STAC Index's ~85 static,
-  non-API entries checked at this point (a handful excluded for missing
-  CORS, dead links, not-genuine-STAC, or plain-`http://`; see §19). What's
-  left to grow the list further is STAC Index adding new entries over time,
-  not a backlog of unchecked ones sitting here — re-run §19's scripted
-  method periodically rather than assuming the list is permanently done.
-- STAC Index's other ~61 STAC-API (dynamic search) entries are still not
-  added — §22 proves the detection/fetch pipeline works (via Earth Search),
-  but growing the API side of the list the same methodical, individually-
-  verified way §19 grew the static side is separate, not-yet-done work,
-  not a blocker that was ever actually about `ApiSearchSource` not existing.
+- Growing the landing page's known-catalog list further — now at 102
+  (§11's original 8, §19's static pass, Earth Search in §22, Planetary
+  Computer in §43, and §47's 33 more APIs). §47 closed the API-side gap;
+  the *static* side has not been re-swept since §19 and STAC Index's
+  static listing has grown past what's here (85 there vs. 67 static
+  entries here) — re-run §19's scripted method periodically rather than
+  assuming either side of the list is permanently done.
 - `CHILD_PAGE_SIZE`/`EXPAND_ALL_BUDGET` (§11, §17; the latter renamed from
   `AUTO_EXPAND_BUDGET` once the cascade it capped became manual) are
   untuned constants (100 and 60) picked to fix NZ Imagery's 833-wide root

@@ -18,12 +18,14 @@ const KNOWN_CATALOGS = [
     description:
       'A real STAC API, not a static catalog — Sentinel-2, Landsat, and more, queried live rather than link-walked.',
     href: 'https://earth-search.aws.element84.com/v1',
+    isApi: true,
   },
   {
     title: 'Microsoft Planetary Computer',
     description:
       '~136 real-world Collections (Sentinel, Landsat, MODIS, Daymet, and more) via a pure STAC API with no static rel:child links at all — discovered through its OGC "Collections" listing endpoint instead.',
     href: 'https://planetarycomputer.microsoft.com/api/stac/v1/',
+    isApi: true,
   },
   // The rest are static catalogs sourced from STAC Index (stacindex.org) —
   // the same public directory STAC Browser itself defers to rather than
@@ -363,6 +365,214 @@ const KNOWN_CATALOGS = [
     description: 'Geospatial infrastructure data for the Municipality of Pergamino, Buenos Aires Province, Argentina.',
     href: 'https://data.source.coop/nlebovits/pergamino-ide/catalog.json',
   },
+  // A third pass, this time over STAC Index's ~42 API-type entries not yet
+  // represented here (this app had only Earth Search and Planetary Computer
+  // out of 44 real public ones) — same GET+Origin-header CORS check and
+  // genuine-STAC-content check as the static pass above, scripted the same
+  // way. 34 of 42 passed; excluded: two GISTDA Thailand endpoints whose STAC
+  // Index URLs have an `?api_key=...` baked in (not ours to redistribute),
+  // one Ellipsis Drive URL with what looks like an embedded access token as
+  // a path segment (SkyServe Mission Data), and five more that were simply
+  // unreachable (timeout, expired cert, or 5xx) at check time. `isApi` below
+  // mirrors this app's own runtime detection (`conformsTo`/rel:search), not
+  // a copy of STAC Index's own flag — checked directly against each entry.
+  {
+    title: 'Astraea Earth OnDemand',
+    description: 'Earth OnDemand — imagery query and analysis over commercial and public satellite archives.',
+    href: 'https://eod-catalog-svc-prod.astraea.earth/',
+    isApi: true,
+  },
+  {
+    title: 'Boettiger Lab Geospatial Datasets',
+    description: 'Biodiversity, conservation, census, and environmental datasets from UC Berkeley, on National Research Platform storage.',
+    href: 'https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json',
+    isApi: true,
+  },
+  {
+    title: 'BON in a Box STAC',
+    description: "Layers used by GEO BON's biodiversity-monitoring workflow tool.",
+    href: 'https://stac.geobon.org/',
+    isApi: true,
+  },
+  {
+    title: 'Canadian Geospatial Data Collections',
+    description: "Canada's federal geospatial datacube, served via stac-fastapi.",
+    href: 'https://datacube.services.geo.ca/stac/api/',
+    isApi: true,
+  },
+  {
+    title: 'CBERS and Amazonia-1 on AWS',
+    description: "CBERS 4/4A and Amazonia-1 satellite imagery over Brazil, on AWS Open Data.",
+    href: 'https://stac.scitekno.com.br/v100/',
+    isApi: true,
+  },
+  {
+    title: 'Copernicus Data Space Ecosystem',
+    description: 'Asset-level catalogue of Copernicus Sentinel and other Earth-observation missions, actively maintained by ESA.',
+    href: 'https://stac.dataspace.copernicus.eu/v1/',
+    isApi: true,
+  },
+  {
+    title: 'CyVerse STAC API',
+    description: 'Geospatial data discovery API from the CyVerse research-computing platform.',
+    href: 'https://stac.cyverse.org/',
+    isApi: true,
+  },
+  {
+    title: 'data.geo.admin.ch',
+    description: "The Swiss Federal Spatial Data Infrastructure's own data catalog.",
+    href: 'https://data.geo.admin.ch/api/stac/v1/',
+    isApi: true,
+  },
+  {
+    title: 'Destination Earth Data Lake (DEDL) API',
+    description: "The EU's Destination Earth Harmonized Data Access STAC API.",
+    href: 'https://hda.data.destination-earth.eu/stac/v2',
+    isApi: true,
+  },
+  {
+    title: 'Digital Earth Africa',
+    description: 'Continent-scale Earth-observation datasets for Africa (cropland, water, coastlines, and more).',
+    href: 'https://explorer.digitalearth.africa/stac/',
+    isApi: true,
+  },
+  {
+    title: 'Digitale Orthophotos Niedersachsen',
+    description: 'Aerial orthophotos (DOP RGBI) of Lower Saxony, Germany.',
+    href: 'https://dop.stac.lgln.niedersachsen.de',
+    isApi: true,
+  },
+  {
+    title: 'Earth Genome: Sentinel-2 L2A Temporal Mosaics',
+    description: 'A public-good STAC instance of Sentinel-2 L2A temporal mosaics from Earth Genome.',
+    href: 'https://stac.earthgenome.org/',
+    isApi: true,
+  },
+  {
+    title: 'EasierData',
+    description: 'A stac-fastapi deployment for the EasierData open geospatial data project.',
+    href: 'https://stac.easierdata.info',
+    isApi: true,
+  },
+  {
+    title: 'EOC EO Products Service',
+    description: "DLR's Earth Observation Center — metadata and access for its EO collections and products.",
+    href: 'https://geoservice.dlr.de/eoc/ogc/stac/v1/',
+    isApi: true,
+  },
+  {
+    title: 'ERS open data',
+    description: "Roscosmos's open Earth-observation datasets — Arktika-M, Elektro-L, and Meteor-M mosaics.",
+    href: 'https://s3.gptl.ru/stac-web-free/catalog.json',
+    isApi: true,
+  },
+  {
+    title: 'GEP Supersites CSK and CSG data',
+    description: 'COSMO-SkyMed and CSG SAR data over geohazard supersites, on a stac-fastapi deployment.',
+    href: 'https://gep-supersites-stac.terradue.com/',
+    isApi: true,
+  },
+  {
+    title: 'Google Earth Engine (openEO)',
+    description: "Google Earth Engine's openEO backend — 1000+ real datasets, browsable through its own Collections listing rather than a STAC search endpoint.",
+    href: 'https://earthengine.openeo.org/v1.0/',
+  },
+  {
+    title: "HUB Ocean's Ocean Data Platform Catalog",
+    description: 'Public ocean and marine datasets from HUB Ocean.',
+    href: 'https://api.hubocean.earth/api/stac',
+    isApi: true,
+  },
+  {
+    title: 'Impact Observatory STAC API',
+    description: 'Land-use/land-cover and other AI-derived geospatial datasets from Impact Observatory.',
+    href: 'https://api.impactobservatory.com/stac-aws/',
+    isApi: true,
+  },
+  {
+    title: 'INPE STAC Server',
+    description: "Brazil's National Institute for Space Research (INPE) — Earth-observation collections from its Data Cube Brazil program.",
+    href: 'https://data.inpe.br/bdc/stac/v1/',
+    isApi: true,
+  },
+  {
+    title: 'Kentucky From Above SpatioTemporal Asset Catalog',
+    description: 'Aerial imagery and LiDAR elevation data for the Commonwealth of Kentucky since 2010.',
+    href: 'https://spved5ihrl.execute-api.us-west-2.amazonaws.com/',
+    isApi: true,
+  },
+  {
+    title: 'MISTEO STAC SERVER',
+    description: 'A stac-server deployment for MISTEO Earth-observation data.',
+    href: 'https://stac-server.dev2prod.co/',
+    isApi: true,
+  },
+  {
+    title: 'MTD STAC API',
+    description: "Scientific productions from France's UMR TETIS and UMR Espace-Dev remote-sensing research units.",
+    href: 'https://api.stac.teledetection.fr',
+    isApi: true,
+  },
+  {
+    title: 'NASA CMR CLOUDSTAC Proxy',
+    description: "NASA's Common Metadata Repository, cloud-hosted-holdings variant — each linked provider exposes its own STAC endpoint.",
+    href: 'https://cmr.earthdata.nasa.gov/cloudstac/',
+    isApi: true,
+  },
+  {
+    title: 'NASA CMR STAC',
+    description: "NASA's Common Metadata Repository as a STAC API — each linked provider exposes its own STAC endpoint.",
+    href: 'https://cmr.earthdata.nasa.gov/stac/',
+    isApi: true,
+  },
+  {
+    title: 'OpenAerialMap',
+    description: 'Openly licensed aerial and drone imagery, contributed by the humanitarian mapping community.',
+    href: 'https://api.imagery.hotosm.org/stac',
+    isApi: true,
+  },
+  {
+    title: 'Paituli STAC (Finland)',
+    description: 'Finnish geospatial datasets from the Paituli data service, via a GeoServer OGC API - STAC endpoint.',
+    href: 'https://paituli.csc.fi/geoserver/ogc/stac/v1',
+    isApi: true,
+  },
+  {
+    title: 'Panoramax',
+    description: 'Geolocated street-level and 360° pictures from a Panoramax instance.',
+    href: 'https://api.panoramax.xyz/api/',
+    isApi: true,
+  },
+  {
+    title: 'PGC Data Catalog',
+    description: "The Polar Geospatial Center's own digital elevation models, via a live STAC API (a static PGC DEM catalog is already above).",
+    href: 'https://stac.pgc.umn.edu/api/v1/',
+    isApi: true,
+  },
+  {
+    title: 'Super-Resolved Sentinel-2 2.5m STAC API',
+    description: 'A live STAC API over the Copernicus Sentinel-2 L2A catalogue, serving super-resolved 2.5m imagery.',
+    href: 'https://console.semablu.com/py/stac',
+    isApi: true,
+  },
+  {
+    title: 'Thünen Earth Observation (ThEO)',
+    description: "Germany's Thünen Institute — satellite-derived land cover, crop type, and grassland dynamics.",
+    href: 'https://eodata.thuenen.de/stac/api/v1/',
+    isApi: true,
+  },
+  {
+    title: 'USGS Landsat Collection 2 API',
+    description: 'USGS Landsat Collection 2 imagery, via LandsatLook.',
+    href: 'https://landsatlook.usgs.gov/stac-server/',
+    isApi: true,
+  },
+  {
+    title: 'WorldPop STAC API',
+    description: 'Global population distribution and covariate datasets from WorldPop.',
+    href: 'https://api.stac.worldpop.org',
+    isApi: true,
+  },
 ]
 
 /** Entry point, not the explorer itself — pick or paste a catalog first,
@@ -536,6 +746,26 @@ export function LandingPage({
                 key={cat.href}
                 onClick={() => onOpen(cat.href)}
                 style={{
+                  // Explicit, not left to CSS Grid's own default stretch
+                  // behavior — a `<button>` is a form control, and some
+                  // browsers size those to their own content rather than
+                  // stretching to fill a grid cell the way a plain `<div>`
+                  // would, silently reintroducing per-card widths flush
+                  // against the buggy visual this fixes. `display: flex` +
+                  // the href's own `marginTop: auto` below is what actually
+                  // fixes the reported raggedness, though — a differently-
+                  // long description (1 line vs. 3) used to leave the
+                  // short URL line sitting at a different height card to
+                  // card in the same row, reading as "参差不齐...居中对齐"
+                  // (uneven, "like it's all centered") even though nothing
+                  // was ever horizontally centered — pinning the URL to
+                  // each card's own bottom edge instead gives every card in
+                  // a row the same true bottom line, regardless of how
+                  // long its own description happens to be.
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  flexDirection: 'column',
                   textAlign: 'left',
                   padding: '12px 14px',
                   borderRadius: 'var(--radius-md)',
@@ -544,7 +774,34 @@ export function LandingPage({
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: 14 }}>{cat.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: 14 }}>{cat.title}</div>
+                  {/* Same tag, same convention, as every other API-backed
+                   * node in the app (Structure Lens's own tree, Item Set) —
+                   * only the special case (a live query endpoint) gets a
+                   * badge; the default (static) case stays plain, matching
+                   * STAC Browser's own convention this was originally
+                   * copied from. Asked about directly: "比如stac browser就
+                   * 能看出是static catalog还是api等等的,我们是不是还能做更好呢"
+                   * (STAC Browser lets you tell static vs. API apart — can
+                   * we do better here too). */}
+                  {cat.isApi && (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        flexShrink: 0,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: '2px 7px',
+                        borderRadius: 999,
+                        background: 'var(--color-badge-api-bg)',
+                        color: 'var(--color-badge-api-text)',
+                      }}
+                    >
+                      API
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
                   {cat.description}
                 </div>
@@ -552,7 +809,14 @@ export function LandingPage({
                   style={{
                     fontSize: 11,
                     color: 'var(--color-text-faint)',
-                    marginTop: 4,
+                    // The actual fix for the reported unevenness — pushes
+                    // this line to the bottom of the card's own flex
+                    // column regardless of how many lines the description
+                    // above it wrapped to, so every card in a row ends on
+                    // the same true baseline instead of wherever its own
+                    // description happened to stop.
+                    marginTop: 'auto',
+                    paddingTop: 8,
                     fontFamily: 'var(--font-mono)',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
