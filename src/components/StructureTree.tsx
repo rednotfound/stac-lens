@@ -189,10 +189,19 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   // the session remembers where its box was left, rather than resetting
   // every time browsingHref changes.
   const [boxOffsets, setBoxOffsets] = useState<Map<string, { dxHoriz: number; dyVert: number }>>(new Map())
+  // The Item Set box's own size, independently per node (same reasoning as
+  // `boxOffsets`) — defaults wide enough for Temporal/Spatial to actually
+  // be legible from the start, not just the List view: "明显显示时间和显示
+  // 地图的部分是要更宽的panel，我宁愿你开始就给我很宽的panel，然后我可以自动拖拽
+  // 右下角来改变panel的尺寸" (the Temporal/Spatial views clearly need a wider
+  // panel — I'd rather it start wide, and let me drag the bottom-right
+  // corner myself to resize it).
+  const [boxSizes, setBoxSizes] = useState<Map<string, { width: number; height: number }>>(new Map())
 
   function resetLayout() {
     setDragOffsets(new Map())
     setBoxOffsets(new Map())
+    setBoxSizes(new Map())
   }
 
   function effectiveXY(n: HierarchyPointNode<TreeDatum>): { x: number; y: number } {
@@ -386,10 +395,10 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
         >
           Expand all catalogs
         </button>
-        {(dragOffsets.size > 0 || boxOffsets.size > 0) && (
+        {(dragOffsets.size > 0 || boxOffsets.size > 0 || boxSizes.size > 0) && (
           <button
             onClick={resetLayout}
-            title="Snap every manually-dragged node and Item Set box back to its computed position"
+            title="Snap every manually-dragged node and Item Set box back to its computed position/size"
             style={{
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
@@ -466,6 +475,20 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                     const next = new Map(prev)
                     const base = prev.get(n.data.href) ?? ZERO_BOX_OFFSET
                     next.set(n.data.href, { dxHoriz: base.dxHoriz + dxLocal, dyVert: base.dyVert + dyLocal })
+                    return next
+                  })
+                }}
+                boxSize={
+                  boxSizes.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }
+                }
+                onBoxResizeBy={(dxLocal, dyLocal) => {
+                  setBoxSizes((prev) => {
+                    const next = new Map(prev)
+                    const base = prev.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }
+                    next.set(n.data.href, {
+                      width: Math.max(MIN_BOX_WIDTH, base.width + dxLocal),
+                      height: Math.max(MIN_BOX_HEIGHT, base.height + dyLocal),
+                    })
                     return next
                   })
                 }}
@@ -763,17 +786,26 @@ interface TreeNodeProps {
    *  the swapped (vertical, horizontal) convention node offsets use. */
   boxOffset: { dxHoriz: number; dyVert: number }
   onBoxDragBy: (dxLocal: number, dyLocal: number) => void
+  boxSize: { width: number; height: number }
+  onBoxResizeBy: (dxLocal: number, dyLocal: number) => void
 }
 
-const ITEM_SET_BOX_WIDTH = 320
 // Was 220 (~3-4 visible rows in the list inside) — called out directly:
 // "我们明明可能加载到上千啊,一次性只能看到3个我真的无语...我们这个项目也是需要
 // 让人感受到数据的体量和数量的啊" (we can load up to thousands, but only see 3
 // at once — this project needs to make people actually feel the scale of
-// the data too). Sized generously enough to fit the search input, a much
-// taller list (`LIST_MAX_HEIGHT` in ItemSetBrowser.tsx), and the footer
-// without the box's own wrapper needing to scroll in the common case.
-const ITEM_SET_BOX_HEIGHT = 760
+// the data too). Then widened again once Item Set gained real Temporal/
+// Spatial views (§58): a timeline/map needs real horizontal room to be
+// legible, not just enough for a list of id/title rows — "我宁愿你开始就给我
+// 很宽的panel" (I'd rather it start wide from the beginning). Both are now
+// just the *default* — the box is freely resizable per node (below).
+const DEFAULT_BOX_WIDTH = 640
+const DEFAULT_BOX_HEIGHT = 760
+// Small enough to still show a few list rows or a minimal plot, not so
+// small the box becomes useless — a resize past this snaps back rather
+// than shrinking further.
+const MIN_BOX_WIDTH = 320
+const MIN_BOX_HEIGHT = 320
 // Extra horizontal gap between the node and its Item Set box, beyond the
 // normal label offset — enough room to draw a real connecting curve (see
 // the `linkGenerator` call below) rather than the box sitting flush
@@ -797,8 +829,14 @@ function TreeNodeView({
   onNodeDragBy,
   boxOffset,
   onBoxDragBy,
+  boxSize,
+  onBoxResizeBy,
 }: TreeNodeProps) {
   const itemSetBoxRef = useRef<HTMLDivElement | null>(null)
+  // Computed early (not just where the label itself renders, further
+  // down) — the resize-handle effect below needs it too, to know which
+  // direction the box actually grows in.
+  const labelOnLeft = hasRenderedChildren && !isRoot
 
   // The label text, not the circle, is the node's drag handle — moved
   // here deliberately, not left on the circle. The circle already has a
@@ -891,6 +929,46 @@ function TreeNodeView({
     }
   }, [containerRef, showItemSetBox])
 
+  // The box's own resize handle — same `d3.drag()` pattern again. `event.dx`/
+  // `event.dy` are already zoom-scale-corrected via `.container()`, same as
+  // every other drag gesture in this tree, so the box grows by the same
+  // *local* amount regardless of the canvas's current zoom level.
+  const resizeHandleRef = useRef<HTMLDivElement | null>(null)
+  const onBoxResizeByRef = useRef(onBoxResizeBy)
+  useEffect(() => {
+    onBoxResizeByRef.current = onBoxResizeBy
+  })
+  // `labelOnLeft` determines which of the box's own edges is actually
+  // fixed (see the `x` formula on the foreignObject below): when the box
+  // sits to the *left* of its node, its near/right edge is what's pinned
+  // and it grows further left as width increases — so a corner handle
+  // sitting at the box's own visual right edge needs the mouse's
+  // rightward motion to *shrink* width there, the mirror image of the
+  // normal (box-on-the-right) case. Tracked in a ref, not just read from
+  // the outer closure, so the drag callback (bound once per
+  // `containerRef`/`showItemSetBox` change) always sees the current side
+  // even if it flips while the box stays open.
+  const labelOnLeftRef = useRef(labelOnLeft)
+  useEffect(() => {
+    labelOnLeftRef.current = labelOnLeft
+  })
+
+  useEffect(() => {
+    const el = resizeHandleRef.current
+    if (!el) return
+    const behavior = drag<HTMLDivElement, unknown>()
+      .container(() => containerRef.current as unknown as SVGGElement)
+      .on('drag', (event: D3DragEvent<HTMLDivElement, unknown, unknown>) => {
+        const dx = labelOnLeftRef.current ? -event.dx : event.dx
+        onBoxResizeByRef.current(dx, event.dy)
+      })
+    const sel = select(el)
+    sel.call(behavior)
+    return () => {
+      sel.on('.drag', null)
+    }
+  }, [containerRef, showItemSetBox])
+
   if (datum.moreCount) {
     return (
       <g transform={`translate(${y}, ${x})`}>
@@ -929,8 +1007,9 @@ function TreeNodeView({
         : undefined
       : undefined
   // The root has nothing to its left to collide with — always label it to
-  // the right, regardless of expansion state.
-  const labelOnLeft = hasRenderedChildren && !isRoot
+  // the right, regardless of expansion state. (`labelOnLeft` itself is
+  // computed earlier in this component — the resize-handle effect above
+  // needs it too.)
   const labelDx = labelOnLeft ? -(radius + 6) : radius + 6
   const label = node.title ?? node.id
   const labelText = truncateLabel(label)
@@ -1157,10 +1236,10 @@ function TreeNodeView({
             strokeWidth={1.5}
           />
           <foreignObject
-            x={(labelOnLeft ? boxNearX - ITEM_SET_BOX_WIDTH : boxNearX) + boxOffset.dxHoriz}
+            x={(labelOnLeft ? boxNearX - boxSize.width : boxNearX) + boxOffset.dxHoriz}
             y={14 + boxOffset.dyVert}
-            width={ITEM_SET_BOX_WIDTH}
-            height={ITEM_SET_BOX_HEIGHT}
+            width={boxSize.width}
+            height={boxSize.height}
           >
             <div
               ref={itemSetBoxRef}
@@ -1173,6 +1252,7 @@ function TreeNodeView({
               // to `stopPropagation()` on.
               data-block-pan="true"
               style={{
+                position: 'relative',
                 width: '100%',
                 height: '100%',
                 background: 'var(--color-surface)',
@@ -1182,10 +1262,18 @@ function TreeNodeView({
                 boxSizing: 'border-box',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
                 cursor: 'default',
-                // Safety net, not the primary mechanism — the list inside
-                // scrolls on its own (LIST_MAX_HEIGHT); this only kicks in
-                // if the box's other content (search input, footer) ever
-                // pushes the total past ITEM_SET_BOX_HEIGHT.
+                // A flex column, not plain block flow — so ItemSetBrowser's
+                // own content (below) can genuinely fill whatever height
+                // this box currently has (via `flex: 1`) rather than
+                // sitting at a fixed pixel height that a resize wouldn't
+                // actually change anything about.
+                display: 'flex',
+                flexDirection: 'column',
+                // Safety net, not the primary mechanism — the list/plot
+                // area inside sizes itself to the available space
+                // (ItemSetBrowser.tsx); this only kicks in if the box's
+                // other chrome (tabs, search input, footer) ever pushes
+                // the total past the box's own height.
                 overflow: 'auto',
               }}
             >
@@ -1200,6 +1288,7 @@ function TreeNodeView({
                 ref={boxHandleRef}
                 title="Drag to move this panel"
                 style={{
+                  flexShrink: 0,
                   height: 14,
                   marginBottom: 6,
                   borderRadius: 999,
@@ -1208,7 +1297,37 @@ function TreeNodeView({
                   cursor: 'grab',
                 }}
               />
-              <ItemSetBrowser node={node} />
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ItemSetBrowser node={node} />
+              </div>
+              {/* A real corner grip, not a whole-edge drag — matches the
+               * same "dedicated handle, not the whole box" reasoning as
+               * the move-handle above, and the familiar OS-window resize
+               * convention (diagonal cursor at the corner that actually
+               * moves). Which corner that is depends on which side the
+               * box sits on: when it's on the node's *left* (labelOnLeft),
+               * the box's near/right edge is pinned to the node's own
+               * connector line and it grows further left instead — so the
+               * grip sits at the bottom-*left* there, with the mirrored
+               * cursor, not bottom-right; the drag effect above already
+               * flips the sign of `dx` to match. */}
+              <div
+                ref={resizeHandleRef}
+                title="Drag to resize this panel"
+                style={{
+                  position: 'absolute',
+                  ...(labelOnLeft ? { left: 3 } : { right: 3 }),
+                  bottom: 3,
+                  width: 12,
+                  height: 12,
+                  cursor: labelOnLeft ? 'nesw-resize' : 'nwse-resize',
+                  ...(labelOnLeft
+                    ? { borderLeft: '2px solid var(--color-text-faint)', borderRadius: '0 0 0 3px' }
+                    : { borderRight: '2px solid var(--color-text-faint)', borderRadius: '0 0 3px 0' }),
+                  borderBottom: '2px solid var(--color-text-faint)',
+                  opacity: 0.6,
+                }}
+              />
             </div>
           </foreignObject>
         </>

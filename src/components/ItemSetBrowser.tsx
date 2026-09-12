@@ -9,24 +9,12 @@ import { LoadingState } from './LoadingState'
 import { TypeIcon } from './TypeIcon'
 import { ItemsTimeline } from './ItemsTimeline'
 import { ItemsMap } from './ItemsMap'
+import { TabButton } from './TabButton'
 import type { StacNode } from '../stac/types'
 
 type ItemSetView = 'list' | 'temporal' | 'spatial'
 
 const SCROLL_LOAD_THRESHOLD = 120
-// A fixed height, not `maxHeight`-hugging like the list — Leaflet needs a
-// real non-zero pixel container up front (see `ItemsMap`'s own note), and
-// the timeline's own SVG already sizes itself from its data, so matching
-// heights across all three views keeps switching between them from
-// visibly resizing the whole panel each time.
-const PLOT_VIEW_HEIGHT = 480
-// Was 260 (~3-4 visible rows) — called out directly: "我们明明可能加载到上千
-// 啊,一次性只能看到3个我真的无语...我们这个项目也是需要让人感受到数据的体量和
-// 数量的啊" (we can load up to thousands, but only see 3 at once — this
-// project needs to make people actually feel the scale of the data too).
-// Matched by a corresponding increase to ITEM_SET_BOX_HEIGHT in
-// StructureTree.tsx, which this list is embedded inside.
-const LIST_MAX_HEIGHT = 560
 const EMPTY_ITEMS: StacNode[] = []
 
 /** A Collection's direct items, browsable as their own selectable object —
@@ -120,7 +108,7 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
   if (state.status === 'empty') return null
 
   return (
-    <div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Same tag as Structure Lens's own tree node (StructureTree.tsx) —
        * carried through here too so it reads as one consistent signal
        * rather than something only visible before you open the panel:
@@ -158,25 +146,10 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
        * its reset-on-remount (below) regardless, since `useSelectedItems`
        * still checks that flag for its own (currently unreachable)
        * aggregate branch. */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-        {(['list', 'temporal', 'spatial'] as const).map((v) => (
-          <button
-            key={v}
-            onClick={() => setView(v)}
-            style={{
-              fontSize: 11,
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: '1px solid var(--color-border)',
-              background: view === v ? 'var(--color-selection)' : 'var(--color-surface)',
-              color: view === v ? 'var(--color-bg)' : 'var(--color-text-muted)',
-              cursor: 'pointer',
-              textTransform: 'capitalize',
-            }}
-          >
-            {v}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6, borderBottom: '1px solid var(--color-border)' }}>
+        <TabButton label="List" active={view === 'list'} onClick={() => setView('list')} />
+        <TabButton label="Temporal" active={view === 'temporal'} onClick={() => setView('temporal')} />
+        <TabButton label="Spatial" active={view === 'spatial'} onClick={() => setView('spatial')} />
       </div>
       {/* The interactive bbox/datetime-range query tool (draw on Space
        * Lens / drag on Time Lens, "Search"/"Clear") that used to live here
@@ -214,7 +187,8 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
       <div
         onScroll={handleScroll}
         style={{
-          maxHeight: LIST_MAX_HEIGHT,
+          flex: 1,
+          minHeight: 0,
           overflow: 'auto',
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-sm)',
@@ -301,7 +275,8 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
         <div
           ref={plotContainerRef}
           style={{
-            height: PLOT_VIEW_HEIGHT,
+            flex: 1,
+            minHeight: 0,
             overflow: view === 'temporal' ? 'auto' : 'hidden',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-sm)',

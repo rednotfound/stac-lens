@@ -11,6 +11,7 @@ import { TimeLens } from './TimeLens'
 import { SpaceLens } from './SpaceLens'
 import { TypeIcon } from './TypeIcon'
 import { LoadingState } from './LoadingState'
+import { TabButton } from './TabButton'
 import type { ResolvedAsset } from '../stac/types'
 
 type Tab = 'human' | 'json'
@@ -340,27 +341,6 @@ export function DetailPanel() {
         </>
       )}
     </div>
-  )
-}
-
-function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: '6px 12px',
-        fontSize: 12,
-        fontWeight: active ? 600 : 400,
-        background: 'none',
-        border: 'none',
-        borderBottom: active ? '2px solid var(--color-selection)' : '2px solid transparent',
-        color: active ? 'var(--color-selection)' : 'var(--color-text-muted)',
-        cursor: 'pointer',
-        marginBottom: -1,
-      }}
-    >
-      {label}
-    </button>
   )
 }
 

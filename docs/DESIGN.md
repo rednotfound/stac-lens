@@ -4012,8 +4012,87 @@ throughout, and a direct before/after comparison confirmed the extraction
 itself introduced no regression to Inspector's existing Temporal/Spatial
 behavior (same focus-narrowing, same stated-extent suppression rules).
 
-## 59. What's deliberately deferred (not forgotten)
+## 59. §58's tabs reuse the app's own tab style, and the box is now resizable
 
+Two follow-up refinements on §58's view switcher, both asked about
+directly: "如果是tab切换的话，我不知道是不是应该使用我们系统中已经有的tab组件？
+给我一些想法" (if it's a tab switch, shouldn't it reuse the tab component
+the system already has? give me some thoughts), and "明显显示时间和显示地图
+的部分是要更宽的panel，我宁愿你开始就给我很宽的panel，然后我可以自动拖拽右下角
+来改变panel的尺寸" (the Temporal/Spatial views clearly need a wider panel —
+I'd rather it start wide, and let me drag the bottom-right corner myself
+to resize it).
+
+**Reused, not reinvented.** §58's List/Temporal/Spatial switcher had used
+a pill-button style, different from Inspector's own Human/JSON tabs
+(an underline style, `TabButton` — previously a private function inside
+`DetailPanel.tsx`). Extracted it into `TabButton.tsx` and switched Item
+Set to use the exact same component, so there's one tab visual language
+in the app, not two. `DetailPanel.tsx` itself is unaffected beyond the
+import — same look, same behavior, now just sourced from a shared file.
+
+**Wide by default, freely resizable.** The Item Set box's width/height
+(`ITEM_SET_BOX_WIDTH`/`HEIGHT` in `StructureTree.tsx`) were plain module
+constants; renamed to `DEFAULT_BOX_WIDTH`/`HEIGHT` (640×760, width nearly
+doubled from 320) and turned into real per-node state (`boxSizes`, a
+`Map<href, {width,height}>` — same pattern `boxOffsets` already uses for
+remembering a dragged position per Collection). A new corner-drag handle,
+built the same `d3.drag()` way the box's own move-handle already is,
+lets you resize it freely; "Reset layout" now clears sizes back to
+default alongside positions.
+
+A real geometric subtlety, not just a slap-on handle: the box can render
+on *either* side of its node (`labelOnLeft`), and which edge is actually
+fixed differs by side — on the right (the common case), the box's near/
+left edge is pinned and it grows rightward; on the left, its near/*right*
+edge is pinned instead (flush against the node's own connector line) and
+it grows further left. A single bottom-right handle would feel backwards
+on that second side — dragging it rightward would need to *shrink* the
+box, not grow it, since the edge under the cursor is the pinned one. Fixed
+by mirroring both the handle's own position (bottom-left instead of
+bottom-right, matching cursor `nesw-resize` vs `nwse-resize`) and the
+sign of its horizontal delta, based on `labelOnLeft` — tracked in a ref
+(`labelOnLeftRef`) so the drag callback (bound once per box) always reads
+the current side rather than a stale one.
+
+**The resize is also not cosmetic.** Making the outer box bigger without
+its content actually using the extra space would just add dead space —
+`ItemSetBrowser.tsx`'s own List/Temporal/Spatial content area used to be
+fixed-pixel-height constants (`LIST_MAX_HEIGHT`, `PLOT_VIEW_HEIGHT`);
+replaced with a flex-column layout (`flex: 1, minHeight: 0` on the
+content area, chrome — tabs, search box, footer — keeping its own natural
+height) so the list genuinely shows more rows, the timeline genuinely
+gets more horizontal room for tick labels, and Leaflet's map genuinely
+gets a bigger real pixel container, all by however much the box itself
+was resized. Required threading the same flex-column sizing up through
+the box's own wrapper `<div>` in `StructureTree.tsx` too, not just inside
+`ItemSetBrowser.tsx` — a percentage/flex height only resolves against a
+parent that itself has a real resolved height, not just `height: '100%'`
+at every level independently.
+
+Verified against the real running app, not just code review: dragging the
+corner handle on a normal (box-on-the-right) node grew the foreignObject
+from 640×760 to 784×854 for a ~150×100px mouse movement (confirmed via
+its own `width`/`height` attributes, not just visually); the List view
+after resizing showed dozens more rows than before; the Temporal view's
+axis gained multiple additional date tick labels instead of just one; the
+Spatial view's Leaflet map rendered at the new, larger real pixel size
+with all previously-loaded footprints still correctly plotted. The
+mirrored (box-on-the-left) geometry was verified by careful reasoning
+about the existing `x` formula rather than a live drag test — no fixture
+on hand at the time had a node that was both expanded (to have
+`labelOnLeft`) and had its own direct Items (to show a box) at once.
+
+## 60. What's deliberately deferred (not forgotten)
+
+- §59's mirrored resize-handle geometry (the box-on-the-left/`labelOnLeft`
+  case: bottom-left handle, flipped delta sign) was verified by reasoning
+  through the existing `x` formula, not by an actual live drag test — no
+  fixture on hand at the time had a node both expanded (to be
+  `labelOnLeft`) and holding its own direct Items (to show a box) at the
+  same moment. Worth a real Playwright drag confirmation the next time
+  such a fixture turns up, rather than trusting the reasoning
+  indefinitely.
 - §41's aggregate multi-item Temporal/Space view finally has its home:
   §58's Item Set Temporal/Spatial tabs. The old `showOnLenses` mechanism
   itself stays permanently retired (§58's tabs read `filtered` directly,
