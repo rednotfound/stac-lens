@@ -11,6 +11,7 @@ import { classifyNodeShape, type StacNode } from '../stac/types'
 import { ItemSetBrowser } from './ItemSetBrowser'
 import { Spinner } from './Spinner'
 import { TypeIcon, type StacObjectKind } from './TypeIcon'
+import { isInlinePreviewAsset } from '../stac/assets'
 
 /** True when a node has direct Items to browse via Item Set — either a
  *  known, non-empty flat `rel:item` array, or a `cursor` (API-searched)
@@ -85,8 +86,28 @@ const ZERO_BOX_OFFSET = { dxHoriz: 0, dyVert: 0 }
 // the same time). See docs/DESIGN.md §33.
 const BLOCK_PAN_ATTR = 'data-block-pan'
 
-interface TooltipState {
-  label: string
+/** What a hovered node's tooltip actually needs to show — more than just
+ *  its label, asked for directly: "hover的任何一个结点的时候可以给更多的信息！
+ *  比如type之类的，如果有缩略图，就应该在hover里面也出现缩略图" (hovering any
+ *  node should show more information — its type, and a thumbnail if one
+ *  exists). `type` is always `Catalog`/`Collection` here (the only two
+ *  kinds Structure Lens ever renders as tree nodes), reusing `TypeIcon`'s
+ *  own type so the tooltip's icon matches the same glyph shown everywhere
+ *  else for that type (Inspector's title, the Legend). */
+interface HoverInfo {
+  type: StacObjectKind
+  title: string
+  note?: string
+  /** This node's own `assets.thumbnail`, if it has a browser-renderable one
+   *  — same `isInlinePreviewAsset` check Inspector's own preview image
+   *  uses, so "does this show a thumbnail" is answered identically in both
+   *  places rather than by a second, looser heuristic here. Real, not
+   *  hypothetical: confirmed directly against Microsoft Planetary
+   *  Computer's own Collections, which carry exactly this. */
+  thumbnailHref?: string
+}
+
+interface TooltipState extends HoverInfo {
   x: number
   y: number
 }
@@ -385,8 +406,8 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                 showItemSetBox={boxHref === n.data.href}
                 onToggle={() => toggle(n.data.href)}
                 onSelect={() => select_(n.data.href)}
-                onHover={(label, clientX, clientY) =>
-                  label ? setTooltip({ label, x: clientX, y: clientY }) : setTooltip(null)
+                onHover={(info, clientX, clientY) =>
+                  info ? setTooltip({ ...info, x: clientX, y: clientY }) : setTooltip(null)
                 }
                 containerRef={zoomGRef}
                 onNodeDragBy={(dxLocal, dyLocal) => {
@@ -439,25 +460,76 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
           Loading catalog…
         </div>
       )}
-      {tooltip && (
-        <div
+      {tooltip && <NodeTooltip tooltip={tooltip} />}
+    </div>
+  )
+}
+
+const TOOLTIP_WIDTH = 220
+const TOOLTIP_THUMBNAIL_HEIGHT = 140
+
+/** A separate component (not inlined at the call site) mainly for the
+ *  viewport clamp below — a thumbnail can make this tooltip tall enough to
+ *  run off the bottom/right edge near a screen's edge, which a fixed
+ *  `cursor + offset` position (the tooltip's old, thumbnail-less behavior)
+ *  never had to account for. */
+function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
+  const estHeight = 34 + (tooltip.note ? 16 : 0) + (tooltip.thumbnailHref ? TOOLTIP_THUMBNAIL_HEIGHT + 8 : 0)
+  const margin = 8
+  let left = tooltip.x + 14
+  let top = tooltip.y + 12
+  if (left + TOOLTIP_WIDTH > window.innerWidth - margin) left = tooltip.x - TOOLTIP_WIDTH - 14
+  if (top + estHeight > window.innerHeight - margin) top = tooltip.y - estHeight - 12
+  left = Math.max(margin, left)
+  top = Math.max(margin, top)
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        width: TOOLTIP_WIDTH,
+        background: 'var(--color-text)',
+        color: 'var(--color-bg)',
+        padding: '6px 10px',
+        borderRadius: 'var(--radius-sm)',
+        fontSize: 12,
+        pointerEvents: 'none',
+        zIndex: 10,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          fontSize: 10,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: 0.4,
+          opacity: 0.7,
+        }}
+      >
+        <TypeIcon type={tooltip.type} size={11} color="var(--color-bg)" />
+        {tooltip.type}
+      </div>
+      <div style={{ marginTop: 3 }}>{tooltip.title}</div>
+      {tooltip.note && <div style={{ marginTop: 3, opacity: 0.75, fontSize: 11 }}>{tooltip.note}</div>}
+      {tooltip.thumbnailHref && (
+        <img
+          src={tooltip.thumbnailHref}
+          alt=""
           style={{
-            position: 'fixed',
-            left: tooltip.x + 14,
-            top: tooltip.y + 12,
-            background: 'var(--color-text)',
-            color: 'var(--color-bg)',
-            padding: '4px 8px',
+            display: 'block',
+            marginTop: 6,
+            width: '100%',
+            maxHeight: TOOLTIP_THUMBNAIL_HEIGHT,
+            objectFit: 'cover',
             borderRadius: 'var(--radius-sm)',
-            fontSize: 12,
-            maxWidth: 380,
-            pointerEvents: 'none',
-            zIndex: 10,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
           }}
-        >
-          {tooltip.label}
-        </div>
+        />
       )}
     </div>
   )
@@ -615,7 +687,7 @@ interface TreeNodeProps {
   showItemSetBox: boolean
   onToggle: () => void
   onSelect: () => void
-  onHover: (label: string | null, clientX: number, clientY: number) => void
+  onHover: (info: HoverInfo | null, clientX: number, clientY: number) => void
   /** The zoom-transformed `<g>` — passed to every `d3.drag().container()`
    *  call in this node so its coordinate math (dx/dy already correctly
    *  divided by the current zoom scale) lines up with `tree()`'s own x/y
@@ -811,9 +883,13 @@ function TreeNodeView({
   // Hovering anywhere on the node (not just the tag itself) surfaces the
   // fuller explanation — simpler than a second, tag-scoped hover zone, and
   // still answers the real question directly: is this one static or live?
-  const tooltipText = isApiSearched
-    ? `${label} — API-searched, item count unknown until queried`
-    : label
+  const previewAsset = node.assets.find(isInlinePreviewAsset)
+  const hoverInfo: HoverInfo = {
+    type: node.type,
+    title: label,
+    note: isApiSearched ? 'API-searched — item count unknown until queried' : undefined,
+    thumbnailHref: previewAsset?.href,
+  }
 
   function handleCircleClick() {
     onSelect()
@@ -821,10 +897,10 @@ function TreeNodeView({
   }
 
   function handleEnter(e: React.MouseEvent) {
-    onHover(tooltipText, e.clientX, e.clientY)
+    onHover(hoverInfo, e.clientX, e.clientY)
   }
   function handleMove(e: React.MouseEvent) {
-    onHover(tooltipText, e.clientX, e.clientY)
+    onHover(hoverInfo, e.clientX, e.clientY)
   }
   function handleLeave() {
     onHover(null, 0, 0)

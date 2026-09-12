@@ -3695,7 +3695,46 @@ Verified visually: opened the Legend against a real catalog, screenshotted
 and cropped/zoomed the panel specifically to confirm each icon reads
 clearly at its actual 12px render size, not just that it exists in the DOM.
 
-## 52. What's deliberately deferred (not forgotten)
+## 52. Hovering a tree node now shows its type — and its thumbnail, if it has one
+
+"我想让hover的任何一个结点的时候可以给更多的信息！比如type之类的，如果有缩略图，
+就应该在hover里面也出现缩略图" (hovering any node should show more
+information — its type, and if there's a thumbnail, that should appear
+in the hover too).
+
+The tooltip (`StructureTree.tsx`) used to be one plain-text line — the
+node's own title, or that plus an API-searched note. Restructured into a
+small `HoverInfo` (`type`, `title`, `note?`, `thumbnailHref?`) computed
+once per node next to its existing label/API-tag logic, rendered by a new
+`NodeTooltip` component: a small uppercase type row (reusing `TypeIcon`,
+the same glyph shown in Inspector and the Legend, §51), the title, the
+API note when present, and the thumbnail when the node has one.
+
+The thumbnail check reuses `isInlinePreviewAsset` (`stac/assets.ts`)
+verbatim — the exact same "is this a browser-renderable `thumbnail`-role
+asset" test Inspector's own preview image already uses, so "does this
+node get a thumbnail" is answered identically in both places rather than
+by a second, looser heuristic invented here. Real, not hypothetical:
+confirmed directly against Microsoft Planetary Computer's Collections,
+several of which (Sentinel-2 L2A among them) carry exactly this.
+
+A real subtlety found while verifying, not assumed: a thumbnail can make
+this tooltip tall enough to run off the bottom or right edge of the
+window near a screen's edge, which the old text-only tooltip's fixed
+`cursor + offset` position never had to account for — added a simple
+viewport clamp (flip to the node's left/above when the estimated box
+would overflow) rather than leaving part of it cut off.
+
+Verified against a real thumbnail-bearing Collection (Planetary
+Computer's Sentinel-2 L2A — confirmed the same asset is present via a
+direct `curl` of the live API first, not assumed from memory), waiting
+for the actual cross-origin image to finish loading (`img.complete`/
+`naturalWidth` checked directly, not just DOM presence) before
+screenshotting, and separately against a node with no thumbnail (Africa
+Agriculture Adaptation Atlas) to confirm the tooltip stays compact with
+no wasted space when there's nothing to show.
+
+## 53. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
