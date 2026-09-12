@@ -3734,7 +3734,43 @@ screenshotting, and separately against a node with no thumbnail (Africa
 Agriculture Adaptation Atlas) to confirm the tooltip stays compact with
 no wasted space when there's nothing to show.
 
-## 53. What's deliberately deferred (not forgotten)
+## 53. The hover tooltip's real job: understand what's inside before clicking
+
+"hover的目的是为例让人快速理解这里面可能有什么，所以，难道不应该也给一些介绍在
+里面么" (the whole point of hovering is to quickly understand what might be
+inside — shouldn't it show a description too?), asked directly right
+after §52's type/thumbnail tooltip landed.
+
+Added `node.description` (truncated to 160 characters, `HoverInfo`'s new
+`description` field) between the title and the existing API note — the
+same field Inspector's own "Description (source)" already shows in full,
+here trimmed to a glanceable snippet.
+
+A real problem surfaced while verifying against an actual fixture, not
+hypothetical: Planetary Computer's Sentinel-2 L2A Collection opens its
+description with a markdown link — `[Sentinel-2](https://sentinel.esa.
+int/web/sentinel/missions/sentinel-2)` — and a raw 160-character
+truncation window spent most of its budget on that URL, leaving almost
+no room for the actual sentence. Fixed with `stripMarkdownLinks`, a
+narrowly scoped `[text](url)` → `text` replace applied only when building
+this snippet — deliberately not a general markdown-rendering pass, and
+deliberately not applied to Inspector's own Description field, which
+still shows the untouched source text: full source fidelity matters more
+there (an intentional "no silent interpretation" rule elsewhere in this
+project) than in a hover snippet whose entire purpose is a fast read.
+
+Bumped `TOOLTIP_WIDTH` from 220 to 240 (description text needs a bit more
+room to read comfortably than a single title line did) and extended the
+tooltip's own viewport-clamp height estimate to account for the extra
+description block.
+
+Verified against two real cases: Africa Agriculture Adaptation Atlas's
+"Population Catalog" (a short, clean one-line description, no thumbnail)
+and Planetary Computer's Sentinel-2 L2A (description *and* thumbnail
+together, confirming the markdown-link fix and the combined layout both
+read correctly, not just the description alone).
+
+## 54. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant

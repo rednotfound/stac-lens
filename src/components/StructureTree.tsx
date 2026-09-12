@@ -41,6 +41,15 @@ function truncateLabel(label: string, maxChars: number = LABEL_MAX_CHARS): strin
   return label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label
 }
 
+/** `[text](url)` → `text` — real STAC descriptions are markdown, and a
+ *  link's raw `url` is dead weight in a short hover snippet specifically
+ *  (see `HoverInfo.description`'s own comment). Only link syntax, not a
+ *  general markdown renderer — bold/italic/etc. read fine as plain
+ *  asterisks in a one-line snippet and aren't worth a heavier pass. */
+function stripMarkdownLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+}
+
 const LABEL_FONT_SIZE = 12
 // A rough average character width for a proportional sans-serif font at
 // this size — not pixel-perfect (some glyphs are wider than others), but
@@ -97,6 +106,21 @@ const BLOCK_PAN_ATTR = 'data-block-pan'
 interface HoverInfo {
   type: StacObjectKind
   title: string
+  /** A short prefix of this node's own `description` — hovering should
+   *  tell you what's actually inside before you commit to clicking in:
+   *  "hover的目的是为了让人快速理解这里面可能有什么，所以，难道不应该也给一些
+   *  介绍在里面么" (the whole point of hovering is to quickly understand
+   *  what might be inside — shouldn't it show a description too?). Markdown
+   *  *link* syntax specifically gets stripped to its link text before
+   *  truncating (`stripMarkdownLinks`) — found directly while verifying
+   *  against a real fixture (Planetary Computer's Sentinel-2 L2A): a
+   *  `[Sentinel-2](https://sentinel.esa.int/...)` link ate most of the
+   *  truncation budget on a raw URL, actively working against "understand
+   *  this quickly." Inspector's own Description field still shows the
+   *  untouched source text — full source fidelity matters more there than
+   *  in a glanceable hover snippet, so this is a deliberately scoped
+   *  exception, not a general markdown-rendering pass. */
+  description?: string
   note?: string
   /** This node's own `assets.thumbnail`, if it has a browser-renderable one
    *  — same `isInlinePreviewAsset` check Inspector's own preview image
@@ -465,16 +489,26 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   )
 }
 
-const TOOLTIP_WIDTH = 220
+const TOOLTIP_WIDTH = 240
 const TOOLTIP_THUMBNAIL_HEIGHT = 140
+// Long enough for a real, useful snippet (STAC descriptions run to whole
+// paragraphs — confirmed directly against Planetary Computer's own
+// Sentinel-2 L2A Collection, 475 real characters) without turning the
+// tooltip into the full Inspector field it's deliberately not trying to
+// replace.
+const TOOLTIP_DESCRIPTION_MAX_CHARS = 160
 
 /** A separate component (not inlined at the call site) mainly for the
- *  viewport clamp below — a thumbnail can make this tooltip tall enough to
- *  run off the bottom/right edge near a screen's edge, which a fixed
- *  `cursor + offset` position (the tooltip's old, thumbnail-less behavior)
- *  never had to account for. */
+ *  viewport clamp below — a thumbnail (or now, a longer description) can
+ *  make this tooltip tall enough to run off the bottom/right edge near a
+ *  screen's edge, which a fixed `cursor + offset` position (the tooltip's
+ *  original, title-only behavior) never had to account for. */
 function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
-  const estHeight = 34 + (tooltip.note ? 16 : 0) + (tooltip.thumbnailHref ? TOOLTIP_THUMBNAIL_HEIGHT + 8 : 0)
+  const estHeight =
+    34 +
+    (tooltip.description ? 46 : 0) +
+    (tooltip.note ? 16 : 0) +
+    (tooltip.thumbnailHref ? TOOLTIP_THUMBNAIL_HEIGHT + 8 : 0)
   const margin = 8
   let left = tooltip.x + 14
   let top = tooltip.y + 12
@@ -515,7 +549,10 @@ function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
         <TypeIcon type={tooltip.type} size={11} color="var(--color-bg)" />
         {tooltip.type}
       </div>
-      <div style={{ marginTop: 3 }}>{tooltip.title}</div>
+      <div style={{ marginTop: 3, fontWeight: 600 }}>{tooltip.title}</div>
+      {tooltip.description && (
+        <div style={{ marginTop: 3, opacity: 0.85, fontSize: 11, lineHeight: 1.4 }}>{tooltip.description}</div>
+      )}
       {tooltip.note && <div style={{ marginTop: 3, opacity: 0.75, fontSize: 11 }}>{tooltip.note}</div>}
       {tooltip.thumbnailHref && (
         <img
@@ -887,6 +924,9 @@ function TreeNodeView({
   const hoverInfo: HoverInfo = {
     type: node.type,
     title: label,
+    description: node.description
+      ? truncateLabel(stripMarkdownLinks(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
+      : undefined,
     note: isApiSearched ? 'API-searched — item count unknown until queried' : undefined,
     thumbnailHref: previewAsset?.href,
   }
