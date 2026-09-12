@@ -10,6 +10,7 @@ import { loader } from '../stac/loaderInstance'
 import { classifyNodeShape, type StacNode } from '../stac/types'
 import { ItemSetBrowser } from './ItemSetBrowser'
 import { Spinner } from './Spinner'
+import { TypeIcon, type StacObjectKind } from './TypeIcon'
 
 /** True when a node has direct Items to browse via Item Set — either a
  *  known, non-empty flat `rel:item` array, or a `cursor` (API-searched)
@@ -523,8 +524,19 @@ function Legend() {
       >
         ✕
       </button>
-      <LegendRow color="var(--color-node-catalog)" label="Catalog" />
-      <LegendRow color="var(--color-node-collection)" label="Collection" />
+      <LegendRow icon="Catalog" color="var(--color-node-catalog)" label="Catalog" />
+      <LegendRow icon="Collection" color="var(--color-node-collection)" label="Collection" />
+      {/* Item and Asset never appear as their own tree nodes (see
+       * useStructureTree's own top-level comment) — shown here anyway, next
+       * to the same two real dot colors above, so the legend doubles as the
+       * one place that teaches all four icons at once, matching how they
+       * already show up together in Inspector (title icon + colored border,
+       * each Asset row's own icon): "我们的图例里面是不是可以加入icon，让人更好
+       * 识别呢" (could we add icons to the legend too, to help people
+       * recognize things better?). No dot swatch for these two — a dot here
+       * would falsely imply a tree node color that doesn't exist. */}
+      <LegendRow icon="Item" color="var(--color-node-item)" label="Item (Detail Panel only)" showDot={false} />
+      <LegendRow icon="Asset" color="var(--color-node-asset)" label="Asset (Detail Panel only)" showDot={false} />
       <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid var(--color-border)' }}>
         <div>● filled — click to expand</div>
         <div>○ hollow — expanded, or nothing to expand into</div>
@@ -545,18 +557,34 @@ function Dot({ color }: { color: string }) {
   )
 }
 
-function LegendRow({ color, label }: { color: string; label: string }) {
+function LegendRow({
+  icon,
+  color,
+  label,
+  showDot = true,
+}: {
+  icon: StacObjectKind
+  color: string
+  label: string
+  /** Off for Item/Asset — neither is ever a real tree-node dot color (see
+   *  the call sites above), so showing one here would falsely suggest a
+   *  tree color that doesn't exist. */
+  showDot?: boolean
+}) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: color,
-          display: 'inline-block',
-        }}
-      />
+      {showDot && (
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: color,
+            display: 'inline-block',
+          }}
+        />
+      )}
+      <TypeIcon type={icon} size={12} color={color} />
       {label}
     </div>
   )

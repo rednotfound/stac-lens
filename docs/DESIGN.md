@@ -3672,7 +3672,30 @@ Element 84"), plus the brief in-between state (artificially delayed via
 Playwright route interception) confirmed to fall back to showing just the
 href, not an empty or duplicated line, until the title resolves.
 
-## 51. What's deliberately deferred (not forgotten)
+## 51. The Legend now teaches all four type icons, not just two dot colors
+
+"你之前说在tree 里面点已经很好了，不需要再加icon，那么我们的图例里面是不是可以
+加入icon，让人更好识别呢" (you said before the tree's own dots are already
+fine and don't need icons — so can we add icons to the Legend instead, to
+help people recognize things better?).
+
+The Legend (`StructureTree.tsx`) is a static explainer panel, not a tree
+node — none of the constraints that shelved icons-on-the-tree itself
+(§44's deferred note, still true) apply here, so this was a low-risk,
+direct win rather than a design conflict to resolve first. Each existing
+row (Catalog, Collection) now shows its `TypeIcon` glyph next to its real
+dot color; two new rows (Item, Asset) show the same icon+color pairing
+Inspector already uses for them, with no dot — neither is ever an actual
+tree-node color, so a dot there would misleadingly imply one. The Legend
+is now the one place that teaches the whole four-icon vocabulary at once,
+reinforcing the same icon/color pairing wherever it shows up elsewhere
+(Inspector's own title icon and colored border, each Asset row).
+
+Verified visually: opened the Legend against a real catalog, screenshotted
+and cropped/zoomed the panel specifically to confirm each icon reads
+clearly at its actual 12px render size, not just that it exists in the DOM.
+
+## 52. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
@@ -3709,7 +3732,10 @@ href, not an empty or duplicated line, until the title resolves.
   radius (6-7px) leaves too little room to simply tuck an icon into the
   existing circle-to-label gap at a legible size. Confirmed as the shared
   understanding to build from later: "先按你说的这么理解可以" (let's go with
-  that understanding for now).
+  that understanding for now). §51 separately gave the Legend its own
+  full icon set, but that's a static explainer panel, not the tree node
+  itself — this bullet (icons directly on a live tree node's label) is
+  still open on its own terms.
 - §34/§34's update built the Human/JSON toggle and standard-extension
   interpreters for `eo`/`view`/`proj`/`sat`/`sar`/`sci`/`processing`/`grid`/
   `s2`, plus a per-asset `gsd`/`raster:bands` data-type badge — still open:
