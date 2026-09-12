@@ -837,14 +837,29 @@ function TreeNodeView({
     onNodeDragByRef.current = onNodeDragBy
   })
 
+  // Tracks an actual drag gesture in progress on *this* label specifically
+  // (not the canvas-wide `dragging` state above, which is d3-zoom's own pan
+  // — a different gesture entirely) — the label's cursor should read
+  // `pointer` until a real drag starts, not `grab` the whole time: "更重要
+  // 的是点击功能,应该让人知道这里可以点,而不是抓手形状的光标" (the more
+  // important thing is the click — the cursor should say "you can click
+  // here," not show a grab hand). The same tension the circle itself used
+  // to have (see this component's own top comment) has simply moved to the
+  // label now that drag lives here instead — same fix, applied here too:
+  // don't let the drag affordance's cursor upstage the primary click
+  // action's own signal.
+  const [labelDragging, setLabelDragging] = useState(false)
+
   useEffect(() => {
     const el = labelRef.current
     if (!el) return
     const behavior = drag<SVGTextElement, unknown>()
       .container(() => containerRef.current as unknown as SVGGElement)
+      .on('start', () => setLabelDragging(true))
       .on('drag', (event: D3DragEvent<SVGTextElement, unknown, unknown>) => {
         onNodeDragByRef.current(event.dx, event.dy)
       })
+      .on('end', () => setLabelDragging(false))
     const sel = select(el)
     sel.call(behavior)
     return () => {
@@ -952,7 +967,25 @@ function TreeNodeView({
     thumbnailHref: previewAsset?.href,
   }
 
-  function handleCircleClick() {
+  // Shared by both the circle and the label now — previously the label's
+  // own click only selected (`onSelect()`), never expanded/collapsed,
+  // which meant "click the name" behaved differently depending on the
+  // node: a Collection with direct Items *looked* like clicking its name
+  // opened the next level (selecting it happens to open its inline Item
+  // Set box as a side effect), while a Catalog's name click visibly did
+  // nothing beyond selecting it — the same click gesture meaning two
+  // different things depending on a shape distinction users have no way
+  // to see in advance: "catalog是必须要点圆圈才会打开下一级,而collection只要
+  // 点名字就会打开下一级!就是这些困惑的操作,使得我们的UI还是不好用" (Catalog
+  // requires clicking the circle to open the next level, while Collection
+  // opens it just by clicking the name — this inconsistency makes the UI
+  // hard to use). Unifying both click targets on the same handler makes
+  // "click here to select and reveal what's next" consistent everywhere,
+  // regardless of node type or shape. Safe to combine with the label's own
+  // drag gesture above — d3-drag only swallows the following click when a
+  // real drag actually moved the pointer past its own threshold, so a
+  // plain click (no movement) still reaches this handler normally.
+  function handleSelectAndToggle() {
     onSelect()
     if (canExpand) onToggle()
   }
@@ -990,7 +1023,7 @@ function TreeNodeView({
         r={radius + 10}
         fill="transparent"
         style={{ cursor: 'pointer' }}
-        onClick={handleCircleClick}
+        onClick={handleSelectAndToggle}
       />
       <circle
         r={radius}
@@ -1027,10 +1060,10 @@ function TreeNodeView({
         fontWeight={selected ? 600 : 400}
         style={{
           fill: selected ? 'var(--color-selection)' : 'var(--color-text)',
-          cursor: 'grab',
+          cursor: labelDragging ? 'grabbing' : 'pointer',
           userSelect: 'none',
         }}
-        onClick={onSelect}
+        onClick={handleSelectAndToggle}
       >
         {labelText}
       </text>

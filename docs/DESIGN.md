@@ -3833,7 +3833,63 @@ three separate Item clicks within one open Item Set box; changed to a new
 value when switching to a different Collection's box entirely, confirming
 the fix didn't just suppress panning outright.
 
-## 56. What's deliberately deferred (not forgotten)
+## 56. Unifying the label's click with the circle's, and fixing its cursor
+
+Two related complaints about the same root cause: "光标移动到比如说collection
+上的时候,确实是手的形状,意味着可以拖拽,但是更重要的是点击功能,应该让人知道这里
+可以点,而不是抓手形状的光标欸" (hovering a Collection shows a grab-hand
+cursor, implying drag — but the more important thing is that it's
+clickable, and the cursor should say that instead), and "这里也有矛盾的操作,
+catalog是必须要点圆圈才会打开下一级,而collection只要点名字就会打开下一级!就是
+这些困惑的操作,使得我们的UI还是不好用" (there's also a real inconsistency:
+a Catalog needs its circle clicked to open the next level, but a
+Collection opens it just by clicking the name — this confusion makes the
+UI hard to use).
+
+Both trace back to the same asymmetry: the circle's click (`onSelect()` +
+toggle-expand if `canExpand`) and the label's click (`onSelect()` only)
+had never done the same thing. A Collection with direct Items only
+*looked* like clicking its name opened the next level — selecting it
+happens to open its inline Item Set box as a side effect (§21) — while a
+Catalog's name click visibly did nothing beyond selecting it, since
+nothing else about a Catalog reacts to mere selection. The same gesture
+meant two different things depending on a shape distinction (leaf-items
+vs. has-children) users have no way to see in advance.
+
+This is the same tension the *circle* itself already resolved once
+before (§32: drag moved off the circle and onto the label specifically so
+the circle's own cursor could stay an unambiguous `pointer`) — it had
+simply reappeared on the label once drag landed there instead, since the
+label kept a plain `cursor: 'grab'` for the drag affordance while its
+click still only did half of what the circle's click did.
+
+Fixed both together, not separately, since they're the same underlying
+problem: the label's `onClick` now calls the exact same handler the
+circle already used (renamed `handleSelectAndToggle`, shared by both) —
+select, and toggle-expand if the node has children — so clicking either
+target always does the identical thing regardless of node type or shape.
+The label's cursor now defaults to `pointer`, switching to `grabbing`
+only once an actual drag gesture starts (tracked via the label's own
+`d3.drag()` `start`/`end` events, not the canvas-wide pan-drag state),
+so the cursor's strongest signal goes to the click action, not to a drag
+affordance most users will still discover naturally by pressing and
+moving. Combining drag and click on the same element stays safe: d3-drag
+only swallows the following click once a real drag has moved the pointer
+past its own threshold, so a plain click still reaches the handler
+normally, exactly as it already did on the circle before §32 moved drag
+away from it.
+
+Verified against the real running app, not just code review: clicking a
+Catalog's name ("Population Catalog," which has one real child
+Collection) now both selects it and expands it to reveal that child —
+confirmed via Playwright reading the rendered tree, not assumed from the
+click handler alone. A real drag (mousedown, move past threshold, mouseup)
+still repositions the label (`getBoundingClientRect` before/after
+confirmed a real position change) and does *not* also trigger a selection
+or expand — confirmed by checking that no Inspector column mounts and no
+child node appears after a pure drag gesture.
+
+## 57. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
