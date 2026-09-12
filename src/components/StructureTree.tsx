@@ -279,19 +279,34 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   // the current view (or not yet expanded into view at all — see the
   // ancestor-auto-expand effect in useStructureTree). Once the selected
   // node actually appears among the rendered nodes, recenter on it — but
-  // only once per distinct selection, so it doesn't fight a manual pan.
+  // only once per distinct *pan target*, so it doesn't fight a manual pan.
+  //
+  // Keyed on `panHref` (the Collection actually being centered on), not
+  // `selectedHref` itself — a real, reported bug: clicking through several
+  // Items in the same already-open, already-visible Item Set box re-panned
+  // the canvas on *every single click*, since each Item has its own distinct
+  // `selectedHref` even though the same Collection (and the same box) stays
+  // on screen the whole time: "不知道为什么，我选择了一个item的瞬间，画面又会
+  // 移动，我感觉是之前开发的功能的残留" (I don't know why, but the instant I
+  // select an Item the view moves again — feels like a leftover from an
+  // earlier feature). It was exactly that: this effect predates Item Set
+  // living inline in the tree at all, from when a selection could only ever
+  // arrive from a genuinely separate Time/Space Lens panel — panHref (not
+  // selectedHref) was already the right unit of "distinct selection" the
+  // comment above described; the guard just never matched it.
   useEffect(() => {
-    if (!selectedHref || selectedHref === lastCenteredRef.current) return
+    if (!selectedHref) return
     // An Item selection has no tree node of its own to find — pan to the
     // Collection that contains it instead.
     const panHref = browsingHref ?? selectedHref
+    if (panHref === lastCenteredRef.current) return
     const target = nodes.find((n) => n.data.href === panHref)
     const svgSel = svgSelRef.current
     const behavior = zoomBehaviorRef.current
     const svgEl = svgRef.current
     if (!target || !svgSel || !behavior || !svgEl) return
 
-    lastCenteredRef.current = selectedHref
+    lastCenteredRef.current = panHref
     const k = viewTransformRef.current.k
     const cy = svgEl.clientHeight / 2
     // Centering the node itself in the middle of the column leaves only

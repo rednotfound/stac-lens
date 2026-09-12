@@ -3801,7 +3801,39 @@ catalog with no click, Item Set rows showing the orange Item icon
 consistently, and the icon correctly inverting to white on the selected
 row without becoming illegible against the blue background.
 
-## 55. What's deliberately deferred (not forgotten)
+## 55. A real, confirmed bug: selecting an Item kept re-panning the canvas
+
+"不知道为什么，我选择了一个item的瞬间，画面又会移动，我感觉是之前开发的功能的
+残留" (I don't know why, but the instant I select an Item the view moves
+again — feels like a leftover from an earlier feature). Correct
+diagnosis, not just a hunch.
+
+Structure Lens's own auto-recenter effect (added for a genuinely different
+case — a selection arriving from Time Lens or Space Lens, back when those
+were separate panels the tree had to pan into view for) was guarded by
+`selectedHref === lastCenteredRef.current`, meant to fire "only once per
+distinct selection." But an Item selection has no tree node of its own to
+center on — the effect already knew this, and pans to `browsingHref` (the
+Collection containing it) instead. The guard, though, was still comparing
+against `selectedHref`, not `browsingHref` — so every single Item clicked
+inside an already-open, already-on-screen Item Set box counted as a "new"
+selection and re-ran the pan, even though the actual pan *target*
+(the Collection, and its box) never moved or changed at all.
+
+Fixed by keying `lastCenteredRef` on `panHref` (`browsingHref ?? selectedHref`)
+instead of `selectedHref` — the unit the effect's own logic already treated
+as "the thing being centered on," just not the unit its skip-guard checked.
+Clicking through Items in the same open box no longer moves the canvas at
+all now; selecting an Item in a genuinely different Collection still
+correctly re-centers on it.
+
+Verified directly via the real rendered SVG's own `transform` attribute
+(not just visually): unchanged (`translate(-180, 487.5) scale(1)`) across
+three separate Item clicks within one open Item Set box; changed to a new
+value when switching to a different Collection's box entirely, confirming
+the fix didn't just suppress panning outright.
+
+## 56. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
