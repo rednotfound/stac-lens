@@ -3770,7 +3770,38 @@ and Planetary Computer's Sentinel-2 L2A (description *and* thumbnail
 together, confirming the markdown-link fix and the combined layout both
 read correctly, not just the description alone).
 
-## 54. What's deliberately deferred (not forgotten)
+## 54. Item Set rows get the same type icon, and the Legend starts open
+
+Two small, direct requests together: "既然catalog还有collection已经用颜色
+区分了，那么item难道不也应该表现一下么？即使是在一个列表的panel里面" (Catalog
+and Collection are already color-distinguished — shouldn't Item show
+something too, even inside a list panel?), and "图例面板其实一开始就可以是
+打开的，这样让大家很直观地明白各个节点是什么" (the Legend panel could just
+start open, so everyone immediately understands what each node means).
+
+Item Set's own list rows (`ItemSetBrowser.tsx`) had never carried any
+type signal at all — plain id/title text, no color, no icon — since
+Items are never tree nodes and so never had a dot color to inherit in the
+first place (§21). Gave each row the same small icon+color treatment
+Inspector's own Asset rows already use (§44): a 12px `TypeIcon` type=
+`"Item"` in `--color-node-item`, inverting to `--color-bg` on the
+selected (blue-background) row so it stays legible there too. The
+temporal subtitle line got a matching `marginLeft` so it aligns under the
+title text, not the icon.
+
+The Legend (§51's four-icon version) previously started collapsed to a
+small two-dot preview button, requiring a click before showing anything
+— changed its default `open` state to `true`. Still fully closeable for
+anyone who wants the screen space back once they already know the
+vocabulary; nothing else about its behavior changed.
+
+Verified against a real API-backed Collection (Earth Search's Sentinel-2
+Pre-Collection 1 Level-2A): Legend visible immediately on opening the
+catalog with no click, Item Set rows showing the orange Item icon
+consistently, and the icon correctly inverting to white on the selected
+row without becoming illegible against the blue background.
+
+## 55. What's deliberately deferred (not forgotten)
 
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant

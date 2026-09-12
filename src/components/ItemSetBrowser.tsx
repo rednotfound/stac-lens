@@ -5,6 +5,7 @@ import { useItemSetStore } from '../store/itemSet'
 import { describeTemporal } from '../stac/describe'
 import { Spinner } from './Spinner'
 import { LoadingState } from './LoadingState'
+import { TypeIcon } from './TypeIcon'
 import type { StacNode } from '../stac/types'
 
 const SCROLL_LOAD_THRESHOLD = 120
@@ -193,11 +194,28 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
                     color: selected ? 'var(--color-bg)' : 'var(--color-text)',
                   }}
                 >
-                  <div>{item.title ?? item.id}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {/* Catalog/Collection already read as distinct types via
+                     * the tree's own dot color; a list row has no such dot
+                     * to reuse, so Item gets the same small icon+color
+                     * treatment Inspector's own Asset rows already use —
+                     * asked about directly: "既然catalog还有collection已经用
+                     * 颜色区分了，那么item难道不也应该表现一下么？即使是在一个列表
+                     * 的panel里面" (Catalog/Collection are already
+                     * color-distinguished — shouldn't Item show something
+                     * too, even in a list panel?). */}
+                    <TypeIcon
+                      type="Item"
+                      size={12}
+                      color={selected ? 'var(--color-bg)' : 'var(--color-node-item)'}
+                    />
+                    {item.title ?? item.id}
+                  </div>
                   {item.temporal && (
                     <div
                       style={{
                         fontSize: 11,
+                        marginLeft: 17,
                         color: selected ? 'var(--color-bg)' : 'var(--color-text-faint)',
                         opacity: selected ? 0.85 : 1,
                       }}

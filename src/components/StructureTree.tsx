@@ -573,7 +573,13 @@ function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
 }
 
 function Legend() {
-  const [open, setOpen] = useState(false)
+  // Starts open, not collapsed to a small preview button — the whole
+  // point of a legend is to orient someone immediately: "图例面板其实一开始
+  // 就可以是打开的，这样让大家很直观地明白各个节点是什么" (the legend panel
+  // could just start open, so everyone immediately understands what each
+  // node means). Still closeable (below) for anyone who'd rather reclaim
+  // the screen space once they already know the vocabulary.
+  const [open, setOpen] = useState(true)
 
   if (!open) {
     return (
