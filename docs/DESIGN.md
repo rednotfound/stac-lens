@@ -3889,8 +3889,71 @@ confirmed a real position change) and does *not* also trigger a selection
 or expand — confirmed by checking that no Inspector column mounts and no
 child node appears after a pure drag gesture.
 
-## 57. What's deliberately deferred (not forgotten)
+## 57. Temporal's header was still describing a retired feature
 
+"我觉得这难道不还是之前开发的遗留信息么？我们现在的Temporal和Spatial难道不是就
+都是专注在选中的那个么" (isn't this leftover info from earlier development?
+aren't Temporal and Spatial both now scoped to just the selected object?),
+quoting Temporal's own header: "showing 1 of 4 items selected: crop_ha —
+scoped to just this Item, not its neighbors."
+
+Traced it, and the diagnosis was exactly right. `useSelectedItems()`
+(§21) already guarantees Temporal's `items` array is either exactly one
+Item (a direct Item selection — never any "neighbors," full stop) or
+empty (a Collection selected on its own — aggregate multi-item display
+was retired in §41 and is still unreachable, pending "somewhere else").
+Given that, every piece of the old header was describing a state that
+can no longer occur:
+
+- "showing 1 of 4 items" — the "4" was the *Collection's* total item
+  count, unrelated to what's actually shown; always reads as "1 of 4
+  displayed" when really all 4 were never candidates for display at all.
+- "selected: X — scoped to just this Item, not its neighbors" — X is
+  always the one and only entry in the array; there are no neighbors to
+  be scoped away from, so this sentence was permanently tautological.
+- "· grouped into N distinct timings" — required `groups.length !==
+  sortedItems.length`, which can't happen when there are only ever 0 or 1
+  items to group.
+- The ⚠ "actual Item range extends beyond the collection's stated extent"
+  conflict check — a real, previously-working feature (confirmed against
+  Adaptation Atlas's own `hazard_timeseries_mean_annual`, whose Items
+  really do run to 2060 against a stated 1995–2020 extent), but its
+  inputs can no longer coexist: the stated-extent comparison only runs
+  when *no* Item is highlighted, and in that state the items array is
+  always empty (nothing to compare against) — so the check itself was
+  fully wired but structurally unreachable.
+
+Asked directly whether to keep the conflict-detection logic dormant
+(ready to reactivate once the retired aggregate-item view returns
+"somewhere else," per the user's own words in §41) or remove it outright:
+"直接删掉" (just delete it) — removed the `actualDates`/`actualMin`/
+`actualMax`/`conflict` computation entirely, along with the header's
+item-count and "scoped to just this Item" text and the now-impossible
+grouping-mismatch line. The stated-extent reference row's color
+(previously `conflict ? warning : faint`) is now just always the plain
+faint color. The header is now one honest line: the selected Item's own
+title if one is selected, otherwise the Collection's.
+
+Verified against three real cases: an Item selected inside Earth Search's
+Sentinel-2 Pre-Collection 1 Level-2A (header now just names the Item, no
+count/neighbor text); that same Collection selected on its own (header
+names the Collection, no "showing 0 items"); and a direct deep link into
+Adaptation Atlas's real historical conflict Collection itself
+(`hazard_timeseries_mean_annual`) to confirm removing the dead
+conflict-detection code didn't break anything about that Collection's own
+Temporal card rendering.
+
+## 58. What's deliberately deferred (not forgotten)
+
+- §41's aggregate multi-item Temporal/Space view (the "show on Time/Space
+  Lens" button and its `showOnLenses` flag) still has no UI anywhere that
+  can turn it on — unchanged, still awaiting a home "elsewhere" per the
+  user's own stated intent. §57 removed its one remaining downstream
+  consumer, the stated-extent-vs-actual-range conflict check (a real
+  feature, confirmed once against Adaptation Atlas's own
+  `hazard_timeseries_mean_annual`) — rebuilding that check is now part of
+  whatever eventually rebuilds the aggregate view itself, not a separate,
+  still-dormant piece of code sitting in `TimeLens.tsx` waiting for it.
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
   content immediately and letting the image pop in on its own — asked

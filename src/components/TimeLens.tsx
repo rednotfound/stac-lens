@@ -336,28 +336,6 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   const tickCount = Math.max(2, Math.floor((viewWidth - LABEL_WIDTH) / 110))
   const ticks = x.ticks(tickCount)
 
-  // Compare the collection's stated extent against the actual range of the
-  // (possibly bounded) loaded items — a real, not hypothetical, conflict:
-  // Adaptation Atlas's hazard_timeseries_mean_annual states 1995–2020 while
-  // its own Items run to 2060. `statedBounds` is already `undefined` while
-  // scoped to one selected Item (above), so this — like the stated-extent
-  // row itself — naturally has nothing to compare against and stays silent
-  // there, not just visually hidden.
-  const actualDates: Date[] = []
-  for (const item of sortedItems) {
-    if (!item.temporal) continue
-    const [s, e] = temporalBounds(item.temporal)
-    if (s) actualDates.push(s)
-    if (e) actualDates.push(e)
-  }
-  const actualMin = actualDates.length ? new Date(Math.min(...actualDates.map((d) => d.getTime()))) : undefined
-  const actualMax = actualDates.length ? new Date(Math.max(...actualDates.map((d) => d.getTime()))) : undefined
-  const conflict =
-    statedBounds &&
-    actualMin &&
-    actualMax &&
-    ((statedBounds[0] && actualMin < statedBounds[0]) || (statedBounds[1] && actualMax > statedBounds[1]))
-
   const laneCount = assignments.length ? Math.max(...assignments.map((a) => a.lane)) + 1 : 0
   const statedRowY = AXIS_HEIGHT
   const itemsStartY = AXIS_HEIGHT + (statedBounds ? STATED_ROW_HEIGHT + 8 : 0)
@@ -375,34 +353,24 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
           gap: 8,
         }}
       >
+        {/* Names whichever object Temporal is actually describing —
+         * the selected Item itself if there is one, otherwise the
+         * Collection. Used to also print an item count ("showing 1 of 4
+         * items") and a "scoped to just this Item, not its neighbors"
+         * qualifier — both stale leftovers from before Item Set's own
+         * aggregate multi-item display was retired (§21/§41): with that
+         * gone, exactly one Item (itself) or zero Items ever populate this
+         * view, so "of N" and "not its neighbors" were never describing a
+         * real alternative any more, just noise. Asked about directly:
+         * "我觉得这难道不还是之前开发的遗留信息么？我们现在的Temporal和Spatial
+         * 难道不是就都是专注在选中的那个么" (isn't this leftover from earlier
+         * development? aren't Temporal/Spatial both scoped to just the
+         * selected object now?) — confirmed by tracing `useSelectedItems`:
+         * yes, and yes. */}
         <div style={{ flex: 1 }}>
-          <strong style={{ color: 'var(--color-text)' }}>{node?.title ?? node?.id}</strong>
-          {' · '}
-          showing {sortedItems.length}
-          {target.status === 'ready' && target.totalItemCount != null && target.totalItemCount > sortedItems.length
-            ? ` of ${target.totalItemCount} items`
-            : ' items'}
-          {groups.length !== sortedItems.length && (
-            <span style={{ marginLeft: 8 }}>· grouped into {groups.length} distinct timings</span>
-          )}
-          {conflict && (
-            <span style={{ color: 'var(--color-node-warning)', marginLeft: 8 }}>
-              ⚠ actual Item range extends beyond the collection's stated extent
-            </span>
-          )}
-          {selectedItem && (
-            <div style={{ marginTop: 2 }}>
-              selected:{' '}
-              <strong style={{ color: 'var(--color-selection)' }}>
-                {selectedItem.title ?? selectedItem.id}
-              </strong>
-              <span style={{ color: 'var(--color-text-faint)', marginLeft: 6 }}>
-                {sortedItems.length === 1
-                  ? '— scoped to just this Item, not its neighbors'
-                  : `— showing a focused window around it (${assignments.length} nearby of ${groups.length} loaded), not the full range`}
-              </span>
-            </div>
-          )}
+          <strong style={{ color: 'var(--color-text)' }}>
+            {selectedItem ? (selectedItem.title ?? selectedItem.id) : (node?.title ?? node?.id)}
+          </strong>
         </div>
       </div>
       <svg ref={svgRef} width="100%" viewBox={`0 0 ${viewWidth} ${height}`} style={{ display: 'block' }}>
@@ -439,7 +407,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
               x={x}
               y={STATED_ROW_HEIGHT / 2}
               domain={displayDomain}
-              color={conflict ? 'var(--color-node-warning)' : 'var(--color-text-faint)'}
+              color="var(--color-text-faint)"
               filled={false}
             />
           </g>
