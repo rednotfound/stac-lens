@@ -3943,17 +3943,99 @@ Adaptation Atlas's real historical conflict Collection itself
 conflict-detection code didn't break anything about that Collection's own
 Temporal card rendering.
 
-## 58. What's deliberately deferred (not forgotten)
+## 58. Item Set becomes a real multi-view panel: List, Temporal, Spatial
 
-- §41's aggregate multi-item Temporal/Space view (the "show on Time/Space
-  Lens" button and its `showOnLenses` flag) still has no UI anywhere that
-  can turn it on — unchanged, still awaiting a home "elsewhere" per the
-  user's own stated intent. §57 removed its one remaining downstream
-  consumer, the stated-extent-vs-actual-range conflict check (a real
-  feature, confirmed once against Adaptation Atlas's own
-  `hazard_timeseries_mean_annual`) — rebuilding that check is now part of
-  whatever eventually rebuilds the aggregate view itself, not a separate,
-  still-dormant piece of code sitting in `TimeLens.tsx` waiting for it.
+A substantial, explicitly-scoped-in-phases redesign, proposed directly:
+"我恰恰觉得这里才应该是呈现多个item的bbox以及时间的面板。因为不管是时间还是空间都
+是看待同一批数据的另一种方式而已，因此完全可以切换view，list view到Temporal
+view和Spatial" (this is exactly where multiple Items' bbox and time should
+be shown — time and space are both just another way of looking at the
+same batch of data, so switching from List view to a Temporal or Spatial
+view should be entirely possible). The full proposal also included real
+pagination (not infinite scroll) and an API query-input module, both
+explicitly deferred to later phases — this section covers only the view
+switcher, chosen first as the lowest-risk starting point.
+
+This directly resolves the gap §58's deferred list (previously) tracked:
+§41 retired the "show on Time/Space Lens" aggregate view with no UI left
+to enable it, on the explicit understanding the user would "put it
+somewhere else" later. "Somewhere else" is Item Set's own panel — not a
+toggle bolted onto Inspector's single-object view, but a real second
+reading of the exact same batch already being browsed there as a list.
+
+**Extraction, not duplication.** Inspector's `TimeLens.tsx`/`SpaceLens.tsx`
+were each split into two layers: a new `ItemsTimeline.tsx`/`ItemsMap.tsx`
+(the actual drawing — grouping/lane-packing/axis/marks/tooltip for time;
+tiles/rectangles/fit-bounds/fly-to for space) that takes a plain `items`
+array and an `onSelectItem` callback with no opinion about *why* those
+items are being shown, and a thin caller-specific wrapper that resolves
+*what* to plot. `TimeLens`/`SpaceLens` keep calling `useSelectedItems()`
+exactly as before (single-object-scoped, empty/loading states, the
+Collection-stated-extent-suppressed-while-an-Item-is-highlighted rule);
+Item Set's own new tabs feed the same two drawing components with
+whatever `useItemSet()` has paginated in so far, `filtered` by its
+existing id/title search box. One deliberate behavioral difference kept
+explicit rather than silently shared: Inspector's Temporal view narrows
+the axis to a padded window around a selected Item (there are no
+neighbors to lose — without it, a single day is an invisible sliver on a
+decades-wide axis); Item Set's own Temporal tab does not (narrowing there
+would hide every other item in the batch just to focus on the one
+clicked, defeating the point of a batch view at all) — surfaced as an
+explicit `focusOnSelection` prop on `ItemsTimeline`, on by default nowhere
+except Inspector's own caller.
+
+**What's new in `ItemSetBrowser.tsx`:** a three-way List/Temporal/Spatial
+pill switcher above the existing search box; the search box now filters
+all three views identically (a Temporal/Spatial tab only ever plots
+`filtered`, the exact same subset the List rows show); both new tabs pass
+the browsed Collection's own `node.temporal`/`node.spatial.bbox` as a
+reference row/rectangle, matching Inspector's own "stated extent (source)"
+convention; clicking a mark or footprint calls the same `select()` the
+List rows' own `onClick` already used, so selection stays perfectly in
+sync with the tree, Inspector, and every other lens regardless of which
+tab last changed it. The footer's "scroll to load more" hint is now
+view-aware (real pagination replacing scroll-to-load is next phase's
+job, not this one's — for now, Temporal/Spatial simply reflect however
+much the existing infinite-scroll mechanism has loaded).
+
+Verified against real data in both directions this project's sources
+split into: Earth Search's Sentinel-2 Pre-Collection 1 Level-2A (API/
+cursor-mode) — Temporal tab plotted a real open-ended stated extent plus
+a loaded Item's own instant mark; Spatial tab plotted real Sentinel-2
+tile footprints, auto-fit; clicking a mark selected the Item and updated
+Inspector correctly (thumbnail, Temporal, Spatial, "1 item footprint") —
+and Adaptation Atlas's Population 2020 (static/links-mode) — confirmed
+the exact-duplicate-timestamp grouping feature ("2 items, identical
+timing") still fires correctly post-extraction, and its own Spatial tab
+plotted a real continent-wide footprint. Zero console/page errors
+throughout, and a direct before/after comparison confirmed the extraction
+itself introduced no regression to Inspector's existing Temporal/Spatial
+behavior (same focus-narrowing, same stated-extent suppression rules).
+
+## 59. What's deliberately deferred (not forgotten)
+
+- §41's aggregate multi-item Temporal/Space view finally has its home:
+  §58's Item Set Temporal/Spatial tabs. The old `showOnLenses` mechanism
+  itself stays permanently retired (§58's tabs read `filtered` directly,
+  not through that store) — this bullet is resolved, kept here only as a
+  pointer for anyone who goes looking for "show on Time/Space Lens" and
+  wonders where it ended up. §57's removed stated-extent-vs-actual-range
+  conflict check is still genuinely gone, not rebuilt by §58 — it was
+  specific to the single-Collection-selected case that no longer exists
+  the way it used to, not directly to the new multi-item batch view;
+  whether a similar check belongs in the new Temporal tab is an open,
+  not-yet-asked question of its own.
+- §58's two other explicitly-deferred phases from the same proposal, not
+  started: real page-based pagination (replacing infinite scroll) — a
+  real page-*number* jump is only actually possible for static/links-mode
+  Collections (the full ordered href array is already known); a STAC
+  API's own Item Search only ever exposes an opaque `next` cursor/token,
+  never a numeric offset, so "jump to page 10" against a live API can only
+  ever be simulated by sequentially fetching pages 1–9 first, not a true
+  random-access jump — and a dedicated bbox/datetime API query-input
+  module living in this same panel (a deliberate, different context from
+  the interactive draw-tool §39 removed from Inspector's single-object
+  view). Both still fully open on sequencing/design details.
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
   content immediately and letting the image pop in on its own — asked

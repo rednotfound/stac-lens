@@ -2,13 +2,24 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useItemSet } from '../hooks/useItemSet'
 import { useSelectionStore } from '../store/selection'
 import { useItemSetStore } from '../store/itemSet'
+import { useElementSize } from '../hooks/useElementSize'
 import { describeTemporal } from '../stac/describe'
 import { Spinner } from './Spinner'
 import { LoadingState } from './LoadingState'
 import { TypeIcon } from './TypeIcon'
+import { ItemsTimeline } from './ItemsTimeline'
+import { ItemsMap } from './ItemsMap'
 import type { StacNode } from '../stac/types'
 
+type ItemSetView = 'list' | 'temporal' | 'spatial'
+
 const SCROLL_LOAD_THRESHOLD = 120
+// A fixed height, not `maxHeight`-hugging like the list — Leaflet needs a
+// real non-zero pixel container up front (see `ItemsMap`'s own note), and
+// the timeline's own SVG already sizes itself from its data, so matching
+// heights across all three views keeps switching between them from
+// visibly resizing the whole panel each time.
+const PLOT_VIEW_HEIGHT = 480
 // Was 260 (~3-4 visible rows) — called out directly: "我们明明可能加载到上千
 // 啊,一次性只能看到3个我真的无语...我们这个项目也是需要让人感受到数据的体量和
 // 数量的啊" (we can load up to thousands, but only see 3 at once — this
@@ -33,6 +44,14 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
   const setVisible = useItemSetStore((s) => s.setVisible)
   const setShowOnLenses = useItemSetStore((s) => s.setShowOnLenses)
   const [query, setQuery] = useState('')
+  // "因为不管是时间还是空间都是看待同一批数据的另一种方式而已，因此完全可以切换
+  // view，list view到Temporal view和Spatial" (time and space are both just
+  // another way of looking at the same batch of data — so it should be
+  // possible to switch from list view to a Temporal or Spatial view). All
+  // three views share the exact same loaded/filtered `items` below — only
+  // the presentation differs.
+  const [view, setView] = useState<ItemSetView>('list')
+  const [plotContainerRef, { width: plotWidth }] = useElementSize<HTMLDivElement>()
 
   const isApiSearched = node.items.kind === 'cursor'
 
@@ -45,10 +64,12 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
     )
   }, [items, query])
 
-  // Publish "what's actually in view here" for Time/Space Lens to read
-  // (see useSelectedItems/useItemSetStore) — the searched/narrowed subset,
-  // not the raw loaded set, so typing in this search box live-narrows the
-  // timeline/map too.
+  // Publish "what's actually in view here" for Inspector's own "common to
+  // the currently browsed set" annotation on Declared extensions/Property
+  // namespaces (`DetailPanel.tsx`'s `browsedItems`) — the searched/
+  // narrowed subset, not the raw loaded set. Unrelated to this component's
+  // own Temporal/Spatial views below, which read `filtered` directly as a
+  // prop rather than through this store.
   useEffect(() => {
     setVisible(node.href, filtered.map((i) => i.href))
   }, [node.href, filtered, setVisible])
@@ -128,11 +149,35 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
        * turned out redundant with the always-on Temporal/Spatial widgets
        * it fed (docs/DESIGN.md §41): "按钮和Browse this Collection's
        * items其实也都可以不要了,我会放在其他的部分" (the button can go too —
-       * I'll put it somewhere else). There is currently no UI anywhere
-       * that sets `showOnLenses` to `true`. This component still owns its
-       * reset-on-remount (below) regardless, since that's tied to *this*
-       * component's own lifecycle, not wherever the toggle eventually
-       * lands. */}
+       * I'll put it somewhere else). "Somewhere else" turned out to be
+       * this panel's own Temporal/Spatial tabs below (§59) — not a toggle
+       * bolted onto Inspector's single-object view, but a real multi-item
+       * view living next to the List it's an alternate reading of. The
+       * old `showOnLenses` mechanism itself stays fully retired; these
+       * tabs read `filtered` directly instead. This component still owns
+       * its reset-on-remount (below) regardless, since `useSelectedItems`
+       * still checks that flag for its own (currently unreachable)
+       * aggregate branch. */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+        {(['list', 'temporal', 'spatial'] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            style={{
+              fontSize: 11,
+              padding: '3px 10px',
+              borderRadius: 999,
+              border: '1px solid var(--color-border)',
+              background: view === v ? 'var(--color-selection)' : 'var(--color-surface)',
+              color: view === v ? 'var(--color-bg)' : 'var(--color-text-muted)',
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
       {/* The interactive bbox/datetime-range query tool (draw on Space
        * Lens / drag on Time Lens, "Search"/"Clear") that used to live here
        * has been pulled out entirely, not just moved: "我现在连select Area、
@@ -165,6 +210,7 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
           color: 'var(--color-text)',
         }}
       />
+      {view === 'list' && (
       <div
         onScroll={handleScroll}
         style={{
@@ -250,6 +296,47 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
           </>
         )}
       </div>
+      )}
+      {(view === 'temporal' || view === 'spatial') && (
+        <div
+          ref={plotContainerRef}
+          style={{
+            height: PLOT_VIEW_HEIGHT,
+            overflow: view === 'temporal' ? 'auto' : 'hidden',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-sm)',
+            position: 'relative',
+          }}
+        >
+          {state.status === 'loading' ? (
+            <LoadingState>Loading items…</LoadingState>
+          ) : view === 'temporal' && !node.temporal && !filtered.some((i) => i.temporal) ? (
+            <div style={{ padding: 8, fontSize: 12, color: 'var(--color-text-faint)' }}>
+              {query ? `no match among ${items.length} loaded` : 'no temporal data in the loaded items'}
+            </div>
+          ) : view === 'spatial' && !node.spatial?.bbox && !filtered.some((i) => i.spatial?.bbox) ? (
+            <div style={{ padding: 8, fontSize: 12, color: 'var(--color-text-faint)' }}>
+              {query ? `no match among ${items.length} loaded` : 'no spatial data in the loaded items'}
+            </div>
+          ) : view === 'temporal' ? (
+            <ItemsTimeline
+              items={filtered}
+              highlightHref={selectedHref ?? undefined}
+              statedShape={node.temporal}
+              viewWidth={plotWidth > 0 ? plotWidth : 280}
+              onSelectItem={select}
+            />
+          ) : (
+            <ItemsMap
+              items={filtered}
+              highlightHref={selectedHref ?? undefined}
+              statedBbox={node.spatial?.bbox}
+              fitKey={node.href}
+              onSelectItem={select}
+            />
+          )}
+        </div>
+      )}
       {state.status === 'ready' && (
         <div style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 4 }}>
           showing {items.length}
@@ -269,9 +356,11 @@ export function ItemSetBrowser({ node }: { node: StacNode }) {
            * correctly all along (scrolling did fetch 80, 120, 160...); the
            * bug was purely this hint never appearing to say so. */}
           {state.hasMore &&
-            (query
-              ? ' — search covers loaded items only; scroll the list to load more'
-              : ' — scroll the list to load more')}
+            (view === 'list'
+              ? query
+                ? ' — search covers loaded items only; scroll the list to load more'
+                : ' — scroll the list to load more'
+              : ' — switch to List view and scroll to load more')}
           {/* A narrowed area/range search often means "give me everything
            * matching this, not a trickle" — asked about directly: "一个用户
            * 去绘制范围搜索当然是想要拿到所有的数据,而不是带page啊" (someone who
