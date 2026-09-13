@@ -691,8 +691,8 @@ function Legend() {
       <LegendRow icon="Item" color="var(--color-node-item)" label="Item (Detail Panel only)" showDot={false} />
       <LegendRow icon="Asset" color="var(--color-node-asset)" label="Asset (Detail Panel only)" showDot={false} />
       <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid var(--color-border)' }}>
-        <div>● filled — click to expand</div>
-        <div>○ hollow — expanded, or nothing to expand into</div>
+        <div>● filled — has something to open (children or items)</div>
+        <div>○ hollow — already open, or genuinely empty</div>
         <div>┄ dashed ring — your selected Item is inside</div>
         <div>"N items" label — browse via Detail Panel, not the tree</div>
         <div>blue "API" tag — items are live-queried, not a static list</div>
@@ -990,9 +990,23 @@ function TreeNodeView({
   // links at all (Microsoft Planetary Computer's root, e.g.) — expandable
   // exactly the same way once found, just fetched differently.
   const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint
-  // Classic tidy-tree convention: filled = collapsed with more to reveal,
-  // hollow = already expanded or a genuine leaf with nothing further.
-  const filled = canExpand && !hasRenderedChildren
+  // Classic tidy-tree convention, extended: filled = there's something
+  // behind this circle you haven't opened yet (either tree children, or —
+  // since a leaf-items node has no children to expand at all — its own
+  // Item Set box), hollow = already opened, or a genuine dead end with
+  // neither. Real gap found and reported directly: a leaf-items Collection
+  // with real content (Female Empowerment Index Collection, 22 real
+  // Items) read identically hollow to a totally empty leaf, the only
+  // difference being the much-lower-salience "N items" caption beneath it
+  // — "我以为这里得是filled的状态" (I expected this to be filled). Tracking
+  // "already opened" for the item-box half isn't sticky the way expanded
+  // tree children are (which stay revealed even after you look away) —
+  // it directly mirrors `showItemSetBox` instead, so browsing elsewhere
+  // and coming back does show filled again, deliberately: chosen over a
+  // separate "ever opened" record for the honest reason that it reflects
+  // "is this open right now," not a permanent memory, and needs no new
+  // per-node state to do it.
+  const filled = (canExpand && !hasRenderedChildren) || (hasDirectItems(node) && !showItemSetBox)
 
   const color = node.type === 'Catalog' ? 'var(--color-node-catalog)' : 'var(--color-node-collection)'
   const radius = node.type === 'Catalog' ? 7 : 6

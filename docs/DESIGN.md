@@ -4083,8 +4083,67 @@ about the existing `x` formula rather than a live drag test — no fixture
 on hand at the time had a node that was both expanded (to have
 `labelOnLeft`) and had its own direct Items (to show a box) at once.
 
-## 60. What's deliberately deferred (not forgotten)
+## 60. Filled/hollow now also reflects direct Items, not just child nodes
 
+A real, reported case: opening the Africa Agriculture Adaptation Atlas's
+Women and Gender Catalog, "Female Empowerment Index Collection" (21 real
+Items) rendered hollow, indistinguishable at a glance from a genuinely
+empty leaf node. "我以为这里得是filled的状态" (I expected this to be
+filled) — asked as a real semantics question, not a bug report, so this
+was discussed and a direction confirmed before any code changed, per
+this project's own established norm for open design questions.
+
+The root cause: `filled` was defined purely as "has child Catalogs/
+Collections to expand, not yet expanded" — for a leaf-items node
+(Items but no children at all, the majority shape in this fixture),
+`canExpand` is permanently `false`, so it was permanently hollow
+regardless of whether it held 0 Items or 21. The only distinguishing
+signal was the "N items" caption beneath the label — real, but far
+lower visual salience than the circle's own fill state, and easy to miss
+next to a row of otherwise-identical hollow siblings.
+
+Redefined `filled` to mean "there's something behind this circle you
+haven't opened yet" — either tree children (unchanged) or, when there
+are no children at all, its own Item Set box:
+`filled = (canExpand && !hasRenderedChildren) || (hasDirectItems(node) && !showItemSetBox)`.
+A leaf-items node now reads filled until its Item Set box is opened,
+then hollow — the same filled→click→hollow rhythm a branch Catalog
+already had, just extended to cover the other way a node can hold real
+content.
+
+One real tradeoff surfaced and explicitly decided, not defaulted to:
+whether "already opened" should behave like expanded tree children
+(sticky — stays revealed forever, even after selecting something else
+entirely) or track the box's current open/closed state directly
+(non-sticky — closing the box by browsing elsewhere and coming back
+shows filled again). Chose non-sticky, tied directly to `showItemSetBox`
+rather than a new per-node "ever opened" record: honest about "is this
+open right now" rather than a permanent memory, and needs no additional
+state to implement. The Legend's own filled/hollow row text was updated
+to match ("has something to open (children or items)" / "already open,
+or genuinely empty").
+
+Verified against the real reported fixture, not just code review: read
+the actual circle's own `fill` style before and after clicking —
+`var(--color-node-collection)` (filled) before opening, `var(--color-
+surface)` (hollow) after — confirming the DOM state changed exactly as
+designed, not just visually plausible in a screenshot. The parent Women
+and Gender Catalog (a pure branch node, 0 direct Items) was confirmed
+unaffected — still filled-then-hollow purely on its own children, per
+the original, unchanged half of the rule.
+
+## 61. What's deliberately deferred (not forgotten)
+
+- A real, separate finding surfaced while investigating §60 (not itself
+  §60's bug, and not yet acted on): the whole app has no responsive
+  layout at all for narrow viewports. Tested directly at a phone-sized
+  390px width — Structure Lens's own tree column collapses to effectively
+  zero width and disappears entirely; Inspector's column (with its own
+  wide default width, §45/§59) fills and overflows the whole screen
+  instead. App.tsx's Structure/Inspector split has never had a narrow-
+  screen breakpoint or a stacked/tabbed mobile layout — this project has
+  been developed and verified desktop-width throughout. A real gap for
+  anyone opening this on a phone, not a hypothetical one.
 - §59's mirrored resize-handle geometry (the box-on-the-left/`labelOnLeft`
   case: bottom-left handle, flipped delta sign) was verified by reasoning
   through the existing `x` formula, not by an actual live drag test — no
