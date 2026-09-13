@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { hierarchy, tree, type HierarchyPointNode } from 'd3-hierarchy'
 import { linkHorizontal } from 'd3-shape'
 import { select } from 'd3-selection'
@@ -170,6 +171,23 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   const lastCenteredRef = useRef<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  // The currently-open Item Set box is portaled here (a dedicated `<g>`
+  // rendered *last* inside the zoomed canvas, after every node/link) so it
+  // always paints on top of the rest of the tree, regardless of where its
+  // owning node falls in `nodes`' own traversal order — real, reported
+  // confusion: "items panel在有的collection 点之前 在有的之后" (the panel
+  // ends up in front of some Collection dots, behind others), since SVG
+  // paints purely in document order and the box previously rendered inline
+  // as part of its own node's `<g>`, wherever that node happened to fall
+  // in the array relative to whatever else visually overlapped it. A
+  // *state* (not a plain ref) — a plain ref read during another
+  // component's render wouldn't be attached yet on the very first pass
+  // (refs commit after the whole tree does), so nothing could portal into
+  // it until some *later*, unrelated re-render happened to occur; a
+  // callback ref triggers exactly the state update needed to retry once
+  // the target genuinely exists — same class of fix as `useElementSize`
+  // (§44) and the timeline's own wheel listener (§61).
+  const [boxLayer, setBoxLayer] = useState<SVGGElement | null>(null)
 
   // Manual position overrides, on top of whatever `tree()` computes — the
   // free-drag exploration asked for directly: "我更愿意用户可以具体地拖拽一些
@@ -315,6 +333,42 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     const svgEl = svgRef.current
     if (!target || !svgSel || !behavior || !svgEl) return
 
+    // Skip the pan entirely if the target is already comfortably on
+    // screen — a real, reported bug: normal exploration (clicking through
+    // several already-visible sibling Collections one after another, just
+    // to compare them) yanked the whole canvas on *every single click*,
+    // confirmed directly by reading the tree's own `transform` attribute
+    // change after each click even though none of the clicked nodes ever
+    // left the viewport: "每次选中了collection对象之后tree view也还会调整
+    // 视野...这种移动视野会影响我的操作和探索的连续性" (every time I select a
+    // Collection the tree view still adjusts, and that movement disrupts
+    // the continuity of my browsing). This effect's own comment already
+    // named its actual purpose — bringing a selection *panned far outside
+    // the current view* (arriving from Time/Space Lens, or not yet
+    // expanded into view) back on screen — but the implementation never
+    // actually checked "is it already visible," so it recentered
+    // unconditionally on every distinct selection, including ones the
+    // user had just clicked directly because they could already see them.
+    // Using the *current* transform (before any change below) to project
+    // the target's real screen position and comparing it against the
+    // viewport is what actually distinguishes "genuinely off-screen,
+    // needs to be brought into view" from "already exactly where the user
+    // is looking."
+    const currentTransform = viewTransformRef.current
+    const targetPos = effectiveXY(target)
+    const currentScreenX = currentTransform.x + targetPos.y * currentTransform.k
+    const currentScreenY = currentTransform.y + targetPos.x * currentTransform.k
+    const VISIBILITY_MARGIN = 100
+    const alreadyVisible =
+      currentScreenX >= VISIBILITY_MARGIN &&
+      currentScreenX <= svgEl.clientWidth - VISIBILITY_MARGIN &&
+      currentScreenY >= VISIBILITY_MARGIN &&
+      currentScreenY <= svgEl.clientHeight - VISIBILITY_MARGIN
+    if (alreadyVisible) {
+      lastCenteredRef.current = panHref
+      return
+    }
+
     lastCenteredRef.current = panHref
     const k = viewTransformRef.current.k
     const cy = svgEl.clientHeight / 2
@@ -338,10 +392,10 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
           ? Math.max(svgEl.clientWidth - BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
           : Math.min(BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
         : svgEl.clientWidth / 2
-    // Effective position, not the raw layout position — a manually-dragged
-    // node's on-screen location can differ from what `tree()` computed for
-    // it (§32), and centering should follow where it actually is.
-    const targetPos = effectiveXY(target)
+    // `targetPos` (the *effective*, not raw layout, position — a manually-
+    // dragged node's on-screen location can differ from what `tree()`
+    // computed for it, §32) was already computed above for the visibility
+    // check; centering follows the same value.
     svgSel.call(behavior.transform, zoomIdentity.translate(cx - targetPos.y * k, cy - targetPos.x * k).scale(k))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHref, nodes, browsingHref, boxHref])
@@ -492,9 +546,16 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                     return next
                   })
                 }}
+                boxLayer={boxLayer}
               />
             )
           })}
+          {/* Rendered last within this same zoomed/panned group — see
+           * `boxLayer` above — so whichever node's box is currently open
+           * portals its content here and always paints above every
+           * ordinary node/link, on top by construction rather than by
+           * traversal-order coincidence. */}
+          <g ref={setBoxLayer} />
         </g>
       </svg>
       {/* Centered, not tucked in a corner — this is the fetch a user is
@@ -626,8 +687,8 @@ function Legend() {
         title="Show legend"
         style={{
           position: 'absolute',
-          top: 10,
-          right: 10,
+          bottom: 10,
+          left: 10,
           zIndex: 5,
           display: 'flex',
           alignItems: 'center',
@@ -649,8 +710,16 @@ function Legend() {
     <div
       style={{
         position: 'absolute',
-        top: 10,
-        right: 10,
+        // Bottom-left, not top-right — asked for directly: "图例应该放在左下
+        // 角，不影响重要的信息呈现" (the legend should sit in the bottom-left
+        // corner, so it doesn't get in the way of important content). The
+        // tree's own nodes fan out from the left toward the right/down, and
+        // an open Item Set box (§66) now always paints above everything —
+        // top-right sat squarely in the path of both; bottom-left has no
+        // other overlay claiming it (top-left holds the "Collapse"/"Expand
+        // all" buttons).
+        bottom: 10,
+        left: 10,
         zIndex: 5,
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
@@ -788,6 +857,13 @@ interface TreeNodeProps {
   onBoxDragBy: (dxLocal: number, dyLocal: number) => void
   boxSize: { width: number; height: number }
   onBoxResizeBy: (dxLocal: number, dyLocal: number) => void
+  /** Where this node's own box (connector + `foreignObject`) actually gets
+   *  rendered, via a portal, instead of inline in this node's own `<g>` —
+   *  see the `boxLayer` state in the parent for why. `null` for the one
+   *  render before that `<g>` has mounted; this node's box simply doesn't
+   *  render for that one frame rather than briefly rendering in the wrong
+   *  (unlayered) place. */
+  boxLayer: SVGGElement | null
 }
 
 // Was 220 (~3-4 visible rows in the list inside) — called out directly:
@@ -831,6 +907,7 @@ function TreeNodeView({
   onBoxDragBy,
   boxSize,
   onBoxResizeBy,
+  boxLayer,
 }: TreeNodeProps) {
   const itemSetBoxRef = useRef<HTMLDivElement | null>(null)
   // Computed early (not just where the label itself renders, further
@@ -1083,10 +1160,35 @@ function TreeNodeView({
     if (canExpand) onToggle()
   }
 
+  // The Item Set box (with its own timeline/map, each with their own
+  // hover tooltips) renders as a DOM *descendant* of this node's own `<g>`
+  // (nested inside the `foreignObject` below), so entering or moving over
+  // it also fires this node's own `onMouseEnter`/`onMouseMove` — the node's
+  // tooltip would show on top of, or get stuck behind, whatever the box's
+  // own content wants to show. `e.stopPropagation()` on the box looks like
+  // the fix but isn't: React 17+ stops the *native* event too, and the
+  // timeline's own drag-pan listens for `mousemove` on `window` (outside
+  // React entirely, added imperatively for the gesture) — stopping
+  // propagation anywhere below `window` silently breaks that. So this
+  // checks explicitly instead. A direct `.contains()` check against this
+  // node's own `itemSetBoxRef` — not a bounded ancestor walk — since the
+  // box itself is portaled into a dedicated top `<g>` (see `boxLayer`
+  // below) so the open box always paints above every other tree node
+  // regardless of traversal order; `.contains()` is correct regardless of
+  // where in the DOM the box actually lives, unlike a walk that assumes
+  // it's still nested under this node's own `<g>`.
+  function isInsideItemSetBox(target: Element): boolean {
+    return !!itemSetBoxRef.current?.contains(target)
+  }
   function handleEnter(e: React.MouseEvent) {
+    if (isInsideItemSetBox(e.target as Element)) {
+      onHover(null, 0, 0)
+      return
+    }
     onHover(hoverInfo, e.clientX, e.clientY)
   }
   function handleMove(e: React.MouseEvent) {
+    if (isInsideItemSetBox(e.target as Element)) return
     onHover(hoverInfo, e.clientX, e.clientY)
   }
   function handleLeave() {
@@ -1216,8 +1318,8 @@ function TreeNodeView({
           )
         ))
       )}
-      {showItemSetBox && (
-        <>
+      {showItemSetBox && boxLayer && createPortal(
+        <g transform={`translate(${y}, ${x})`}>
           {/* A real edge, not just adjacent placement — drawn with the
            * same `linkGenerator` (and the same stroke) used for every
            * other parent→child connection in this tree, just fed local
@@ -1344,7 +1446,8 @@ function TreeNodeView({
               />
             </div>
           </foreignObject>
-        </>
+        </g>,
+        boxLayer,
       )}
     </g>
   )

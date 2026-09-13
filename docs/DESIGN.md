@@ -4132,8 +4132,657 @@ and Gender Catalog (a pure branch node, 0 direct Items) was confirmed
 unaffected — still filled-then-hollow purely on its own children, per
 the original, unchanged half of the rule.
 
-## 61. What's deliberately deferred (not forgotten)
+## 61. Item Set's Temporal and Spatial merge into one tab, and the timeline gets real zoom
 
+Two related refinements to §58/§59's Item Set view switcher, both asked
+about directly: "在tree view的items panel的Temporal和Spatial其实可以组成成
+一个tab" (Temporal and Spatial in the Item Set panel could actually be
+combined into one tab), and "如果items很多话，我觉得timeline完全可以zoom in
+zoom out，就像很多ui做到的那样的" (when there are many items, the timeline
+should support zoom in/out, the way plenty of UIs already do).
+
+**Merged tab.** `ItemSetView` narrowed from `'list' | 'temporal' |
+'spatial'` to `'list' | 'time-space'` — the combined view stacks
+`ItemsTimeline` above `ItemsMap`, same top-to-bottom order Inspector's own
+Temporal-then-Spatial fields already use, so this reads as the same two
+facets just seen together rather than a new arrangement. The timeline's
+own height is capped (`TIMELINE_MAX_HEIGHT`, its own scroll past that) so
+the map below always keeps a real, usable share of the box regardless of
+how many distinct timings load. A genuine side-effect improvement, not
+just a rearrangement: each half now gets its *own* empty-state message
+independently (no temporal data but real spatial data, say, now still
+shows the map instead of blanking the whole tab the way switching to a
+data-less "Spatial" tab used to).
+
+**Timeline zoom — and a real bug hiding under a wrong first diagnosis.**
+The first implementation gave `ItemsTimeline` an opt-in `zoomable` prop
+built on d3-zoom + the same `data-block-pan` composition Structure Lens's
+own canvas already uses. Automated Playwright verification of the wheel/
+drag gesture couldn't trigger it, across many attempts and environments —
+misdiagnosed at the time as a Playwright testing-tool artifact (a
+lingering `window`-level capturing `mousedown` interceptor Playwright
+installs after any `Locator.click()`, confirmed real via `addEventListener`
+monkey-patching, but a red herring here) and shipped anyway on the
+strength of directly invoking d3-zoom's own `behavior.transform()` API,
+which correctly proved the render pipeline. **The user then tested it
+with a real mouse and confirmed neither drag nor zoom did anything at
+all** — the right call, since "I verified the renderer, not the gesture"
+is not the same claim as "the feature works," and it wasn't.
+
+Re-investigated from scratch rather than trusting the earlier diagnosis.
+Attaching a plain React `onMouseDown`/`onWheel` directly to the same
+`<svg>` confirmed those synthetic handlers *did* fire reliably, even in
+the exact spot d3-zoom's own directly-attached native listener
+mysteriously didn't — which narrowed the real bug to something inside
+d3-zoom's own `.filter()` gate, not event delivery at all. The actual
+cause: `.filter()`'s check was `event.target.closest('[data-block-pan]')`
+— and Structure Lens's own Item Set box has `data-block-pan="true"` on
+its *entire outer wrapper div* (for the unrelated purpose of keeping the
+tree's own canvas zoom from engaging anywhere inside the box), which
+`ItemsTimeline` now lives nested inside. `.closest()` walks all the way
+up the DOM regardless of which layer set the attribute, so it matched
+that outer wrapper on *every single gesture, everywhere in the
+component* — silently rejecting every zoom/pan attempt at the very first
+line of d3-zoom's internal handler, before ever reaching the debug
+logging originally used to investigate it (which had been placed a few
+lines further down, past that same early return — the reason none of
+those logs ever printed, and the detail that sent the earlier
+investigation toward blaming the test tool instead).
+
+Fixed by rebuilding the gesture handling with plain React events (the
+exact same mousedown/mousemove/mouseup composition App.tsx's own
+Inspector-width divider already uses) instead of d3-zoom, computing the
+zoomed scale by hand (`rescaleX`, replicating d3's own algorithm using
+only `scaleUtc`'s existing `.copy()`/`.domain()`/`.range()`/`.invert()`)
+rather than depending on a `ZoomTransform` instance — and, critically,
+replacing the pan-gesture's own opt-out check with a manual ancestor walk
+that stops at *this component's own* `<svg>` root instead of searching
+the whole document, so a distant, unrelated ancestor's `data-block-pan`
+can never again block a gesture that has nothing to do with it. Wheel
+handling uses a real native (non-React-synthetic) `{passive: false}`
+listener, attached via a callback ref rather than a plain ref + fixed-deps
+effect — deliberately reusing the exact `useElementSize` fix from §44,
+since that's precisely the class of bug a plain ref can reintroduce.
+
+Verified this time with the gesture itself, not just the transform API:
+wheeling over the timeline narrowed real ticks from a 2016–2022 range
+down to 2018–2019; dragging afterward shifted them further to 2019–2020;
+clicking "Reset zoom" restored the original 2016–2022 range — and,
+separately, reading the actual DOM `transform` attribute on a tick
+element before and after a pure drag (no wheel first) confirmed a real
+~52px shift, not just a plausible-looking screenshot. Zero console/page
+errors throughout.
+
+## 62. The timeline's label column goes away entirely, and a hover-bubbling bug it exposed
+
+Direct feedback right after §61's zoom fix was confirmed working: "一个UI的
+问题，timeline需要一直显示name么？导致左侧的2/5都是没用的被浪费的空间！" (a UI
+problem: does the timeline need to keep showing names all the time? It's
+wasting ~2/5 of the width on the left that isn't being used for anything).
+Presented three options; the user picked removing the persistent label
+column entirely in favor of hover-only names, matching the convention
+`ItemsMap`'s own footprints already use ("完全去掉，改成悬停才显示名字
+（推荐）").
+
+**The change itself.** `LABEL_WIDTH = 220` removed from `ItemsTimeline.tsx`
+in favor of a minimal `LEFT_PAD = 12`; every per-row/reference label
+(`groupLabel()`, the per-lane label key) removed entirely, with identity
+now shown only via the existing hover tooltip (`groupTooltip()` was already
+the richer source — items grouped by identical timing already needed a
+tooltip, not a label, to disambiguate). The axis now spans the full box
+width, showing more real date ticks than before.
+
+**A second real bug this surfaced, not itself part of the label removal:**
+verifying the hover tooltip directly (not just screenshotting it) found
+*two* tooltip `<div>`s rendering simultaneously at the same point —
+`ItemsTimeline`'s own correct one (`S2B_T21NYC_...`, z-index 2000) and
+Structure Lens's own tree-node tooltip for the Collection the box belongs
+to (z-index 10) — both genuinely present in the DOM, not a z-index-only
+illusion. Root cause: the Item Set box is a DOM *descendant* of the tree
+node's own `<g>` (nested inside its `foreignObject`), and that `<g>` has
+`onMouseEnter`/`onMouseMove` for the node's own tooltip. Hovering
+*anything* inside the box — a timeline mark, a map footprint — bubbles the
+native mouse event straight up to that ancestor handler, which sets the
+node's own tooltip on top of whatever the box's own content wants to show.
+Worse: once the ancestor's tooltip was already showing (from the cursor
+passing over the node's own visible hit-circle on the way to the box), it
+stayed stuck the entire time the cursor was over the box afterward,
+because the box is still *inside* the node's own `<g>` subtree — its
+`onMouseLeave` never fires just from moving deeper into a descendant.
+
+The first fix attempt — `e.stopPropagation()` on the box's own wrapper —
+looked right and made the double-tooltip go away, but broke something
+else: §61's own hand-rolled drag-pan listens for `mousemove` on `window`,
+added imperatively outside React specifically so it isn't tied to any one
+element's bounds. React 17+'s `stopPropagation()` on a synthetic event
+also calls the underlying native event's `stopPropagation()`, so it
+silently killed *every* native `mousemove` at the box boundary before it
+could ever reach that `window` listener — re-breaking the exact drag gesture
+§61 had just fixed, confirmed by the same kind of instrumentation §61's own
+investigation used (a temporary `console.log` in the pan handler showed
+`mousedown` still starting the gesture, but `mousemove` on `window` never
+firing again once the cursor entered the box).
+
+The actual fix avoids touching propagation at all: the node's own
+`handleEnter`/`handleMove` now check, via a manual ancestor walk bounded at
+the node's own `<g>` (a `nodeGroupRef`, the same scoped-walk convention
+§61 already established for `data-block-pan`, not an unscoped
+`.closest()`), whether the event's target sits inside the Item Set box
+(`itemSetBoxRef`). If so, they explicitly clear the node's own tooltip
+(`onHover(null, ...)`, the same call `handleLeave` makes) instead of
+setting it — removing any stuck tooltip on entry, and suppressing further
+sets on every move — without ever calling `stopPropagation`, so `window`-
+level listeners elsewhere are untouched.
+
+Verified with the same standard as §61: not a screenshot alone, but reading
+actual DOM state after each step — hovering a timeline mark (crossing over
+the node's own hit-circle first, deliberately the worst case) shows exactly
+one tooltip div in the DOM, with the timeline's own text; moving away
+clears it to zero; a real drag afterward still shifts the axis's tick
+`transform` (confirmed via `getBoundingClientRect`/attribute reads, not
+`d3-zoom`'s own API); a real wheel-zoom still rescales it too. All four
+checked in the same run, not in isolation, since the propagation-based fix
+had looked correct in isolation and only failed once combined with §61's
+own gesture.
+
+## 63. The timeline's tooltip lands far from the cursor and shrinks when the tree zooms — a containing-block bug, fixed with a portal
+
+Reported directly, right after §62's tooltip-bubbling fix: "现在的hover还
+是有问题，尤其是在timeline里面，hover之后，出来的气泡离开我的光标非常得远，差
+100个px呢。然后气泡难道不应该是一个固定尺寸的东西么，为何随着我zoom 在地图上，
+气泡中的字体还能变小呢？" (the timeline's hover tooltip lands ~100px from the
+cursor, and shouldn't it be a fixed size? — its font shrinks when I zoom the
+map). Both symptoms, one cause.
+
+`ItemsTimeline`'s tooltip is a plain `<div style={{position:'fixed', left:
+tooltip.x+14, top: tooltip.y+12, ...}}>` — correct in isolation, and
+exactly the same pattern Structure Tree's own `NodeTooltip` already uses
+successfully. The difference: `NodeTooltip` renders as a sibling right
+after the tree's own `</svg>` closes, fully outside any transformed
+ancestor. `ItemsTimeline`'s tooltip, by contrast, is nested many layers
+deep inside the tree's own zoomed/panned canvas — inside the Item Set
+box's `foreignObject`, inside the `<g transform="translate(x,y)
+scale(k)">` Structure Lens uses for its own pan/zoom (§14/§32). An SVG
+ancestor carrying a `transform` establishes a new CSS containing block for
+`position: fixed` HTML content nested in a `foreignObject` beneath it — the
+exact same rule a CSS `transform` property triggers on ordinary HTML.  So
+this tooltip's "fixed" positioning was actually anchored to that scaled,
+translated `<g>`, not the real viewport: `left`/`top` computed from real
+`clientX`/`clientY` landed at the wrong place relative to that wrong
+containing block (the reported ~100px offset, worse the further the box
+sat from the canvas's own local origin), and everything painted inside a
+scaled containing block visually scales with it — including a `12px` font
+that never itself references the zoom level (the reported shrink/grow as
+the *tree's* canvas, not the timeline's own, was zoomed).
+
+Fixed with `createPortal(tooltipDiv, document.body)` — the standard escape
+hatch for exactly this class of problem, rendering the div as a true child
+of `<body>` regardless of where in the React tree it's declared, so it's
+positioned and sized relative to the real viewport unconditionally. The
+first portal used anywhere in this codebase; no other fixed-position UI
+needed one before because everything else generating one (`NodeTooltip`)
+already happened to render outside every transformed ancestor by
+construction, not by design — worth remembering for any *future* tooltip/
+popover nested inside the Item Set box (a map marker tooltip, say): it
+needs the same portal, not just this component's own fix.
+
+Verified via real DOM state, matching the position-check convention
+established for this exact tooltip in §62: hovering a mark with no outer
+zoom applied placed the tooltip at `clientX+14`/`clientY+12` in true
+viewport coordinates (`parentElement === document.body` confirmed);
+zooming the tree's own canvas by wheeling over empty canvas space, then
+re-hovering, still placed it correctly offset from the cursor with
+`font-size: 12px` unchanged — not assumed fixed by the portal alone, since
+CSS containing-block edge cases are exactly the kind of thing that "should
+obviously work" until actually checked.
+
+## 64. Item Set's "stated extent (source)" reference row/rectangle removed — it duplicated Inspector, almost always
+
+Asked directly, after using the merged Time & Space tab for a while: "我真
+的不知道在我们的tree view的items panel的timeline里面，stated extent
+（source）还有什么用？这个不是来自于上一级的么？而且往往在右侧已经显示了"
+(I genuinely don't know what use the timeline's "stated extent (source)"
+row still serves — doesn't it come from the level above, and isn't it
+usually already shown on the right?).
+
+Traced both halves before answering. `ItemSetBrowser.tsx`'s "Time & Space"
+tab passed `statedShape={node.temporal}` into `ItemsTimeline` (the
+Collection's own declared temporal extent, drawn as a reference bar above
+the item marks) and `statedBbox={node.spatial?.bbox}` into `ItemsMap` (the
+same Collection's declared bbox, drawn as a rectangle) — `node` here is
+always the very Collection whose box this is. Opening that box happens by
+selecting that Collection (`selection.ts`: selecting a non-Item sets both
+`selectedHref` *and* `browsingHref` to the same href, and `boxHref`
+derives from `browsingHref`) — so Inspector, on the right, is at that same
+moment showing that identical Collection's own Temporal/Spatial fields
+(`TimeLens`/`SpaceLens`), with the identical `node.temporal`/
+`node.spatial?.bbox` values. The user's read was exactly right: this was
+almost always pure duplication, not new information.
+
+One real nuance found before just deleting it: clicking a specific Item
+*inside* the open box changes `selectedHref` to that Item while
+`browsingHref` (and thus the box) stays put — Inspector then switches to
+showing *that Item's own* Temporal/Spatial (via `highlightHref`,
+suppressing the Collection-level fact entirely, per §40's original
+Collection-level-data-leak fix, which called that exact combination "pure
+noise"). In that one specific state, the box's own stated-extent row was
+briefly the *only* place still showing "how does this Item compare to what
+the Collection as a whole claims" — a real, non-redundant use, not
+imagined. Surfaced this distinction and asked rather than assuming the
+"remove entirely" framing was already the full picture; the user chose
+removing it outright anyway (over "only show it once an Item inside the
+box is selected"), for simplicity — losing that one narrow comparison
+case was an accepted, explicit tradeoff, not an oversight.
+
+Also checked whether the exact same duplication existed on the spatial
+side before touching it, rather than assuming symmetry — confirmed via
+`SpaceLens.tsx`'s own `!highlightHref ? node?.spatial?.bbox : undefined`,
+the identical suppression pattern `TimeLens.tsx` uses. Asked separately,
+since the user's own question named only the timeline; they confirmed
+removing `statedBbox` too, for the same reason.
+
+Removed both props from `ItemSetBrowser.tsx`'s two `ItemsTimeline`/
+`ItemsMap` calls (the components themselves keep supporting `statedShape`/
+`statedBbox` — `TimeLens.tsx`/`SpaceLens.tsx`'s own Inspector-side callers
+still need them, and that usage isn't redundant with anything, since it's
+the *only* place that Collection-level fact is shown once you're not
+inside its own box). `hasTemporalData`/`hasSpatialData` (the checks
+gating whether to render the timeline/map at all vs. an empty-state
+message) were narrowed to only the *items'* own data — previously
+`!!node.temporal ||`/`!!node.spatial?.bbox ||` meant a Collection with a
+stated extent but zero Items carrying their own would still render an
+otherwise-empty plot just to show the now-removed reference mark.
+
+Verified live: the "Time & Space" tab's timeline now shows only real item
+marks (axis height dropped from including the old reference row's
+`STATED_ROW_HEIGHT + 8` to just the item lanes), the map below shows only
+item footprints, with Inspector's own Temporal/Spatial fields on the right
+still showing the Collection's stated extent/bbox exactly as before —
+confirming the fact wasn't lost app-wide, only its redundant second copy.
+
+## 65. The map's initial "fit everything" never actually fired — a ref marked itself done before checking there was anything to fit
+
+Reported directly: "Time&Space的地图其实没有fly to功能，或者现在非常不智能。
+不管是我选中了一个结点，还是选择了之后，选中别的，然后再选择，都没办法很好地
+fly to，定位到比较好的位置去，导致用户其实不知道地图上有没有显示，在哪里，因
+为常常范围是小的" (the Time & Space map effectively has no working fly-to,
+or it's very unintelligent — selecting a node, or reselecting different
+things afterward, never lands on a good position, so I can't tell whether
+or where anything is shown, since the extent is often small).
+
+Checked both mechanisms `ItemsMap.tsx` has for this rather than assuming
+which one was broken. The per-*Item* `flyToBounds` effect (triggered by
+`highlightHref`) turned out to already work correctly — verified directly
+by clicking two genuinely distant Items in sequence (Malta, then a site in
+the Brazilian Amazon) and confirming the map really flew to each one's own
+bbox, at a sensible zoom, both times. The *other* mechanism — fitting the
+whole currently-loaded batch into view once a box first opens, before any
+one Item is picked — was the real, reproducible bug: opening any
+Collection's box and waiting (items visibly loaded, real footprints
+drawn, real dates in the timeline) left the map stuck at its literal
+initial `[0,0]`/zoom-2 view, confirmed by reading the real map's center/
+zoom directly (not just a screenshot) and separately by checking the
+actual OpenStreetMap tile requests the browser made — all at zoom 2, none
+past the initial load.
+
+Root cause: `lastFitTargetRef.current = fitKey` was set *before* checking
+whether `itemsWithBbox` had anything in it yet:
+
+```
+if (lastFitTargetRef.current === fitKey) return
+lastFitTargetRef.current = fitKey        // marked "done" here...
+const boundsList = itemsWithBbox.map(...)
+if (boundsList.length === 0) return      // ...even though nothing was fit
+```
+
+`fitKey` (a Collection's own href) is available the instant a box opens —
+well before `useItemSet()`'s own async fetch resolves any Items. The
+effect's very first run, with `itemsWithBbox` still empty, hit that early
+return, but had *already* poisoned the guard for this `fitKey`. The effect
+does depend on `itemsWithBbox` and does re-run once Items actually arrive
+— but by then `lastFitTargetRef.current === fitKey` was already true, so
+every subsequent, real opportunity to fit was silently skipped, forever,
+for that Collection. Fixed by moving the ref-write to *after* confirming
+there's a real, non-empty `bounds` to fit — the effect now keeps retrying
+across the async load instead of giving up on the first, empty attempt,
+while still fitting only once per `fitKey` after that (so it doesn't fight
+a manual pan/zoom the way the original comment already intended).
+
+Verified against two very different fixtures, deliberately, rather than
+declaring victory on one screenshot: Earth Search's Sentinel-2 Collection
+(this session's running example) turned out to be a poor test of the fix's
+*visible* effect — reading the map's real center confirmed the fit now
+does run (center measurably shifted off `[0,0]`), but this Collection's
+default browse order returns Items scattered across the entire globe (a
+Malta scene followed by an Amazon scene, back to back), so "fit to
+everything currently loaded" is legitimately close to a world view
+regardless — a property of this fixture's own data order, not a bug.
+Adaptation Atlas's regionally-scoped "Population 2020" Collection (Africa-
+wide coverage, 2 Items) made the fix's actual value obvious: opening its
+box now correctly frames the continent-scale extent immediately, and
+clicking either Item flies in further to that Item's own bbox — both the
+box's own map and Inspector's separate map (same `ItemsMap` component,
+different caller) confirmed showing a sensibly-fit view, not a stuck
+world view or an empty ocean.
+
+## 66. The tree recentered on every Collection click, even ones already on screen — and the Item Set box now always paints on top, by construction
+
+Two related complaints about exploring Structure Lens, reported together:
+"每次选中了collection对象之后tree view也还会调整视野，我感觉这种移动视野会影响
+我的操作和探索的连续性啊，这难道不是历史遗留问题么？然后items panel在有的
+collection 点之前 在有的之后，难道不应该永远在最上面么？" (every time I select
+a Collection the tree view still adjusts, disrupting the continuity of my
+browsing — isn't this legacy behavior? And the Items panel ends up in
+front of some Collection dots, behind others — shouldn't it always be on
+top?).
+
+**Auto-recenter fired unconditionally, not just for genuinely off-screen
+selections.** The pan-to-selection effect's own comment already named its
+real purpose: bringing a selection *panned far outside the current view*
+(arriving from Time/Space Lens, or not yet expanded into view) back on
+screen. But the implementation never actually checked whether the target
+was already visible — it recentered on every distinct `panHref`,
+including nodes the user had just clicked directly because they could
+already see them. Confirmed live, not just by reading the code: clicking
+three already-visible sibling Collections in a row shifted the tree's own
+`transform` attribute every single time (`translate(-180, 727.5)` →
+`689.5` → `575.5` → `499.5`), even though all three stayed on screen the
+entire time. Fixed by projecting the target's *current* screen position
+(using the transform as it stood *before* any change) and skipping the
+pan entirely when it already falls within the viewport, minus a
+`VISIBILITY_MARGIN` of 100px on each side. Verified both directions didn't
+regress: the same three-click sequence now leaves the transform completely
+unchanged, while a genuinely off-screen selection (simulated by manually
+dragging the canvas far away, then selecting a node that had scrolled out
+of view) still correctly pans it back into frame.
+
+**The Item Set box's left/right side wasn't actually the complaint — its
+paint order was.** Traced `labelOnLeft = hasRenderedChildren && !isRoot`
+first (the mechanism that flips which side a node's label, and therefore
+its box, renders on) as a candidate explanation, but asked before
+assuming: the user's own "永远在最上面" (always on top) pointed at z-order,
+not left/right placement. SVG paints in strict document order with no
+z-index-like override available for plain elements — the box, rendered
+inline as part of its own owning node's `<g>` (itself just one entry in
+`nodes.map(...)`), painted above or below other nodes/links purely by
+coincidence of where that node fell in traversal order relative to
+whatever visually overlapped it, with nothing guaranteeing "the box the
+user is actively interacting with is always the foreground element."
+
+Fixed by portaling the currently-open box into a dedicated `<g>` rendered
+*last* inside the same zoomed/panned canvas group (a `boxLayer` state, set
+via callback ref rather than a plain ref — the same class of fix as
+`useElementSize`, §44, since a plain ref wouldn't be attached yet on the
+very render that needs to check it) — confirmed structurally, not just
+visually, via `parentElement.lastElementChild === parentG`, guaranteeing
+by SVG's own document-order painting rule (not incidental layout) that the
+open box always renders above every ordinary node and link, regardless of
+where its owning node falls in the tree's traversal order. The portaled
+`<g>` reproduces the same `translate(y, x)` its owning node's own `<g>`
+already applied, so its internal coordinate math (the connector line, the
+`foreignObject`'s x/y) needed no changes at all.
+
+One real, necessary follow-on fix this required: §62's hover-tooltip-
+bubbling guard (`isInsideItemSetBox`) used a manual ancestor walk bounded
+at the node's own `<g>` — which assumed the box was still a *DOM*
+descendant of that `<g>`, no longer true once portaled elsewhere in the
+document. React's own synthetic event bubbling is portal-transparent (an
+event from inside a portal still bubbles to its *React*-tree ancestors,
+regardless of real DOM position) — so the ancestor node's own
+`onMouseEnter`/`onMouseMove` would still fire exactly as before, but the
+walk meant to detect and suppress that would now silently fail (never
+finding `itemSetBoxRef` between the event target and the node's `<g>`,
+since it no longer sits between them in the real DOM), reopening the
+exact bug §62 had just fixed. Replaced the walk with a direct
+`itemSetBoxRef.current?.contains(target)` check — correct regardless of
+where in the DOM the box actually renders, since `.contains()` asks "is
+this a descendant of this *specific* element" rather than searching
+upward through a class of elements the way the earlier, since-abandoned
+`.closest('[data-block-pan]')` bugs (§61) did. Verified together in one
+run: hovering a timeline mark still shows exactly one correct tooltip
+(no stuck/duplicate ancestor tooltip), drag-pan and wheel-zoom inside the
+timeline still work, and the box's own drag/resize handles are all still
+present and functional — confirming the portal didn't quietly break any
+of the interaction fixes built in §61/§62.
+
+## 67. The Legend moves to the bottom-left corner
+
+Asked directly: "图例应该放在左下角，不影响重要的信息呈现" (the legend should
+sit in the bottom-left corner, so it doesn't get in the way of important
+content). Moved both the expanded panel and its collapsed "show legend"
+button from `top: 10, right: 10` to `bottom: 10, left: 10`. Top-left was
+already claimed by the "Collapse to top level"/"Expand all catalogs"
+buttons; bottom-left had nothing else anchored there. Top-right — where it
+used to sit — is also where the tree's own nodes fan out toward and where
+an open Item Set box (§66, now guaranteed to paint above everything) is
+likely to end up, so moving off that corner has real, not just cosmetic,
+value. Verified live via screenshot.
+
+## 68. Item Set's static-catalog and API-backed UI/UX split into two genuinely different panels
+
+Asked directly, grounded in STAC's own two design philosophies: "按照stac的
+设计，其实static catalog和api就是两种不同的方式和不同的设计哲学...Pagination逻辑
+只存在在static catalog中，那我们就在这种类型的时候支持完整的Pagination UI/UX，
+而API的话我们就用别的，纯粹基于搜索，检索，排序的方式就可以" (static catalogs
+and APIs are two different design philosophies — pagination logic only
+makes sense for static catalogs, so give that mode real pagination UI/UX,
+and give API mode something else entirely: pure search/retrieval/sort).
+This directly resolves §58's own long-deferred bullet (real page-based
+pagination + a dedicated bbox/datetime API query module, both explicitly
+parked pending design details) — not new scope invented from nothing.
+
+Research first (per this project's own "research before design" norm):
+official `stac-browser` genuinely does the same split already — its
+`Items.vue`/`Pagination.vue` show numbered-page controls with `rel:next/
+prev/first/last` link buttons only for an API source, and a plain "show
+more" chunk-reveal button otherwise; no search/sort/filter UI exists for a
+static source at all in that codebase either. Confirmed live against real
+STAC APIs (not assumed): Earth Search and Microsoft Planetary Computer's
+own `/items` endpoints both accept `datetime=<start>/<end>`, `bbox=w,s,e,n`,
+and `sortby=-properties.datetime` as plain GET query params, verified with
+direct `curl` requests before writing any code against them.
+
+**`ItemSetBrowser.tsx` is now a thin dispatcher** on `node.items.kind`,
+rendering one of two components that share almost nothing beyond a row
+renderer and the `ItemsTimeline`/`ItemsMap` embedding:
+
+- **`LinksItemSetBrowser`** (static catalogs) — the id/title text search
+  box is gone entirely: "在static catalog中的搜索几乎是没有意义的，按照ID或者
+  名字搜索，没有人能够做到" (searching a static catalog by id/name is close
+  to useless — nobody using this system would already know the id). In its
+  place, `useLinksPagedItemSet` (replacing half of the old, deleted
+  `useItemSet.ts`) does real page-based browsing: `hrefs.length` is always
+  known exactly up front, so `totalPages` is exact, not estimated, and a
+  page-number jump box, page-size select, and Prev/Next all work like a
+  genuine paginated browser rather than infinite scroll. Each page's Items
+  are fetched (one request per href, same as before — static catalogs have
+  no batch-fetch endpoint) only the first time that page is visited; a
+  local page cache means revisiting an already-seen page is instant, no
+  spinner. **List and Time & Space share the exact same page's data** — a
+  direct user choice (offered as an alternative to giving Time & Space its
+  own independent full-collection load) — so paging changes what both tabs
+  show together, keeping the panel's state single and simple rather than
+  two half-independent views of the same Collection.
+- **`CursorItemSetBrowser`** (API-backed Collections) — same id/title
+  search box removed, replaced with a real, **locally-scoped** query panel:
+  a datetime range (two `<input type="date">`, converted to a full RFC3339
+  interval on submit — `date` alone fails STAC's own validation, confirmed
+  directly against Earth Search returning "does not match RFC3339 format"),
+  a sort direction select, and a "draw a bbox on this panel's own map"
+  toggle. This is **not** a revival of the interactive draw-tool §39
+  deleted wholesale (a *global* store shared with Inspector's own Space/
+  Time Lens) — it's the differently-scoped module §58/§72 explicitly kept
+  open: state lives as plain `useState` inside `CursorItemSetBrowser`
+  itself, nothing global, and Inspector's own Lenses stay untouched, pure
+  visualization, exactly as §39 left them. No numbered pagination here at
+  all — a STAC API's Item Search only ever exposes an opaque `rel:next`
+  cursor, never a numeric offset, so "jump to page 10" is categorically
+  impossible against a live API; the existing scroll/"Load more"/"Load all
+  remaining" mechanics are kept, just now firing against a filtered+sorted
+  endpoint instead of an always-unfiltered one. A query only takes effect
+  on an explicit "Search" click (matching the deleted tool's own original
+  reasoning: refiring on every keystroke/mousemove would be wasteful), with
+  a "Clear filters" reset and a "filtered: ..." summary line so the
+  `showing N of M` count is legible as *this query's* match count, not the
+  whole Collection's.
+
+**New data-model plumbing** (`src/stac/types.ts`, `src/stac/graph.ts`):
+`StacNode` gained `declaredConformsTo?: string[]` — `raw.conformsTo` used
+to be read once inside `detectSourceKind` and discarded; it's now retained,
+since gating the new Sort control correctly needs it. Per spec,
+`conformsTo` is only ever declared on an API's own landing page, never
+repeated on a nested Collection reached by browsing — so a new file,
+`src/stac/conformance.ts` (`resolveApiConformance`), walks a node's
+`declaredRootHref` via the shared `loader` cache to find its *governing*
+root's copy, and `useApiConformance.ts` wraps that reactively (synchronous
+in the normal top-down browse case, since the root is always already
+cached by then; genuinely async only for a deep link straight to a nested
+node). `supportsSort()` checks a node's resolved `conformsTo` against the
+known Sort-extension conformance URIs (both v1.0.0/v1.1.0, `item-search`
+and `ogcapi-features` variants) — the Sort *select* control is omitted
+entirely, not just disabled, when unsupported, so no param is ever sent
+that a server might reject or silently ignore. (In practice this rarely
+hides anything: every real API fixture checked — Earth Search, Microsoft
+Planetary Computer, USGS LandsatLook, GeoBON, Canada's Datacube — already
+declares Sort; both major server implementations, `stac-fastapi` and
+`stac-server`, bundle it by default. Scoped deliberately narrow for this
+pass regardless: sort is offered on `properties.datetime` only, no
+arbitrary-field sort UI — CQL2 property filtering stays on the deferred
+list below.)
+
+**`src/stac/apiSearch.ts`**: `fetchSearchPage` gained an optional `filter:
+SearchFilter` (`bbox`/`datetimeStart`/`datetimeEnd`/`sortDirection`),
+applied only when building a *fresh* request (`!nextHref`) — a followed
+`rel:next` link already encodes whatever produced it server-side, and the
+spec leaves that link's own shape entirely up to the implementation, so
+re-appending filter params on top of it would be redundant at best.
+
+**`useItemSet.ts` is deleted outright**, split into `useLinksPagedItemSet.ts`
+and `useCursorQueriedItemSet.ts` — confirmed via `grep` to have exactly one
+caller before removing it. The two modes' state shapes are different types
+now (an indexed page cache + page index vs. an ever-growing array + opaque
+cursor + query object), not just different branches of shared fields, so a
+real split reads more honestly than one hook with two internal branches.
+
+**`ItemsMap.tsx`** gained `appliedBbox`/`drawMode`/`onBboxDrawn` — the
+bbox-draw gesture reuses the exact hand-rolled mousedown/mousemove/mouseup
+pattern from the deleted `SpaceLens.tsx` draw tool (`git show
+b266a59^:src/components/SpaceLens.tsx` is the reference: `map.dragging.
+disable()` for the gesture's duration is what actually lets a drag-to-draw
+coexist with Leaflet's own drag-to-pan on the same map — no other
+mechanism found works). `appliedBbox` renders as its own bold dashed
+overlay, deliberately not reusing `statedBbox`'s fainter rendering path —
+the two are semantically different (a source's own declared extent vs. a
+user's active filter) and a Collection can have both at once.
+**A real bug found and fixed during Playwright verification**: both the
+drawn preview rectangle and the persistent applied-bbox overlay must be
+created with `interactive: false` — an interactive Leaflet vector layer
+sitting under the cursor is a plausible way for it to swallow a mouse
+event before it reaches the map's own listener, and this is standard
+practice for a pure visual overlay regardless. (First suspected as *the*
+cause of a real observed failure in this feature's own testing — dragging
+a full rectangle producing no bbox at all — but isolating it properly
+showed the actual cause that time was the test script's own drag endpoint
+landing outside the browser viewport entirely, a test-script bug, not an
+app bug; `interactive: false` was kept anyway as independently-correct
+practice, not because it was proven to be the fix for that specific
+failure. Worth recording so a future reader doesn't take the in-code
+comment's original, stronger claim at face value — it was corrected once
+following its own reasoning through to the end.) A second, real, actually-
+confirmed bug from the same testing pass: `onBboxDrawn` was a fresh closure
+on every render of `CursorItemSetBrowser` (itself re-rendering on every
+scroll-triggered background `loadMore`), which is one of the draw-mode
+effect's own dependencies — an unmemoized callback there tears the effect
+down and rebuilds it (detaching/reattaching the map's native listeners) on
+any parent re-render, a real risk during a drag gesture; wrapped in
+`useCallback` with an empty dependency array, since it only closes over
+stable `useState` setters.
+
+**`ItemsTimeline.tsx`** gained one new, purely presentational prop,
+`appliedRange`, drawing a low-opacity background band for the currently-
+applied datetime filter. **Deliberately no drag-to-select-range gesture
+was added** — datetime filtering is two plain `<input type="date">` fields
+in the query panel instead. Reasoning, not just a preference: this
+component's existing pan/zoom drag already needed a real fix earlier this
+project (an unscoped `.closest('[data-block-pan]')` walk matching an
+unrelated ancestor, §61) — adding a second, semantically different drag
+gesture (range-select) to the same canvas would need the two to agree on
+`mousedown` precedence every time, a combinatorially worse version of a
+bug class already paid for once. The deleted `TimeLens.tsx`'s old range-
+select drag (real prior art, checked directly via `git show`) is not
+actually a usable precedent for *combining* the two — it predates pan/zoom
+existing in this component at all, so there is no historical case of both
+gestures coexisting to learn from. Two native date inputs touch none of
+`svgRef`/`data-block-pan`/window listeners and are trivially testable
+(`page.fill`, no synthetic drag-coordinate math).
+
+**Verification**: every piece checked live — `curl` against real Earth
+Search endpoints before writing the query-param code (not assumed);
+Playwright against a real static catalog (Adaptation Atlas's "Annual
+Hazard Timeseries," 100 items → exactly 3 pages at the default page size)
+confirmed page jump/prev/next/page-size, instant revisits to a cached
+page, and List/Time & Space staying in sync; Playwright against Earth
+Search's `sentinel-2-l2a` confirmed the Sort control's presence (real
+conformance detected), a real filtered+sorted request firing with the
+exact expected query string, the match count and result ordering changing
+correctly, and Clear Filters reverting to the unfiltered default; the bbox
+draw gesture was verified by literally dragging the mouse across the
+embedded Leaflet map and confirming the resulting bbox query param and the
+overlay rendering, not by calling Leaflet's API directly (this project's
+own established "a render-pipeline test is not a gesture test" lesson,
+§61) — the first several attempts at this specific check failed for a
+mundane reason (the drag endpoint fell outside the test's own viewport
+height), a useful reminder that a failing gesture test is not automatically
+evidence of an app bug until the test itself is confirmed correct.
+
+## 69. Static-catalog pagination gets numbered page buttons, not a jump-to-page input; form controls fixed for dark mode
+
+Two issues reported directly right after §68 shipped. First: "我点了数字后面的上下按钮，数字有变化，但是没有加载" (I clicked the spin-button arrows next to the number, the digit changed, but nothing loaded) — the original page-jump control was a plain `<input type="number">` with a `blur`/Enter-only commit handler; a native number input's own spin-button arrows fire `input`/`change` events, not `blur`, so clicking them changed the displayed digit without ever calling `goToPage`. Second, and unprompted by the first: "我更喜欢那种就是有1、2、3。。。23、24、25这种感觉的pagination" (I'd prefer the kind of pagination that feels like 1, 2, 3 ... 23, 24, 25).
+
+Replaced the input entirely with a classic MUI-style numbered page list (`buildPageList` in `ItemSetBrowser.tsx`): always page 1, the last page, and a small window around the current page, collapsing everything else behind a single ellipsis on each side once the total exceeds what fits — every page is a direct click, no intermediate typed/committed state to get out of sync with. Verified the exact edge cases (`current=1`, `current=total`, a window straddling both ellipses, and small totals with no ellipsis needed at all) match the expected `[1,2,3,4,5,…,25]` / `[1,…,21,22,23,24,25]` / `[1,…,12,13,14,…,25]` shapes before wiring it into the UI.
+
+Separately: "dropdown的按钮底是白色，难道不应该是深色主题么" (the dropdown's background is white — shouldn't it be dark-themed?) — the new page-size `<select>` and the API query panel's date inputs/sort `<select>` never set their own `background`/`color`, so native form controls rendered with the browser's own light-mode default regardless of this app's actual theme. Fixed with a shared `formControlStyle` (`background: var(--color-bg)`, `color: var(--color-text)`, plus `colorScheme: 'light dark'` so the browser's own chrome around them — a date input's calendar popup, a select's dropdown arrow — also renders dark, not just the control's own flat background). Verified with Playwright's `colorScheme: 'dark'` emulation: the select's computed background resolved to the same `rgb(28, 26, 23)` as `--color-bg`'s dark value.
+
+## 70. Already-loaded pages stay visible, dimmed, when paging through a static catalog
+
+Asked directly, for both halves of the Time & Space view together: "如果可以，已经加载过的page的数据就留在地图上，可以不以当前页为最highlight，但是可以也以某种方式留下来，timeline和地图都一样，比如说灰色的之类的，但是需要能够被看见" (if possible, keep already-loaded pages' data on the map — it doesn't have to be as highlighted as the current page, but it should stay visible somehow, same for the timeline, grayed out but genuinely visible).
+
+`useLinksPagedItemSet` already kept every visited page in a local `pageCache` (for instant back-navigation, §68) — it just never exposed anything but the current page. Added `otherLoadedItems`: every cached page's Items except whichever one is currently rendered, flattened into one array (pages are disjoint slices by construction, so no dedup logic is needed beyond excluding the current page's own entry). Threaded through as a new `dimmedItems` prop on `ItemsMap`/`ItemsTimeline` (API-backed Collections never pass one — infinite-scroll accumulation already puts everything ever loaded into the "active" set itself, so there's no "other pages" concept there):
+
+- **`ItemsMap`**: dimmed footprints draw in the same rebuild pass as the active ones, *before* them so they always sit underneath, in `palette.textFaint` at low fill opacity, with a hover tooltip but no click handler (selecting an Item on a page that isn't displayed would need to also switch pages to make sense — more behavior than was asked for).
+- **`ItemsTimeline`**: dimmed and active Items are merged into *one* combined array before grouping/lane-packing, so they share the exact same domain and never visually overlap — only the per-group render color/interactivity differs, decided by whether a group contains at least one *active*-page Item (a group can genuinely mix both, since Adaptation Atlas has real duplicate-timestamp Items that already collapse together regardless of page; any active membership makes the whole group behave as active).
+
+Verified on Adaptation Atlas's "Annual Hazard Timeseries" (100 items, page size 20): after visiting page 3, the timeline showed a gray band (pages 1–2's combined range) alongside two full-color bars for page 3's own groups. The map version was verified by reading the DOM directly rather than trusting the screenshot alone — this particular fixture's Items all share one continent-wide footprint, so the dimmed rectangle is completely covered by the active one drawn on top of it at the exact same position; confirmed both `stroke="#b7b1a4"` (dimmed) and `stroke="#b45309"` (active) genuinely coexist in the rendered SVG even though only one is visible on top for this specific fixture's data shape.
+
+## 71. The drawn bbox was invisible until Search, and drawing once could permanently break every map's drag-to-pan on the page
+
+Two problems reported together after using the API query panel's "Draw area on map": "我绘制search范围的时候，看不见我绘制的区域，当然确实看到了bbox set。然后在结果上我也无法拖拽地图，只能zoom in & out" (when I drew the search area I couldn't see the area I drew, though I did see "bbox set" — and afterward I couldn't drag the map at all, only zoom).
+
+**The invisible area** was a real gap, not a rendering bug: the temporary preview rectangle is removed the instant the drag gesture ends (by design — it's only a live preview), and the *persistent* overlay (`appliedBbox` on `ItemsMap`, §68) was wired to `appliedQuery.bbox`, which stays `undefined` until "Search" is actually clicked — leaving a multi-second gap with zero visual confirmation of what was just drawn, only the small "bbox set" text chip. Fixed by feeding the *draft* bbox into that same overlay prop instead (`appliedBbox={draft.bbox}` in `CursorItemSetBrowser`) — identical value once Search does commit, so nothing visually changes at that transition.
+
+**The permanently-broken dragging** was a genuinely serious bug, confirmed live (not assumed) via a real, repeatable Playwright reproduction rather than reasoning about it in the abstract: drawing a bbox — most reliably right after clicking "Draw area on map" straight from the List tab, which mounts `ItemsMap` for the first time *with `drawMode` already true* — reliably threw `Cannot read properties of null (reading 'offsetWidth')` from deep inside Leaflet's own `Draggable._onDown`/`getSizedParentNode`, and every subsequent drag attempt on *any* Leaflet map on the page (Item Set's own, and Inspector's separate always-visible one) silently did nothing afterward, with no further error.
+
+Root cause, isolated by instrumenting the actual mount/cleanup call order rather than guessing: React's development-mode double-invoke of a component's effects on its first mount does not clean up in the LIFO order it does for a genuine unmount here — the draw-mode effect's own cleanup (which calls `map.dragging.enable()`) can run *after* the base mount effect's cleanup has already called `map.remove()` on that same `map` instance. Calling `Handler.enable()` on an already-removed map still unconditionally re-attaches a real native `mousedown` listener to the container — Leaflet's own `Draggable.enable()` doesn't check whether the map it belongs to is still alive — and that listener's handler then references the removed map's already-torn-down internal panes. The *next* real mousedown anywhere throws inside `getSizedParentNode`, and because `Draggable._dragging` is a **static, page-wide flag** (not one per map instance) that never gets cleared when the handler throws before reaching that step, every drag on every Leaflet map on the page is silently blocked from that point on — until a full page reload, since nothing in the running page's JavaScript ever resets that static field on its own (an already-corrupted tab stays broken even after the underlying code is fixed and hot-reloaded, since HMR swaps module code, not already-executed static state — confirmed directly: the fix alone didn't visibly help until the reporting user did a full refresh).
+
+Fixed by guarding the draw effect's cleanup with `if (mapRef.current === map)` before touching `dragging`/cursor at all — `mapRef.current` is updated by the sibling mount effect, so a mismatch reliably means this exact `map` instance is stale (already removed, or superseded by a newer one), regardless of the exact interleaving order that produced that state. Verified with a repeated stress sequence in one fresh browser session (tab-switch back and forth, draw+search twice in a row, Clear Filters) checking real drag-and-confirm-the-view-moved after every step, plus three independent repeats of the original failing reproduction — all clean, zero page errors, dragging genuinely worked throughout.
+
+## 72. What's deliberately deferred (not forgotten)
+
+- A real, resolved lesson from §61, worth keeping in mind for future
+  additions inside Structure Lens's Item Set box specifically: anything
+  nested inside it sits under a `data-block-pan="true"` wrapper set for
+  the *outer* tree canvas's own purposes, so a naive `element.closest
+  ('[data-block-pan]')` check written for a *new* gesture built inside
+  that box will always match that outer wrapper and silently reject
+  every gesture, everywhere, regardless of what the new code's own
+  interactive elements do or don't mark. The correct pattern (now used by
+  `ItemsTimeline`'s own pan handler) is a manual ancestor walk that stops
+  at the new component's own root element, not an unscoped `.closest()`
+  call. Also a broader process lesson from the same investigation: a
+  render-pipeline test (calling a library's public API directly) proves
+  the renderer, not the gesture — don't report a gesture-driven feature
+  done on that evidence alone; the user's own real-mouse test caught
+  exactly the gap that evidence couldn't.
 - A real, separate finding surfaced while investigating §60 (not itself
   §60's bug, and not yet acted on): the whole app has no responsive
   layout at all for narrow viewports. Tested directly at a phone-sized
@@ -4163,17 +4812,14 @@ the original, unchanged half of the rule.
   the way it used to, not directly to the new multi-item batch view;
   whether a similar check belongs in the new Temporal tab is an open,
   not-yet-asked question of its own.
-- §58's two other explicitly-deferred phases from the same proposal, not
-  started: real page-based pagination (replacing infinite scroll) — a
-  real page-*number* jump is only actually possible for static/links-mode
-  Collections (the full ordered href array is already known); a STAC
-  API's own Item Search only ever exposes an opaque `next` cursor/token,
-  never a numeric offset, so "jump to page 10" against a live API can only
-  ever be simulated by sequentially fetching pages 1–9 first, not a true
-  random-access jump — and a dedicated bbox/datetime API query-input
-  module living in this same panel (a deliberate, different context from
-  the interactive draw-tool §39 removed from Inspector's single-object
-  view). Both still fully open on sequencing/design details.
+- §58's two other explicitly-deferred phases from the same proposal —
+  real page-based pagination for static/links-mode Collections, and a
+  dedicated bbox/datetime/sort API query module scoped to this panel — are
+  both now built; see §68. Kept here only as a pointer for anyone tracing
+  this bullet's history. Still genuinely open, not touched by §68: CQL2/
+  arbitrary-property filtering (sort stayed scoped to `properties.datetime`
+  only), and the still-unresolved "should an API-backed source get an
+  entirely different navigation paradigm" question below.
 - Blocking Inspector's whole render until every async piece (the preview
   image especially) has finished loading, rather than showing instant
   content immediately and letting the image pop in on its own — asked

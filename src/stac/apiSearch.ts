@@ -29,6 +29,37 @@ function withQuery(base: string, params: Record<string, string>): string {
   return url.toString()
 }
 
+/** A query/sort filter for a *fresh* search request only — see the note on
+ *  `fetchSearchPage` below for why this never applies to a followed
+ *  `rel:next` link. Scoped deliberately narrow for this pass: `datetime`
+ *  and `bbox` are the STAC API's own core parameters (universally
+ *  supported); `sortDirection` covers only `properties.datetime` (no
+ *  arbitrary-field sort UI yet — every real dataset has a datetime, not
+ *  every dataset has a meaningful shared sort field beyond it). Verified
+ *  directly against Earth Search's real `/items` endpoint (not assumed):
+ *  `sortby=-properties.datetime`, `datetime=<start>/<end>`, and
+ *  `bbox=w,s,e,n` all behave as expected. */
+export interface SearchFilter {
+  bbox?: [number, number, number, number]
+  /** ISO 8601 date/datetime; undefined on one side means that side is
+   *  open-ended (STAC's `..` interval convention). */
+  datetimeStart?: string
+  datetimeEnd?: string
+  sortDirection?: 'asc' | 'desc'
+}
+
+function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<string, string> {
+  const params: Record<string, string> = { limit: String(limit) }
+  if (filter?.bbox) params.bbox = filter.bbox.join(',')
+  if (filter?.datetimeStart || filter?.datetimeEnd) {
+    params.datetime = `${filter.datetimeStart ?? '..'}/${filter.datetimeEnd ?? '..'}`
+  }
+  if (filter?.sortDirection) {
+    params.sortby = filter.sortDirection === 'desc' ? '-properties.datetime' : 'properties.datetime'
+  }
+  return params
+}
+
 /** Fetches one page of Items from a STAC API `/search` or `rel:items`
  *  (OGC API - Features) endpoint. Always GET, never POST — the Item
  *  Search spec documents GET as a first-class supported method (its own
@@ -52,17 +83,21 @@ function withQuery(base: string, params: Record<string, string>): string {
  *  never from comparing a running total against an assumed-present count
  *  (confirmed directly against both — see docs/DESIGN.md §22).
  *
- *  Every fresh query (no `nextHref` yet) is unfiltered — this used to
- *  accept a `bbox`/`datetime` filter (a `SearchQuery` opt) built from the
- *  interactive draw-a-bbox/select-a-range tool, but that whole tool was
- *  dropped entirely (docs/DESIGN.md §39), and with it the only caller that
- *  ever populated a filter here. Removed rather than left as a parameter
- *  nothing ever passes. */
+ *  A fresh query (no `nextHref` yet) is filtered by `opts.filter` when
+ *  given (see `SearchFilter` above) — a real, locally-scoped query module
+ *  now lives in the Item Set panel itself (docs/DESIGN.md §68), distinct
+ *  from the Inspector-wide interactive draw-a-bbox/select-a-range tool
+ *  dropped entirely in §39 (and its now-deleted global `store/query.ts`).
+ *  `opts.filter` is only ever consulted when `!opts.nextHref` — a followed
+ *  `rel:next` link already encodes whatever filter/sort produced it
+ *  server-side, and the spec leaves that link's own shape entirely up to
+ *  the implementation, so re-appending filter params on top of it would be
+ *  redundant at best and wrong at worst. */
 export async function fetchSearchPage(
   endpoint: string,
-  opts: { limit: number; nextHref?: string },
+  opts: { limit: number; nextHref?: string; filter?: SearchFilter },
 ): Promise<SearchPage> {
-  const url = opts.nextHref ?? withQuery(endpoint, { limit: String(opts.limit) })
+  const url = opts.nextHref ?? withQuery(endpoint, buildFreshQueryParams(opts.limit, opts.filter))
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`Search request failed: ${res.status} ${res.statusText}`)

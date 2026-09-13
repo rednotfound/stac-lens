@@ -49,17 +49,43 @@ function bboxToBounds(bbox: number[]): L.LatLngBoundsLiteral {
  *  `items`/`highlightHref` mean in its own context. */
 export function ItemsMap({
   items,
+  dimmedItems,
   highlightHref,
   statedBbox,
+  appliedBbox,
+  drawMode = false,
+  onBboxDrawn,
   fitKey,
   onSelectItem,
 }: {
   items: StacNode[]
+  /** Footprints from pages/batches already fetched but not currently the
+   *  "active" set — drawn faint and non-clickable, behind `items`'s own
+   *  full-color, interactive footprints. Asked for directly: "已经加载过的
+   *  page的数据就留在地图上...灰色的之类的，但是需要能够被看见" (already-loaded
+   *  pages' data should stay on the map, grayed out, but visible). Omit
+   *  (or pass `[]`) when there's no such secondary set — e.g. an
+   *  API-backed Collection's own infinite-scroll accumulation already puts
+   *  everything ever loaded into `items` itself, so it never needs this. */
+  dimmedItems?: StacNode[]
   highlightHref?: string
   /** A reference footprint to draw as a dashed rectangle (e.g. a
    *  Collection's own declared `extent.spatial.bbox`) — omit when there's
    *  nothing meaningful to compare against in this context. */
   statedBbox?: number[]
+  /** A user-applied query filter's own bbox, rendered as a visually
+   *  distinct, bolder overlay from `statedBbox` — deliberately a separate
+   *  prop rather than reusing `statedBbox`'s rendering path: `statedBbox`
+   *  is a passive fact ("this is what the source declares"), this is an
+   *  active filter currently constraining what's on screen, and a
+   *  Collection can genuinely have both at once. */
+  appliedBbox?: [number, number, number, number]
+  /** While true, dragging on the map draws a rectangle instead of panning
+   *  it (`map.dragging.disable()` for the duration — the same conflict
+   *  resolution the deleted interactive query tool used, the only way a
+   *  drag-to-draw gesture and Leaflet's own drag-to-pan can coexist). */
+  drawMode?: boolean
+  onBboxDrawn?: (bbox: [number, number, number, number]) => void
   /** Refit the view to the currently-visible footprints once per distinct
    *  value of this key (e.g. the Collection's own href, or a page number)
    *  — not on every render, so it doesn't fight a manual pan/zoom. */
@@ -69,6 +95,9 @@ export function ItemsMap({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerGroupRef = useRef<L.LayerGroup | null>(null)
+  const appliedBboxLayerRef = useRef<L.Rectangle | null>(null)
+  const drawingRectRef = useRef<L.Rectangle | null>(null)
+  const drawStartRef = useRef<L.LatLng | null>(null)
   const lastFitTargetRef = useRef<string | undefined>(undefined)
   const lastFlyHrefRef = useRef<string | undefined>(undefined)
   const isDark = useIsDark()
@@ -110,6 +139,10 @@ export function ItemsMap({
     () => items.filter((i): i is StacNode & { spatial: { bbox: number[] } } => !!i.spatial?.bbox),
     [items],
   )
+  const dimmedItemsWithBbox = useMemo(
+    () => (dimmedItems ?? []).filter((i): i is StacNode & { spatial: { bbox: number[] } } => !!i.spatial?.bbox),
+    [dimmedItems],
+  )
 
   // Rebuild the rectangle layers whenever the visible item set changes.
   useEffect(() => {
@@ -124,6 +157,22 @@ export function ItemsMap({
         dashArray: '3,2',
         fill: false,
       }).addTo(layerGroup)
+    }
+
+    // Dimmed (already-loaded, not-currently-active) footprints, drawn
+    // before the active set below so they always sit underneath it —
+    // faint but genuinely visible, not just a hint, and non-interactive
+    // beyond a hover tooltip (no click — selecting an Item on a page
+    // that's no longer the displayed one would need to also switch pages
+    // to make sense, which is more behavior than was asked for here).
+    for (const item of dimmedItemsWithBbox) {
+      const rect = L.rectangle(bboxToBounds(item.spatial.bbox), {
+        color: palette.textFaint,
+        weight: 1,
+        fillOpacity: 0.12,
+      })
+      rect.bindTooltip(item.title ?? item.id, { sticky: true, direction: 'top' })
+      rect.addTo(layerGroup)
     }
 
     // Selected item drawn last (on top) so its outline isn't buried under a
@@ -146,25 +195,152 @@ export function ItemsMap({
       rect.on('click', () => onSelectItem(item.href))
       rect.addTo(layerGroup)
     }
-  }, [itemsWithBbox, statedBbox, highlightHref, palette, onSelectItem])
+  }, [itemsWithBbox, dimmedItemsWithBbox, statedBbox, highlightHref, palette, onSelectItem])
 
-  // Fit the whole visible set into view once per distinct `fitKey` — not
-  // on every render, so it doesn't fight a manual pan/zoom.
+  // Draw-a-bbox mode — the hand-rolled mousedown/mousemove/mouseup pattern
+  // (with `map.dragging.disable()` for the duration) that the now-deleted
+  // interactive query tool (docs/DESIGN.md §39) originally used, adapted
+  // from that tool's global store to a plain prop/callback pair scoped to
+  // whichever panel turns this on. This is the only mechanism found that
+  // actually lets a drag-to-draw gesture coexist with Leaflet's own
+  // drag-to-pan on the same map.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !fitKey) return
-    if (lastFitTargetRef.current === fitKey) return
-    lastFitTargetRef.current = fitKey
+    if (!map || !drawMode) return
+
+    map.dragging.disable()
+    const container = map.getContainer()
+    container.style.cursor = 'crosshair'
+
+    function onDown(e: L.LeafletMouseEvent) {
+      drawStartRef.current = e.latlng
+      drawingRectRef.current?.remove()
+      // `interactive: false` — this rectangle is a pure visual preview,
+      // sitting directly under the cursor for the whole gesture; it must
+      // never itself intercept a mouse event meant for the map underneath
+      // (or, later, for an item footprint it happens to be drawn over).
+      drawingRectRef.current = L.rectangle(L.latLngBounds(e.latlng, e.latlng), {
+        color: '#2563eb',
+        weight: 2,
+        dashArray: '4,3',
+        fillOpacity: 0.05,
+        interactive: false,
+      }).addTo(map!)
+    }
+    function onMove(e: L.LeafletMouseEvent) {
+      const start = drawStartRef.current
+      if (!start || !drawingRectRef.current) return
+      drawingRectRef.current.setBounds(L.latLngBounds(start, e.latlng))
+    }
+    function onUp() {
+      const start = drawStartRef.current
+      const rect = drawingRectRef.current
+      if (!start || !rect) return
+      const bounds = rect.getBounds()
+      rect.remove()
+      drawingRectRef.current = null
+      drawStartRef.current = null
+      onBboxDrawn?.([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()])
+    }
+
+    map.on('mousedown', onDown)
+    map.on('mousemove', onMove)
+    map.on('mouseup', onUp)
+
+    return () => {
+      map.off('mousedown', onDown)
+      map.off('mousemove', onMove)
+      map.off('mouseup', onUp)
+      // Only touch dragging/cursor on a map that's still the *live, current*
+      // instance — a real, confirmed race with React's dev-mode double-
+      // invoke: this cleanup can run interleaved *after* the base mount
+      // effect's own cleanup has already called `map.remove()` on this
+      // exact `map` object (confirmed directly by logging call order — it
+      // is not simple LIFO here). Calling `map.dragging.enable()` on an
+      // already-removed map still re-attaches a real native `mousedown`
+      // listener to the container (Leaflet's own `Draggable.enable()` does
+      // this unconditionally, regardless of the map's own lifecycle) whose
+      // handler then references that removed map's torn-down internal
+      // panes — the next real mousedown anywhere throws inside Leaflet's
+      // own `getSizedParentNode`, and because that throw happens before
+      // `Draggable._dragging` (a *static*, page-wide flag, not per-map) is
+      // ever cleared, every drag on every Leaflet map on the page — not
+      // just this one — is silently blocked forever after, until reload.
+      // Comparing against `mapRef.current` — updated by that other effect
+      // — is what actually detects "this exact instance is stale," since
+      // Leaflet exposes no public "am I removed" flag of its own.
+      if (mapRef.current === map) {
+        map.dragging.enable()
+        container.style.cursor = ''
+      }
+      drawingRectRef.current?.remove()
+      drawingRectRef.current = null
+      drawStartRef.current = null
+    }
+  }, [drawMode, onBboxDrawn])
+
+  // The currently-applied query bbox, drawn as its own persistent overlay —
+  // independent of the item-footprint layer group above (which fully
+  // rebuilds whenever the visible item set changes; this shouldn't flicker
+  // along with that).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    appliedBboxLayerRef.current?.remove()
+    appliedBboxLayerRef.current = null
+    if (!appliedBbox) return
+    appliedBboxLayerRef.current = L.rectangle(bboxToBounds(appliedBbox), {
+      color: '#2563eb',
+      weight: 2,
+      dashArray: '4,3',
+      fillOpacity: 0.05,
+      // Purely a visual overlay — must never intercept clicks meant for an
+      // item footprint underneath it, or a future draw gesture starting on
+      // top of it. Same reasoning as the in-progress drawing rectangle above.
+      interactive: false,
+    }).addTo(map)
+    return () => {
+      appliedBboxLayerRef.current?.remove()
+      appliedBboxLayerRef.current = null
+    }
+  }, [appliedBbox])
+
+  // Fit the whole visible set into view once per distinct `fitKey` — not
+  // on every render, so it doesn't fight a manual pan/zoom. `fitKey`
+  // itself (e.g. a Collection's own href) is available immediately when a
+  // box opens, well before its Items have actually finished loading —
+  // real user report: opening any Collection's box left the map stuck at
+  // the default whole-world view no matter how long you waited, making a
+  // handful-of-km footprint invisible as a sub-pixel speck ("常常范围是小的
+  // ...导致用户其实不知道地图上有没有显示，在哪里"). Root cause was marking
+  // `lastFitTargetRef` done *before* checking whether there was anything
+  // to fit yet: the effect's very first run (items still empty) set the
+  // guard and returned, so every later re-run once items actually arrived
+  // (this effect does depend on `itemsWithBbox`, and does re-run then) was
+  // skipped by that same guard, permanently. Only marking it done once a
+  // fit has *actually happened* keeps retrying across the async item load
+  // instead of giving up on the first, empty attempt — while still fully
+  // honoring "once per fitKey, don't fight a manual pan/zoom" once it does.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !fitKey || lastFitTargetRef.current === fitKey) return
 
     const boundsList = itemsWithBbox.map((i) => bboxToBounds(i.spatial.bbox))
     if (statedBbox) boundsList.push(bboxToBounds(statedBbox))
+    // Committing a bbox search is a strong, explicit signal of "look here
+    // now" — re-framing the map to it (alongside whatever items already
+    // loaded) makes the just-applied filter visibly take effect rather than
+    // leaving the view wherever it happened to be.
+    if (appliedBbox) boundsList.push(bboxToBounds(appliedBbox))
     if (boundsList.length === 0) return
     const bounds = boundsList.reduce<L.LatLngBounds | undefined>(
       (acc, b) => (acc ? acc.extend(b) : L.latLngBounds(b)),
       undefined,
     )
-    if (bounds) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 })
-  }, [fitKey, itemsWithBbox, statedBbox])
+    if (!bounds) return
+    lastFitTargetRef.current = fitKey
+    map.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 })
+  }, [fitKey, itemsWithBbox, statedBbox, appliedBbox])
 
   // Fly to the specifically-selected Item's own bbox — this is what makes
   // an island-sized bbox actually visible instead of a 1-2px speck on a

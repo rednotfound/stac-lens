@@ -139,6 +139,15 @@ export interface StacNode {
    *  `conformsTo` of its own yet still gets `items.kind === 'cursor'` via
    *  its own `rel:items` link — see `buildNode`. */
   sourceKind: StacSourceKind
+  /** This node's own raw `conformsTo` array, when present — per spec this is
+   *  only ever declared on a STAC API's landing page, never repeated on a
+   *  nested Collection/Item reached by browsing. `undefined`, not `[]`,
+   *  when the raw JSON had no such field at all. A nested node that wants
+   *  to know what its *governing* API root actually conforms to (e.g. to
+   *  gate a Sort UI control) can't read this off itself — see
+   *  `stac/conformance.ts`'s `resolveApiConformance`, which walks
+   *  `declaredRootHref` to find the root's own copy of this field instead. */
+  declaredConformsTo?: string[]
   /** Original JSON, untouched. SOURCE layer — never mutated. */
   raw: unknown
 

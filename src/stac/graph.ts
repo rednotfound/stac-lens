@@ -210,6 +210,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     collectionsEndpoint,
     items,
     sourceKind,
+    declaredConformsTo: raw.conformsTo,
     raw,
 
     spatial:
