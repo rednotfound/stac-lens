@@ -176,6 +176,7 @@ export function ItemsTimeline({
   onSelectItem,
   focusOnSelection = false,
   zoomable = false,
+  scrollSelectedIntoView = false,
   appliedRange,
 }: {
   items: StacNode[]
@@ -220,6 +221,20 @@ export function ItemsTimeline({
    *  has `focusOnSelection` doing similar work; only Item Set's own
    *  multi-item batch view (§62) turns it on. */
   zoomable?: boolean
+  /** Auto-scroll the selected row into view on selection — right for Item
+   *  Set's own multi-item batch view, where only a handful of rows are
+   *  visible out of possibly thousands and a highlight with no scroll is
+   *  invisible in practice; meaningless (and actively disruptive) for
+   *  Inspector's own single-object widget, which always shows exactly one
+   *  row already sitting in its natural, already-visible position inline
+   *  in the page. A real, confirmed bug: `scrollIntoView` has no way to
+   *  target only *this* component's own local scroll container — it walks
+   *  every scrollable ancestor between the target and the viewport, so
+   *  this unconditionally fired call was also scrolling Inspector's own
+   *  outer column to "center" a tiny SVG row that was already on screen,
+   *  visibly yanking the whole panel on every selection for no reason.
+   *  Off by default for that reason; Item Set turns it on explicitly. */
+  scrollSelectedIntoView?: boolean
 }) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const activeHrefs = useMemo(() => new Set(items.map((i) => i.href)), [items])
@@ -282,16 +297,18 @@ export function ItemsTimeline({
   }, [groups, visibleGroups, domain, displayDomain, isFocused])
 
   // Bring the selected row into view automatically — once per distinct
-  // selection, so it doesn't fight a manual scroll.
+  // selection, so it doesn't fight a manual scroll. Gated on
+  // `scrollSelectedIntoView` (see its own doc comment above) — never runs
+  // for Inspector's single-object widget.
   const selectedRowRef = useRef<SVGGElement | null>(null)
   const lastScrolledRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!highlightHref || highlightHref === lastScrolledRef.current) return
+    if (!scrollSelectedIntoView || !highlightHref || highlightHref === lastScrolledRef.current) return
     if (selectedRowRef.current) {
       lastScrolledRef.current = highlightHref
       selectedRowRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }
-  }, [highlightHref, assignments])
+  }, [scrollSelectedIntoView, highlightHref, assignments])
 
   // Wheel-to-zoom, drag-to-pan on the time axis — hand-rolled with plain
   // React event handlers + native window listeners, the exact same

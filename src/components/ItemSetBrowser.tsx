@@ -185,6 +185,7 @@ function TimeSpaceView({
             viewWidth={plotWidth > 0 ? plotWidth : 280}
             onSelectItem={onSelect}
             zoomable
+            scrollSelectedIntoView
             appliedRange={appliedRange}
           />
         )}

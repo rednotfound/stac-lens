@@ -110,7 +110,37 @@ export function DetailPanel() {
   const browsedSummary = summarizeItemSet(browsedItems)
 
   return (
-    <div style={{ padding: 16, paddingLeft: 13, fontSize: 13, borderLeft: `3px solid ${typeColor}` }}>
+    // `overflowWrap: 'break-word'` here, not on each individual field, is
+    // deliberate — a real, reported bug: a long, unbroken URL (a real
+    // Item's own `href`, e.g. a deep Capella S3 path with no spaces) has
+    // no natural break point plain text-wrapping recognizes, so it forced
+    // this column wider than its own assigned width — Chrome-only, per a
+    // direct comparison of the same Item in both browsers: Chrome and
+    // Firefox disagree on which characters (`/`, `-`) count as a normal
+    // break opportunity for line-wrapping purposes, so the identical
+    // markup happened to fit in Firefox and overflow in Chrome. The result
+    // wasn't just a stray horizontal scrollbar — Inspector's own column
+    // (`inspectorScrollRef`, App.tsx) already scrolls vertically by
+    // design, so gaining unexpected *horizontal* scroll on the exact same
+    // element pushed the visible content sideways, reading as "the panel
+    // got shoved out of view." Setting this once, on the shared wrapper
+    // every Human-tab field renders inside, guarantees it for the current
+    // known offenders (this node's own href below, and the Containment
+    // block's declared collection/parent hrefs) and any future field that
+    // renders a long, real-world string with no guaranteed spaces — rather
+    // than a narrow, easy-to-forget fix on just today's one reported spot.
+    // The JSON tab's own `<pre>` is unaffected and doesn't need this: it
+    // already manages its own overflow explicitly (`overflow: 'auto'`
+    // below), which independently exempts it from this exact class of bug.
+    <div
+      style={{
+        padding: 16,
+        paddingLeft: 13,
+        fontSize: 13,
+        borderLeft: `3px solid ${typeColor}`,
+        overflowWrap: 'break-word',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         {/* The icon carries the "what kind of thing is this" signal on its
          * own shape, not just color — someone who hasn't yet learned "teal
