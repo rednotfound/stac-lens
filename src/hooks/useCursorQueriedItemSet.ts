@@ -9,12 +9,6 @@ import type { StacNode } from '../stac/types'
 // identical to the old shared hook's value (raised there after a real
 // complaint about a felt "40 item" cap — see docs/DESIGN.md §22).
 const CURSOR_PAGE_SIZE = 250
-// `loadAll` keeps paging until exhausted OR this many items are loaded,
-// whichever comes first — a search narrow enough to return a few thousand
-// real matches should genuinely load all of them in one action; one that's
-// still effectively unfiltered (millions of matches) should not be
-// silently fetched to exhaustion by one click.
-const LOAD_ALL_SAFETY_CAP = 5000
 
 export type CursorQuery = SearchFilter
 
@@ -23,7 +17,12 @@ const EMPTY_QUERY: CursorQuery = {}
 export type CursorItemSetState =
   | { status: 'empty' }
   | {
-      status: 'loading' | 'ready'
+      /** `idle`: no search has ever been run yet (and none was restored
+       *  from a shareable URL) — deliberately not the same as `loading`.
+       *  API mode is search-first: "在API没有search之前,没有结果" (before an
+       *  API search runs, there's no result at all) — no request is made
+       *  until `applyQuery` is actually called at least once. */
+      status: 'idle' | 'loading' | 'ready'
       items: StacNode[]
       /** Undefined when genuinely unknown, not zero — some STAC API
        *  implementations never report a total match count at all. Reflects
@@ -32,9 +31,11 @@ export type CursorItemSetState =
       hasMore: boolean
       loadingMore: boolean
       loadMore: () => void
-      loadAll: () => void
       /** The query actually in effect — only changes via `applyQuery`,
-       *  never live-updated from draft edits still being typed/drawn. */
+       *  never live-updated from draft edits still being typed/drawn.
+       *  Still `{}` (not yet meaningfully "applied") while `status` is
+       *  `idle` — check `status`, not this, to tell "never searched" apart
+       *  from "searched with no filters." */
       appliedQuery: CursorQuery
       applyQuery: (q: CursorQuery) => void
       clearQuery: () => void
@@ -43,27 +44,40 @@ export type CursorItemSetState =
 /** Query-aware, cursor-following browsing for an API-backed Collection — a
  *  fundamentally different shape from a static catalog's page-indexed href
  *  array (see `useLinksPagedItemSet`): there is no numeric offset here,
- *  ever, only a `rel:next` link followed verbatim, so "pagination" for this
- *  mode means scroll/load-more/load-all, never "jump to page N". Query
- *  changes only ever apply to a *fresh* request — a followed `rel:next`
- *  link already encodes whatever produced it server-side (see
- *  `apiSearch.ts`'s `fetchSearchPage`) — so `applyQuery` always resets and
- *  restarts from a brand-new first page. */
+ *  ever, only a `rel:next` link followed verbatim, so growing the buffer
+ *  means calling `loadMore()` one page at a time — `usePagedCursorResults`
+ *  is what turns that into numbered-page presentation, via its own
+ *  catch-up mechanism, rather than this hook ever fetching more than one
+ *  page per call itself (a bulk "load everything" affordance existed once
+ *  and was deliberately removed — see `ItemSetResultsPanel`'s own comment
+ *  for why). Query changes only ever apply to a *fresh* request — a
+ *  followed `rel:next` link already encodes whatever produced it
+ *  server-side (see `apiSearch.ts`'s `fetchSearchPage`) — so `applyQuery`
+ *  always resets and restarts from a brand-new first page. */
 export function useCursorQueriedItemSet(
   node: (StacNode & { items: { kind: 'cursor' } }) | undefined,
+  /** A query to apply immediately on mount instead of the default
+   *  unfiltered first load — e.g. one restored from a shareable URL. Only
+   *  consulted at mount (see the reset effect below); changing it on an
+   *  already-mounted instance has no effect, matching `applyQuery`'s own
+   *  "only a fresh explicit call starts a new query" semantics. */
+  initialQuery?: CursorQuery,
 ): CursorItemSetState {
   const nodeHref = node?.href
 
   const [items, setItems] = useState<StacNode[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [matched, setMatched] = useState<number | undefined>(undefined)
-  const [appliedQuery, setAppliedQuery] = useState<CursorQuery>(EMPTY_QUERY)
+  const [appliedQuery, setAppliedQuery] = useState<CursorQuery>(initialQuery ?? EMPTY_QUERY)
+  // A restored `initialQuery` (from a shareable URL) counts as "already
+  // searched" — it's replaying a real search someone actually ran, not
+  // browsing the default unfiltered order.
+  const [hasSearched, setHasSearched] = useState(initialQuery !== undefined)
 
   const generationRef = useRef(0)
   const nextHrefRef = useRef<string | undefined>(undefined)
   const exhaustedRef = useRef(false)
-  const loadedCountRef = useRef(0)
-  const appliedQueryRef = useRef<CursorQuery>(EMPTY_QUERY)
+  const appliedQueryRef = useRef<CursorQuery>(initialQuery ?? EMPTY_QUERY)
   // Synchronous companion to `loadingMore` state — closes the React
   // StrictMode double-invoke window the same way the old shared hook's
   // `loadingRef` did (see docs/DESIGN.md, `useItemSet`'s original comment).
@@ -73,17 +87,23 @@ export function useCursorQueriedItemSet(
     generationRef.current += 1
     nextHrefRef.current = undefined
     exhaustedRef.current = false
-    loadedCountRef.current = 0
     loadingRef.current = false
     setItems([])
     setLoadingMore(false)
     setMatched(undefined)
   }
 
+  // One effect, not two — resetting state and (conditionally) kicking off
+  // the first fetch need to happen in the same pass: a restored
+  // `initialQuery` should fetch immediately (replaying a real search), but
+  // the *default*, nothing-restored case must NOT auto-fetch at all
+  // (search-first — see `CursorItemSetState.status`'s `idle` doc above).
   useEffect(() => {
     resetForNewQueryOrNode()
-    appliedQueryRef.current = EMPTY_QUERY
-    setAppliedQuery(EMPTY_QUERY)
+    appliedQueryRef.current = initialQuery ?? EMPTY_QUERY
+    setAppliedQuery(initialQuery ?? EMPTY_QUERY)
+    setHasSearched(initialQuery !== undefined)
+    if (initialQuery !== undefined) void loadMore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeHref])
 
@@ -98,7 +118,6 @@ export function useCursorQueriedItemSet(
     nextHrefRef.current = page.nextHref
     if (!page.nextHref) exhaustedRef.current = true
     if (page.matched != null) setMatched(page.matched)
-    loadedCountRef.current += page.items.length
     setItems((prev) => {
       const seen = new Set(prev.map((i) => i.href))
       return [...prev, ...page.items.filter((i) => !seen.has(i.href))]
@@ -121,30 +140,12 @@ export function useCursorQueriedItemSet(
     }
   }
 
-  async function loadAll() {
-    if (!node || loadingRef.current) return
-    const generation = generationRef.current
-    loadingRef.current = true
-    setLoadingMore(true)
-    try {
-      while (!exhaustedRef.current && loadedCountRef.current < LOAD_ALL_SAFETY_CAP) {
-        await fetchOneCursorPage(node, generation)
-        if (generation !== generationRef.current) return // node/query changed mid-flight
-      }
-    } catch (err) {
-      console.error('[useCursorQueriedItemSet] load-all request failed', err)
-      exhaustedRef.current = true
-    } finally {
-      loadingRef.current = false
-      setLoadingMore(false)
-    }
-  }
-
   function applyQuery(q: CursorQuery) {
     if (!node) return
     resetForNewQueryOrNode()
     appliedQueryRef.current = q
     setAppliedQuery(q)
+    setHasSearched(true)
     void loadMore()
   }
 
@@ -152,22 +153,15 @@ export function useCursorQueriedItemSet(
     applyQuery(EMPTY_QUERY)
   }
 
-  useEffect(() => {
-    if (!node) return
-    void loadMore()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeHref])
-
   if (!node) return { status: 'empty' }
 
   return {
-    status: items.length === 0 && loadingMore ? 'loading' : 'ready',
+    status: !hasSearched ? 'idle' : items.length === 0 && loadingMore ? 'loading' : 'ready',
     items,
     totalCount: matched,
     hasMore: !exhaustedRef.current,
     loadingMore,
     loadMore: () => void loadMore(),
-    loadAll: () => void loadAll(),
     appliedQuery,
     applyQuery,
     clearQuery,

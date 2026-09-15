@@ -48,8 +48,11 @@ export interface SearchFilter {
   sortDirection?: 'asc' | 'desc'
 }
 
-function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<string, string> {
-  const params: Record<string, string> = { limit: String(limit) }
+/** The `SearchFilter` -> query-param mapping, on its own so the shareable-URL
+ *  encoder (`searchQueryUrl.ts`) can produce the exact same param set the
+ *  real request uses, instead of inventing a parallel encoding. */
+export function filterToParams(filter?: SearchFilter): Record<string, string> {
+  const params: Record<string, string> = {}
   if (filter?.bbox) params.bbox = filter.bbox.join(',')
   if (filter?.datetimeStart || filter?.datetimeEnd) {
     params.datetime = `${filter.datetimeStart ?? '..'}/${filter.datetimeEnd ?? '..'}`
@@ -58,6 +61,10 @@ function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<str
     params.sortby = filter.sortDirection === 'desc' ? '-properties.datetime' : 'properties.datetime'
   }
   return params
+}
+
+function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<string, string> {
+  return { limit: String(limit), ...filterToParams(filter) }
 }
 
 /** Fetches one page of Items from a STAC API `/search` or `rel:items`

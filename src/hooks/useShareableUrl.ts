@@ -1,9 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
+import { joinHashFragment, splitHashFragment, decodeSearchQuery } from '../stac/searchQueryUrl'
+import type { SearchFilter } from '../stac/apiSearch'
+import type { StacNode } from '../stac/types'
 
 export interface DeepLinkTarget {
   rootHref: string
   selectedHref: string | null
+  /** An API search query carried in the hash's own `?...` suffix, if any —
+   *  see `splitHashFragment`/`joinHashFragment`. Scoped to whichever
+   *  Collection actually owns the browsed Item Set box (`forHref`): the
+   *  named node itself when it's a Collection/Catalog, or its parent when
+   *  it's an Item — the same rule `store/selection.ts`'s `browsingHref`
+   *  already uses, so a query restored this way lands on the same box a
+   *  freshly-applied one would. */
+  appliedQuery?: { forHref: string; query: SearchFilter }
+}
+
+function queryOwnerHref(node: StacNode): string {
+  return node.type === 'Item' ? (node.parentHref ?? node.href) : node.href
 }
 
 interface BootstrapState {
@@ -30,11 +45,16 @@ function readHashHref(): string {
 /** Fetches the node a hash names and finds the catalog root it belongs to
  *  — the one piece of async resolution both the initial-load bootstrap
  *  and back/forward navigation (`usePopStateSync`, below) need identically,
- *  so it exists exactly once rather than copied into both. */
+ *  so it exists exactly once rather than copied into both. Also decodes an
+ *  applied-search suffix when the hash carries one (`splitHashFragment`). */
 async function resolveHashTarget(hash: string): Promise<DeepLinkTarget> {
-  const node = await loader.load(hash)
+  const { href, queryString } = splitHashFragment(hash)
+  const node = await loader.load(href)
   const rootHref = await loader.resolveRoot(node)
-  return { rootHref, selectedHref: node.href === rootHref ? null : node.href }
+  const appliedQuery = queryString
+    ? { forHref: queryOwnerHref(node), query: decodeSearchQuery(queryString) }
+    : undefined
+  return { rootHref, selectedHref: node.href === rootHref ? null : node.href, appliedQuery }
 }
 
 /** Resolves the hash-encoded node href (if present) into a catalog root to
@@ -95,6 +115,7 @@ export function useDeepLinkBootstrap(): BootstrapState {
 export function usePopStateSync(
   setRootHref: (href: string | null) => void,
   select: (href: string | null) => void,
+  setPendingQuery: (forHref: string, query: SearchFilter) => void,
 ): void {
   useEffect(() => {
     function handlePopState() {
@@ -107,6 +128,7 @@ export function usePopStateSync(
       void (async () => {
         try {
           const target = await resolveHashTarget(hash)
+          if (target.appliedQuery) setPendingQuery(target.appliedQuery.forHref, target.appliedQuery.query)
           setRootHref(target.rootHref)
           select(target.selectedHref)
         } catch {
@@ -117,7 +139,7 @@ export function usePopStateSync(
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [setRootHref, select])
+  }, [setRootHref, select, setPendingQuery])
 }
 
 /** Keeps the address bar in sync with whatever's currently open, so copying
@@ -143,6 +165,14 @@ export function useShareableUrlSync(
   rootHref: string | null,
   selectedHref: string | null,
   booting: boolean,
+  /** The query-string suffix (no leading `?`) for whatever `appliedQuery`
+   *  currently belongs to the Collection actually named by `selectedHref ??
+   *  rootHref` — `''` when there's nothing to append (a static catalog, an
+   *  API Collection with no filter applied, or a stale/mismatched
+   *  `forHref`). Computed by the caller (`App.tsx`) from `store/itemSet.ts`
+   *  — this hook only threads it into the hash, it owns no query state
+   *  itself. */
+  queryStringForSelection: string,
 ): void {
   // `undefined` means "hasn't synced yet" — distinct from `null` (synced,
   // and landed on the landing page) so the very first sync after mount
@@ -153,7 +183,7 @@ export function useShareableUrlSync(
 
   useEffect(() => {
     if (booting) return
-    const current = rootHref ? (selectedHref ?? rootHref) : null
+    const current = rootHref ? joinHashFragment(selectedHref ?? rootHref, queryStringForSelection) : null
     if (readHashHref() === (current ?? '')) {
       prevRootHrefRef.current = rootHref
       return
@@ -169,5 +199,5 @@ export function useShareableUrlSync(
       window.history.replaceState(null, '', url)
     }
     prevRootHrefRef.current = rootHref
-  }, [rootHref, selectedHref, booting])
+  }, [rootHref, selectedHref, booting, queryStringForSelection])
 }

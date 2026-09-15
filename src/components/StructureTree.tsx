@@ -9,7 +9,8 @@ import { useStructureTree, type TreeDatum } from '../hooks/useStructureTree'
 import { useSelectionStore } from '../store/selection'
 import { loader } from '../stac/loaderInstance'
 import { classifyNodeShape, type StacNode } from '../stac/types'
-import { ItemSetBrowser } from './ItemSetBrowser'
+import { LinksItemSetBrowser } from './LinksItemSetBrowser'
+import { CursorItemSetPanels } from './CursorItemSetPanels'
 import { Spinner } from './Spinner'
 import { TypeIcon, type StacObjectKind } from './TypeIcon'
 import { isInlinePreviewAsset } from '../stac/assets'
@@ -79,6 +80,80 @@ const linkGenerator = linkHorizontal<unknown, { x: number; y: number }>()
 // reusing the same `{x, y}` shape for both would invite exactly the kind
 // of swapped-axis bug this file has already hit once with `linkGenerator`.
 const ZERO_BOX_OFFSET = { dxHoriz: 0, dyVert: 0 }
+
+/** One box's full drag/resize geometry — used identically for the
+ *  single-box (static catalog) case and each of the two independent boxes
+ *  (Search/Results) a cursor-mode node gets instead. */
+interface BoxGeometry {
+  offset: { dxHoriz: number; dyVert: number }
+  onDragBy: (dxLocal: number, dyLocal: number) => void
+  size: { width: number; height: number }
+  onResizeBy: (dxLocal: number, dyLocal: number) => void
+}
+
+/** One box's own drag-to-move and drag-to-resize handles — factored out so
+ *  a cursor-mode node can set this up twice (Search + Results) with the
+ *  exact same behavior a static catalog's single box already had, instead
+ *  of duplicating the `d3.drag()` wiring inline for each. `showItemSetBox`
+ *  re-binds when the box (re)mounts, same as the original single-box
+ *  version did; `labelOnLeftRef` is shared across every box on a node —
+ *  which edge is "near" the node doesn't differ per box. */
+function useBoxDragHandles(
+  containerRef: React.RefObject<SVGGElement | null>,
+  showItemSetBox: boolean,
+  onDragBy: (dxLocal: number, dyLocal: number) => void,
+  onResizeBy: (dxLocal: number, dyLocal: number) => void,
+  labelOnLeftRef: React.RefObject<boolean>,
+) {
+  const boxHandleRef = useRef<HTMLDivElement | null>(null)
+  const resizeHandleRef = useRef<HTMLDivElement | null>(null)
+  const onDragByRef = useRef(onDragBy)
+  useEffect(() => {
+    onDragByRef.current = onDragBy
+  })
+  const onResizeByRef = useRef(onResizeBy)
+  useEffect(() => {
+    onResizeByRef.current = onResizeBy
+  })
+
+  useEffect(() => {
+    const el = boxHandleRef.current
+    if (!el) return
+    const behavior = drag<HTMLDivElement, unknown>()
+      .container(() => containerRef.current as unknown as SVGGElement)
+      .on('drag', (event: D3DragEvent<HTMLDivElement, unknown, unknown>) => {
+        onDragByRef.current(event.dx, event.dy)
+      })
+    const sel = select(el)
+    sel.call(behavior)
+    return () => {
+      sel.on('.drag', null)
+    }
+  }, [containerRef, showItemSetBox])
+
+  useEffect(() => {
+    const el = resizeHandleRef.current
+    if (!el) return
+    const behavior = drag<HTMLDivElement, unknown>()
+      .container(() => containerRef.current as unknown as SVGGElement)
+      .on('drag', (event: D3DragEvent<HTMLDivElement, unknown, unknown>) => {
+        const dx = labelOnLeftRef.current ? -event.dx : event.dx
+        onResizeByRef.current(dx, event.dy)
+      })
+    const sel = select(el)
+    sel.call(behavior)
+    return () => {
+      sel.on('.drag', null)
+    }
+    // `labelOnLeftRef` is a ref object — its identity never changes across
+    // renders (only `.current` does, read fresh on every drag event via
+    // the closure above), so omitting it here is safe, same as every other
+    // ref-only omission already in this file.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerRef, showItemSetBox])
+
+  return { boxHandleRef, resizeHandleRef }
+}
 
 // The single, central rule for "should d3-zoom's own pan/zoom gesture
 // engage here" — set on every element that has its own competing gesture
@@ -169,40 +244,6 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   const [viewTransform, setViewTransform] = useState({ x: 80, y: 0, k: 1 })
   const viewTransformRef = useRef(viewTransform)
   const lastCenteredRef = useRef<string | null>(null)
-  // Real, live pixel size of the SVG's own container — used only to cap
-  // how big an open Item Set box is allowed to render (below), so it can
-  // never visually extend past this column's own right/bottom edge
-  // regardless of window size, the Structure/Inspector divider's current
-  // position, or how the box was last resized. A real, reported bug:
-  // "现在会出现一个框，这个框就会框住我选择的那个Collection和我的目标的这个Panel"
-  // (a frame now shows up, framing both the Collection I selected and my
-  // target panel) — the box (640px wide by default, or wider if manually
-  // resized) had no ceiling tied to the actually-available column width at
-  // all, so once it exceeded that width it visually crossed into the
-  // Inspector column's own screen region. Structure Lens's own `overflow:
-  // hidden` (App.tsx) was assumed to clip that overflow away, per an
-  // earlier comment on this exact class of problem (§66) — confirmed
-  // directly, via a real user report, that this is NOT reliable: Chrome
-  // does not clip a `foreignObject`'s overflowing content against an
-  // ancestor HTML element's `overflow: hidden` the same way Firefox does,
-  // so the same markup that merely got a box cut off cleanly in Firefox
-  // instead visibly bled into Inspector's own opaque, later-painted div in
-  // Chrome. A `ResizeObserver` directly on `svgRef` (not `useElementSize`,
-  // which needs a callback ref — `svgRef` is already a plain ref other
-  // effects here already safely read post-mount) keeps this reactive to
-  // real window/divider resizes, not just the initial mount size.
-  const [svgSize, setSvgSize] = useState({ width: 0, height: 0 })
-  useEffect(() => {
-    const el = svgRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      setSvgSize({ width: entry.contentRect.width, height: entry.contentRect.height })
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
   const [dragging, setDragging] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   // The currently-open Item Set box is portaled here (a dedicated `<g>`
@@ -249,16 +290,77 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   // panel — I'd rather it start wide, and let me drag the bottom-right
   // corner myself to resize it).
   const [boxSizes, setBoxSizes] = useState<Map<string, { width: number; height: number }>>(new Map())
+  // An API-backed (`cursor`-mode) node's box splits into two genuinely
+  // separate `foreignObject`s instead of one — a real, distinct
+  // node-editor-style pair, not two `<div>`s sharing one box: "我指的是有
+  // 纯粹的两个独立的foreignObject,一个是Search,一个是result" (I mean two
+  // literally separate foreignObjects — one Search, one Result). Same
+  // per-node-keyed-Map pattern as `boxOffsets`/`boxSizes` above, just one
+  // more independent pair for each of the two boxes. A static catalog's
+  // single box is entirely unaffected — `boxOffsets`/`boxSizes` above still
+  // own that case exactly as before.
+  const [searchBoxOffsets, setSearchBoxOffsets] = useState<Map<string, { dxHoriz: number; dyVert: number }>>(
+    new Map(),
+  )
+  const [searchBoxSizes, setSearchBoxSizes] = useState<Map<string, { width: number; height: number }>>(new Map())
+  const [resultsBoxOffsets, setResultsBoxOffsets] = useState<Map<string, { dxHoriz: number; dyVert: number }>>(
+    new Map(),
+  )
+  const [resultsBoxSizes, setResultsBoxSizes] = useState<Map<string, { width: number; height: number }>>(new Map())
 
   function resetLayout() {
     setDragOffsets(new Map())
     setBoxOffsets(new Map())
     setBoxSizes(new Map())
+    setSearchBoxOffsets(new Map())
+    setSearchBoxSizes(new Map())
+    setResultsBoxOffsets(new Map())
+    setResultsBoxSizes(new Map())
   }
 
   function effectiveXY(n: HierarchyPointNode<TreeDatum>): { x: number; y: number } {
     const off = dragOffsets.get(n.data.href)
     return { x: n.x + (off?.x ?? 0), y: n.y + (off?.y ?? 0) }
+  }
+
+  /** Builds one box's `BoxGeometry` against an arbitrary offset/size Map
+   *  pair — the Search and Results boxes are otherwise identical in shape
+   *  to the original single-box case, just each keeping their own
+   *  independent Map instead of sharing `boxOffsets`/`boxSizes`. */
+  function makeBoxGeometry(
+    href: string,
+    offsets: Map<string, { dxHoriz: number; dyVert: number }>,
+    setOffsets: React.Dispatch<React.SetStateAction<Map<string, { dxHoriz: number; dyVert: number }>>>,
+    defaultOffset: { dxHoriz: number; dyVert: number },
+    sizes: Map<string, { width: number; height: number }>,
+    setSizes: React.Dispatch<React.SetStateAction<Map<string, { width: number; height: number }>>>,
+    defaultSize: { width: number; height: number },
+    minWidth: number,
+    minHeight: number,
+  ): BoxGeometry {
+    return {
+      offset: offsets.get(href) ?? defaultOffset,
+      onDragBy: (dxLocal, dyLocal) => {
+        setOffsets((prev) => {
+          const next = new Map(prev)
+          const base = prev.get(href) ?? defaultOffset
+          next.set(href, { dxHoriz: base.dxHoriz + dxLocal, dyVert: base.dyVert + dyLocal })
+          return next
+        })
+      },
+      size: sizes.get(href) ?? defaultSize,
+      onResizeBy: (dxLocal, dyLocal) => {
+        setSizes((prev) => {
+          const next = new Map(prev)
+          const base = prev.get(href) ?? defaultSize
+          next.set(href, {
+            width: Math.max(minWidth, base.width + dxLocal),
+            height: Math.max(minHeight, base.height + dyLocal),
+          })
+          return next
+        })
+      },
+    }
   }
 
   useEffect(() => {
@@ -413,7 +515,18 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     // after this margin was first tuned at 140, and was never revisited.
     const targetLabelOnLeft = !!target.children && target.depth !== 0
     const hasOpenBox = boxHref === panHref
-    const BOX_SIDE_MARGIN = (boxSizes.get(panHref)?.width ?? DEFAULT_BOX_WIDTH) + 40
+    // A cursor-mode node's "box" is really two independent ones (Search +
+    // Results, see the two-`foreignObject` split below) — both anchor
+    // horizontally off the same side of the node, so the wider of the two
+    // is what actually determines how much side room is needed.
+    const isPanTargetCursorMode = target.data.node.items.kind === 'cursor'
+    const openBoxWidth = isPanTargetCursorMode
+      ? Math.max(
+          searchBoxSizes.get(panHref)?.width ?? DEFAULT_SEARCH_BOX_WIDTH,
+          resultsBoxSizes.get(panHref)?.width ?? DEFAULT_RESULTS_BOX_WIDTH,
+        )
+      : (boxSizes.get(panHref)?.width ?? DEFAULT_BOX_WIDTH)
+    const BOX_SIDE_MARGIN = openBoxWidth + 40
     const leftMargin = hasOpenBox && targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
     const rightMargin = hasOpenBox && !targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
 
@@ -497,7 +610,13 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
         >
           Expand all catalogs
         </button>
-        {(dragOffsets.size > 0 || boxOffsets.size > 0 || boxSizes.size > 0) && (
+        {(dragOffsets.size > 0 ||
+          boxOffsets.size > 0 ||
+          boxSizes.size > 0 ||
+          searchBoxOffsets.size > 0 ||
+          searchBoxSizes.size > 0 ||
+          resultsBoxOffsets.size > 0 ||
+          resultsBoxSizes.size > 0) && (
           <button
             onClick={resetLayout}
             title="Snap every manually-dragged node and Item Set box back to its computed position/size"
@@ -583,8 +702,6 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                 boxSize={
                   boxSizes.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }
                 }
-                viewTransform={viewTransform}
-                svgSize={svgSize}
                 onBoxResizeBy={(dxLocal, dyLocal) => {
                   setBoxSizes((prev) => {
                     const next = new Map(prev)
@@ -596,6 +713,28 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                     return next
                   })
                 }}
+                searchBox={makeBoxGeometry(
+                  n.data.href,
+                  searchBoxOffsets,
+                  setSearchBoxOffsets,
+                  ZERO_BOX_OFFSET,
+                  searchBoxSizes,
+                  setSearchBoxSizes,
+                  { width: DEFAULT_SEARCH_BOX_WIDTH, height: DEFAULT_SEARCH_BOX_HEIGHT },
+                  MIN_BOX_WIDTH,
+                  MIN_SEARCH_BOX_HEIGHT,
+                )}
+                resultsBox={makeBoxGeometry(
+                  n.data.href,
+                  resultsBoxOffsets,
+                  setResultsBoxOffsets,
+                  DEFAULT_RESULTS_BOX_OFFSET,
+                  resultsBoxSizes,
+                  setResultsBoxSizes,
+                  { width: DEFAULT_RESULTS_BOX_WIDTH, height: DEFAULT_RESULTS_BOX_HEIGHT },
+                  MIN_BOX_WIDTH,
+                  MIN_BOX_HEIGHT,
+                )}
                 boxLayer={boxLayer}
               />
             )
@@ -732,14 +871,41 @@ function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
   )
 }
 
+const LEGEND_OPEN_STORAGE_KEY = 'stac-lens.legend-open'
+
+/** Reads once at mount, not in a `useState` initializer that reruns on
+ *  every remount — same idea, just factored out so both the read (here)
+ *  and the write (`setLegendOpen`) below share one key. */
+function readStoredLegendOpen(): boolean {
+  try {
+    const stored = localStorage.getItem(LEGEND_OPEN_STORAGE_KEY)
+    return stored === null ? true : stored === 'true'
+  } catch {
+    return true
+  }
+}
+
 function Legend() {
-  // Starts open, not collapsed to a small preview button — the whole
-  // point of a legend is to orient someone immediately: "图例面板其实一开始
-  // 就可以是打开的，这样让大家很直观地明白各个节点是什么" (the legend panel
-  // could just start open, so everyone immediately understands what each
-  // node means). Still closeable (below) for anyone who'd rather reclaim
-  // the screen space once they already know the vocabulary.
-  const [open, setOpen] = useState(true)
+  // Starts open the first time, not collapsed to a small preview button —
+  // the whole point of a legend is to orient someone immediately: "图例面板
+  // 其实一开始就可以是打开的，这样让大家很直观地明白各个节点是什么" (the legend
+  // panel could just start open, so everyone immediately understands what
+  // each node means). Still closeable (below) for anyone who'd rather
+  // reclaim the screen space once they already know the vocabulary — and
+  // once closed, it stays closed across reloads (localStorage), since
+  // re-opening it unasked every visit was reported as just annoying once
+  // someone's already seen it: "看过一次...其实很烦，最好让...记住这个图例".
+  const [open, setOpenState] = useState(readStoredLegendOpen)
+
+  function setOpen(next: boolean) {
+    setOpenState(next)
+    try {
+      localStorage.setItem(LEGEND_OPEN_STORAGE_KEY, String(next))
+    } catch {
+      // Storage unavailable (private browsing, disabled site data, etc.) —
+      // the toggle still works for this session, it just won't persist.
+    }
+  }
 
   if (!open) {
     return (
@@ -918,13 +1084,14 @@ interface TreeNodeProps {
   onBoxDragBy: (dxLocal: number, dyLocal: number) => void
   boxSize: { width: number; height: number }
   onBoxResizeBy: (dxLocal: number, dyLocal: number) => void
-  /** The live zoom/pan transform and the SVG's own real pixel size — used
-   *  together with this node's own `x`/`y` to cap how big the open Item
-   *  Set box is allowed to render (see `clampedBoxSize` below), so it can
-   *  never visually extend past this column's own edge regardless of
-   *  where the node currently sits on screen. */
-  viewTransform: { x: number; y: number; k: number }
-  svgSize: { width: number; height: number }
+  /** Only meaningful when `node.items.kind === 'cursor'` — a static
+   *  catalog's single box is fully owned by `boxOffset`/`boxSize`/
+   *  `onBoxDragBy`/`onBoxResizeBy` above, unchanged. An API-backed node
+   *  instead gets two independent boxes (two real `foreignObject`s, not
+   *  two `<div>`s in one — see this file's own render logic below), each
+   *  with the exact same shape of geometry state as the single-box case. */
+  searchBox: BoxGeometry
+  resultsBox: BoxGeometry
   /** Where this node's own box (connector + `foreignObject`) actually gets
    *  rendered, via a portal, instead of inline in this node's own `<g>` —
    *  see the `boxLayer` state in the parent for why. `null` for the one
@@ -956,6 +1123,37 @@ const MIN_BOX_HEIGHT = 320
 // against the node with no visible space to draw anything in at all.
 const ITEM_SET_BOX_GAP = 60
 
+// A cursor-mode node's Search box only ever holds a date range/sort/draw
+// controls row plus a one-line applied-filter summary — genuinely less
+// content than the combined box ever needed, so its own default height is
+// much shorter, not the full `DEFAULT_BOX_HEIGHT`. Results keeps that
+// original full-size default (unchanged): once a search actually runs, its
+// List/Time & Space content needs exactly the same room the old combined
+// box did.
+const DEFAULT_SEARCH_BOX_WIDTH = 640
+const DEFAULT_SEARCH_BOX_HEIGHT = 180
+const DEFAULT_RESULTS_BOX_WIDTH = 640
+const DEFAULT_RESULTS_BOX_HEIGHT = 760
+// Vertical gap between the Search box's default bottom edge and the
+// Results box's default top edge — enough to draw a visible connecting
+// curve between them (see `RESULTS_CONNECTOR_TARGET_INSET` below), the
+// same reasoning as `ITEM_SET_BOX_GAP` for the node→box connector.
+const SEARCH_RESULTS_GAP = 40
+// The Results box's own default offset — positioned below the Search box
+// by default (not `ZERO_BOX_OFFSET`, unlike the node→box case, since
+// there's no separate anchor to derive "below" from other than the Search
+// box's own default height). Both boxes stay independently draggable after
+// this — it's a starting position, not a constraint.
+const DEFAULT_RESULTS_BOX_OFFSET = { dxHoriz: 0, dyVert: DEFAULT_SEARCH_BOX_HEIGHT + SEARCH_RESULTS_GAP }
+// A Search box has much less natural content than Results — flooring its
+// resize at the same 320px as Results would leave a large, mostly-empty
+// card if someone actually drags it down that far.
+const MIN_SEARCH_BOX_HEIGHT = 90
+// Same "a bit into the box, near its own drag handle" convention as the
+// node→box connector's own target inset (14 + 20 = 34, see below) — used
+// for the Search→Results connector's target point on the Results box.
+const BOX_CONNECTOR_TARGET_INSET = 20
+
 function TreeNodeView({
   datum,
   x,
@@ -975,11 +1173,25 @@ function TreeNodeView({
   onBoxDragBy,
   boxSize,
   onBoxResizeBy,
+  searchBox,
+  resultsBox,
   boxLayer,
-  viewTransform,
-  svgSize,
 }: TreeNodeProps) {
   const itemSetBoxRef = useRef<HTMLDivElement | null>(null)
+  // A cursor-mode node's Results box is a second, independent box — its
+  // own ref, checked alongside `itemSetBoxRef` by `isInsideItemSetBox`
+  // below, so hovering either box (not just the Search one, which reuses
+  // `itemSetBoxRef`) correctly suppresses this node's own tooltip.
+  const resultsBoxRef = useRef<HTMLDivElement | null>(null)
+  // Portal targets for the Search/Results panel *content* specifically —
+  // `CursorItemSetPanels` (mounted once both exist) portals its two pieces
+  // of rendered content into these, so the one shared hook state it owns
+  // (the query, the paged results) can back two physically separate
+  // `foreignObject`s at once. Same callback-ref-into-state pattern as
+  // `boxLayer` above (a plain ref read during another component's render
+  // wouldn't be attached yet on the very first pass).
+  const [searchTargetEl, setSearchTargetEl] = useState<HTMLDivElement | null>(null)
+  const [resultsTargetEl, setResultsTargetEl] = useState<HTMLDivElement | null>(null)
   // Computed early (not just where the label itself renders, further
   // down) — the resize-handle effect below needs it too, to know which
   // direction the box actually grows in.
@@ -1052,39 +1264,6 @@ function TreeNodeView({
     }
   }, [containerRef])
 
-  // The box's own drag handle — same `d3.drag()` pattern, simpler (no
-  // click behavior to disambiguate against; the handle exists only to
-  // drag).
-  const boxHandleRef = useRef<HTMLDivElement | null>(null)
-  const onBoxDragByRef = useRef(onBoxDragBy)
-  useEffect(() => {
-    onBoxDragByRef.current = onBoxDragBy
-  })
-
-  useEffect(() => {
-    const el = boxHandleRef.current
-    if (!el) return
-    const behavior = drag<HTMLDivElement, unknown>()
-      .container(() => containerRef.current as unknown as SVGGElement)
-      .on('drag', (event: D3DragEvent<HTMLDivElement, unknown, unknown>) => {
-        onBoxDragByRef.current(event.dx, event.dy)
-      })
-    const sel = select(el)
-    sel.call(behavior)
-    return () => {
-      sel.on('.drag', null)
-    }
-  }, [containerRef, showItemSetBox])
-
-  // The box's own resize handle — same `d3.drag()` pattern again. `event.dx`/
-  // `event.dy` are already zoom-scale-corrected via `.container()`, same as
-  // every other drag gesture in this tree, so the box grows by the same
-  // *local* amount regardless of the canvas's current zoom level.
-  const resizeHandleRef = useRef<HTMLDivElement | null>(null)
-  const onBoxResizeByRef = useRef(onBoxResizeBy)
-  useEffect(() => {
-    onBoxResizeByRef.current = onBoxResizeBy
-  })
   // `labelOnLeft` determines which of the box's own edges is actually
   // fixed (see the `x` formula on the foreignObject below): when the box
   // sits to the *left* of its node, its near/right edge is what's pinned
@@ -1094,27 +1273,35 @@ function TreeNodeView({
   // normal (box-on-the-right) case. Tracked in a ref, not just read from
   // the outer closure, so the drag callback (bound once per
   // `containerRef`/`showItemSetBox` change) always sees the current side
-  // even if it flips while the box stays open.
+  // even if it flips while the box stays open. Shared across every box on
+  // this node — which edge is "near" doesn't differ per box.
   const labelOnLeftRef = useRef(labelOnLeft)
   useEffect(() => {
     labelOnLeftRef.current = labelOnLeft
   })
 
-  useEffect(() => {
-    const el = resizeHandleRef.current
-    if (!el) return
-    const behavior = drag<HTMLDivElement, unknown>()
-      .container(() => containerRef.current as unknown as SVGGElement)
-      .on('drag', (event: D3DragEvent<HTMLDivElement, unknown, unknown>) => {
-        const dx = labelOnLeftRef.current ? -event.dx : event.dx
-        onBoxResizeByRef.current(dx, event.dy)
-      })
-    const sel = select(el)
-    sel.call(behavior)
-    return () => {
-      sel.on('.drag', null)
-    }
-  }, [containerRef, showItemSetBox])
+  // The single box (static catalogs) and each of the two independent boxes
+  // a cursor-mode node gets instead (Search/Results) all share the exact
+  // same drag-to-move/drag-to-resize handle behavior — see
+  // `useBoxDragHandles`. Called unconditionally, same as every other Hook
+  // here (rules of Hooks) — a links-mode node's `searchBox`/`resultsBox`
+  // handles simply never attach to any real DOM element, since that
+  // node's render below never mounts those two `foreignObject`s at all.
+  const mainBoxHandles = useBoxDragHandles(containerRef, showItemSetBox, onBoxDragBy, onBoxResizeBy, labelOnLeftRef)
+  const searchBoxHandles = useBoxDragHandles(
+    containerRef,
+    showItemSetBox,
+    searchBox.onDragBy,
+    searchBox.onResizeBy,
+    labelOnLeftRef,
+  )
+  const resultsBoxHandles = useBoxDragHandles(
+    containerRef,
+    showItemSetBox,
+    resultsBox.onDragBy,
+    resultsBox.onResizeBy,
+    labelOnLeftRef,
+  )
 
   if (datum.moreCount) {
     return (
@@ -1184,72 +1371,36 @@ function TreeNodeView({
     ? labelDx - labelWidth - ITEM_SET_BOX_GAP
     : labelDx + labelWidth + ITEM_SET_BOX_GAP
 
-  // Keeps the box on screen, within Structure Lens's own column, even when
-  // there isn't remotely enough room for it at its stored size *or*
-  // position — a real, reported bug: "现在会出现一个框，这个框就会框住我选择的
-  // 那个Collection和我的目标的这个Panel" (a frame now shows up, framing both
-  // the Collection I selected and my target panel). The box (640px by
-  // default, or wider once resized) had no ceiling tied to actually-
-  // available space at all, so it visually crossed into the Inspector
-  // column's own screen region once it didn't fit — confirmed via direct
-  // user report to be Chrome-specific: Firefox happened to clip a
-  // `foreignObject`'s overflow against Structure Lens's own `overflow:
-  // hidden` (App.tsx) the way one might assume any browser would; Chrome
-  // does not, so the exact same box that was merely (still wrongly) cut
-  // off cleanly in Firefox instead visibly bled into Inspector's own
-  // later-painted, opaque div in Chrome — not something to route around by
-  // assuming one specific browser's clipping behavior.
-  //
-  // A width clamp alone isn't enough, confirmed directly by instrumenting
-  // the real live values rather than assuming: `boxNearX` (the box's near
-  // edge, past the *label's own rendered width*, not just the node's bare
-  // position) can by itself already land close to the column's edge for a
-  // long label, before the box's width even enters into it — a real
-  // measured case put the box's own near edge at screen x=754 in an
-  // 832px-wide column, only 78px of nominal room left, nowhere near
-  // `MIN_BOX_WIDTH`. So this also nudges the box's own *position* — via the
-  // exact same `dxHoriz` offset a manual drag already uses, purely for
-  // rendering, never written back to the stored `boxOffsets` map — just
-  // enough to guarantee at least `MIN_BOX_WIDTH` fits, before clamping
-  // width against whatever room remains after that correction.
-  const BOX_EDGE_MARGIN = 24
-  const { clampedBoxSize, effectiveBoxOffsetDxHoriz } = (() => {
-    if (svgSize.width <= 0 || svgSize.height <= 0) {
-      return { clampedBoxSize: boxSize, effectiveBoxOffsetDxHoriz: boxOffset.dxHoriz }
-    }
-    const { k } = viewTransform
-    // The box's own near-edge screen position, before any correction —
-    // its *right* edge when `labelOnLeft` (it grows further left from
-    // here), its *left* edge otherwise (it grows further right).
-    const idealNearScreenX = viewTransform.x + k * (y + boxNearX + boxOffset.dxHoriz)
-    const boxTopScreenY = viewTransform.y + k * (x + 14 + boxOffset.dyVert)
-
-    let positionCorrectionScreen = 0
-    if (labelOnLeft) {
-      const minAllowedNearScreenX = MIN_BOX_WIDTH * k + BOX_EDGE_MARGIN
-      if (idealNearScreenX < minAllowedNearScreenX) {
-        positionCorrectionScreen = minAllowedNearScreenX - idealNearScreenX
-      }
-    } else {
-      const maxAllowedNearScreenX = svgSize.width - MIN_BOX_WIDTH * k - BOX_EDGE_MARGIN
-      if (idealNearScreenX > maxAllowedNearScreenX) {
-        positionCorrectionScreen = maxAllowedNearScreenX - idealNearScreenX
-      }
-    }
-    const correctedNearScreenX = idealNearScreenX + positionCorrectionScreen
-
-    const maxWidthScreen = labelOnLeft
-      ? correctedNearScreenX - BOX_EDGE_MARGIN
-      : svgSize.width - correctedNearScreenX - BOX_EDGE_MARGIN
-    const maxHeightScreen = svgSize.height - boxTopScreenY - BOX_EDGE_MARGIN
-    return {
-      clampedBoxSize: {
-        width: Math.min(boxSize.width, Math.max(MIN_BOX_WIDTH, maxWidthScreen / k)),
-        height: Math.min(boxSize.height, Math.max(MIN_BOX_HEIGHT, maxHeightScreen / k)),
-      },
-      effectiveBoxOffsetDxHoriz: boxOffset.dxHoriz + positionCorrectionScreen / k,
-    }
-  })()
+  // No clamping against Structure Lens's own visible column at all,
+  // neither the box's position nor its size, default or manually resized
+  // — two earlier, progressively lighter versions of this (§72's full
+  // reposition+shrink clamp, §82's default-width-only cap) were both
+  // removed at the user's own explicit, repeated direction. §72's own
+  // clamp was built for a reported "frame" bug that turned out (§73) to
+  // be an unrelated Chrome focus-outline artifact, not real overflow.
+  // §82's lighter cap fixed a real, confirmed problem (a still-default
+  // box's own controls landing unreachable under Inspector at an ordinary
+  // window width) — but it recomputed live from the current pan position,
+  // so simply dragging the canvas (moving a node's screen position closer
+  // to Inspector) visibly shrank an already-open box in real time, which
+  // read as distracting, over-eager behavior in its own right: "当我们拖拽
+  // 画布空白的地方的时候...这两个panel跟右侧的inspector这个交互的时候,它会把
+  // 那个panel的size,宽度变短嘛。这个真的是有必要的吗?在我看来,不这么做问题也
+  // 不大,因为用户可以自己去拖小啊" (when we drag the canvas, these two
+  // panels shrink as they get near Inspector — is that really necessary?
+  // I don't think it's a big problem without it, since the user can just
+  // resize them down themselves). A box now always renders at exactly its
+  // own stored default or manually-set size, full stop, regardless of
+  // where it currently sits on screen — Inspector's own `<div>` (a later
+  // DOM sibling, painted after Structure Lens's) visually covers whatever
+  // overlaps it, which both quotes above accept as the right tradeoff.
+  // The Search box's own left edge and horizontal center, in local
+  // (node-relative) coordinates — needed by the Search→Results connector
+  // below, which draws from *the Search box itself*, not the node, so it
+  // has to know where that box currently, actually is (after its own drag
+  // offset).
+  const searchBoxLeftX = (labelOnLeft ? boxNearX - searchBox.size.width : boxNearX) + searchBox.offset.dxHoriz
+  const resultsBoxLeftX = (labelOnLeft ? boxNearX - resultsBox.size.width : boxNearX) + resultsBox.offset.dxHoriz
   // The "API" tag's own geometry — a small pill, not plain text, so it
   // reads as a real, distinct signal rather than something to skim past:
   // "得有一个标签也好,highlight也好什么东西,因为你看这个Stack Browser里面,它就
@@ -1315,7 +1466,7 @@ function TreeNodeView({
   // where in the DOM the box actually lives, unlike a walk that assumes
   // it's still nested under this node's own `<g>`.
   function isInsideItemSetBox(target: Element): boolean {
-    return !!itemSetBoxRef.current?.contains(target)
+    return !!itemSetBoxRef.current?.contains(target) || !!resultsBoxRef.current?.contains(target)
   }
   function handleEnter(e: React.MouseEvent) {
     if (isInsideItemSetBox(e.target as Element)) {
@@ -1455,162 +1606,322 @@ function TreeNodeView({
           )
         ))
       )}
-      {showItemSetBox && boxLayer && createPortal(
-        <g
-          transform={`translate(${y}, ${x})`}
-          // Chrome-specific, confirmed directly (not guessed): clicking a
-          // plain `onClick` `<div>` *inside* the box's `foreignObject`
-          // (e.g. a List row) isn't natively focusable, so Chrome's click-
-          // to-focus algorithm falls back to focusing the nearest SVG
-          // ancestor instead — this exact `<g>` — and draws its own
-          // default browser focus ring around it, `outline: auto 5px`.
-          // Firefox doesn't do this for `foreignObject`-embedded content,
-          // which is why the same click never showed anything there.
-          // Reported directly, from a real screenshot, and precisely
-          // diagnosed by the user before this was even confirmed here:
-          // "这个框正好是一个G标签的范围...选择的那个蓝色的collection节点，作为这个
-          // 框的左上角，右下角是Panel的右下角的那个框" (the frame exactly matches
-          // a <g> tag's bounds — the selected Collection node is its top-
-          // left corner, the Panel's own bottom-right is its bottom-right).
-          // Confirmed by reading `document.activeElement` right after
-          // clicking a row: it resolved to exactly this `<g>`, with
-          // `outlineStyle: 'auto'` — the browser's own default focus ring,
-          // not anything this app ever intentionally draws. Suppressed
-          // directly, since there's nothing meaningful for this purely
-          // structural, non-interactive wrapper to visibly "have focus" at
-          // all — every real interactive control inside it (buttons,
-          // inputs, rows) keeps its own, correct focus behavior untouched.
-          style={{ outline: 'none' }}
+      {showItemSetBox &&
+        boxLayer &&
+        (isApiSearched ? (
+          <>
+            {createPortal(
+              // eslint-disable-next-line react-hooks/refs
+              renderBox({
+                key: 'search',
+                connectorSource: { x: 0, y: 0 },
+                connectorTarget: { x: 14 + searchBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET, y: boxNearX + searchBox.offset.dxHoriz },
+                foreignX: searchBoxLeftX,
+                foreignY: 14 + searchBox.offset.dyVert,
+                size: searchBox.size,
+                boxHandleRef: searchBoxHandles.boxHandleRef,
+                resizeHandleRef: searchBoxHandles.resizeHandleRef,
+                contentRef: itemSetBoxRef,
+                labelOnLeft,
+                nodeXY: { x, y },
+                // `display:'flex', flexDirection:'column'` here, not just
+                // `flex:1, minHeight:0` — this div is a plain portal
+                // target (its own content arrives later, from
+                // `CursorItemSetPanels`'s own `createPortal`), but it's
+                // also the direct parent the portaled content's own
+                // `flex:1, minHeight:0` sizing depends on. Without
+                // `display:'flex'` here, this div lays out as an ordinary
+                // block box (auto height, sized to its content) — the
+                // portaled child's own `flex:1` is then a no-op (flex
+                // properties only mean anything inside an actual flex
+                // container), so *its* height goes auto too, and so on
+                // down the chain. Confirmed as the real cause of two
+                // distinct-looking reports at once: the results footer
+                // requiring a scroll to see (the whole column grew taller
+                // than the box and only the box's own outer `overflow:
+                // auto` safety net caught it), and the Time & Space tab's
+                // map never actually showing (a `flex:1` map div inside an
+                // auto-height ancestor collapses toward zero height,
+                // rather than filling the real remaining space).
+                children: (
+                  <div
+                    ref={setSearchTargetEl}
+                    style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+                  />
+                ),
+              }),
+              boxLayer,
+            )}
+            {createPortal(
+              // eslint-disable-next-line react-hooks/refs
+              renderBox({
+                key: 'results',
+                // Drawn from the Search box's own current bottom edge, not
+                // the node — this is the connector that reads as "data
+                // flows from Search into Results" (asked for directly: "我
+                // 强烈地强调要有两个panel...一个节点编辑器,它数据进入一个panel,
+                // 那是一个API的search,search完了以后,这个又一个结果出来" — I want
+                // two real panels, like a node editor: data goes into a
+                // search panel, and once it searches, a result comes out).
+                // Recomputed every render from both boxes' own *current*
+                // geometry, so it stays correct regardless of how far
+                // either box has been independently dragged.
+                connectorSource: {
+                  x: 14 + searchBox.offset.dyVert + searchBox.size.height,
+                  y: searchBoxLeftX + searchBox.size.width / 2,
+                },
+                connectorTarget: {
+                  x: 14 + resultsBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET,
+                  y: resultsBoxLeftX + resultsBox.size.width / 2,
+                },
+                foreignX: resultsBoxLeftX,
+                foreignY: 14 + resultsBox.offset.dyVert,
+                size: resultsBox.size,
+                boxHandleRef: resultsBoxHandles.boxHandleRef,
+                resizeHandleRef: resultsBoxHandles.resizeHandleRef,
+                contentRef: resultsBoxRef,
+                labelOnLeft,
+                nodeXY: { x, y },
+                // See the matching Search-box comment above — same fix,
+                // same reason.
+                children: (
+                  <div
+                    ref={setResultsTargetEl}
+                    style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+                  />
+                ),
+              }),
+              boxLayer,
+            )}
+            {searchTargetEl && resultsTargetEl && (
+              <CursorItemSetPanels
+                node={node as StacNode & { items: { kind: 'cursor' } }}
+                searchTarget={searchTargetEl}
+                resultsTarget={resultsTargetEl}
+              />
+            )}
+          </>
+        ) : (
+          createPortal(
+            // `renderBox` is a plain function, not a component; the
+            // properties below named `*Ref` forward whole ref *objects*
+            // into its own returned JSX (`ref={...}` there), never
+            // dereferencing `.current` here. The linter can't see through
+            // that function boundary.
+            // eslint-disable-next-line react-hooks/refs
+            renderBox({
+              key: 'main',
+              connectorSource: { x: 0, y: 0 },
+              connectorTarget: { x: 14 + boxOffset.dyVert + BOX_CONNECTOR_TARGET_INSET, y: boxNearX + boxOffset.dxHoriz },
+              foreignX: (labelOnLeft ? boxNearX - boxSize.width : boxNearX) + boxOffset.dxHoriz,
+              foreignY: 14 + boxOffset.dyVert,
+              size: boxSize,
+              boxHandleRef: mainBoxHandles.boxHandleRef,
+              resizeHandleRef: mainBoxHandles.resizeHandleRef,
+              contentRef: itemSetBoxRef,
+              labelOnLeft,
+              nodeXY: { x, y },
+              children: <LinksItemSetBrowser node={node as StacNode & { items: { kind: 'links' } }} />,
+            }),
+            boxLayer,
+          )
+        ))}
+    </g>
+  )
+}
+
+/** One box's full rendered shape — connector line (from an arbitrary
+ *  source point, in the same swapped `{x: vertical, y: horizontal}`
+ *  convention `linkGenerator` already uses elsewhere in this file) plus
+ *  the `foreignObject` itself (drag-handle strip, arbitrary `children`,
+ *  resize-handle grip). A static catalog's single box and each of a
+ *  cursor-mode node's two independent boxes (Search/Results) all render
+ *  through this one function — same chrome, same connector logic, just
+ *  different content and a different connector source (the node's own
+ *  origin for Search/main, the Search box's own current geometry for
+ *  Results — see the call sites above). Not a component (no Hooks inside)
+ *  — a plain JSX-producing function, safe to call multiple times per
+ *  render. */
+function renderBox(opts: {
+  key: string
+  connectorSource: { x: number; y: number }
+  connectorTarget: { x: number; y: number }
+  foreignX: number
+  foreignY: number
+  size: { width: number; height: number }
+  boxHandleRef: React.RefObject<HTMLDivElement | null>
+  resizeHandleRef: React.RefObject<HTMLDivElement | null>
+  contentRef: React.RefObject<HTMLDivElement | null>
+  labelOnLeft: boolean
+  nodeXY: { x: number; y: number }
+  children: React.ReactNode
+}) {
+  const {
+    connectorSource,
+    connectorTarget,
+    foreignX,
+    foreignY,
+    size,
+    boxHandleRef,
+    resizeHandleRef,
+    contentRef,
+    labelOnLeft,
+    nodeXY,
+  } = opts
+  return (
+    <g
+      key={opts.key}
+      transform={`translate(${nodeXY.y}, ${nodeXY.x})`}
+      // Chrome-specific, confirmed directly (not guessed): clicking a
+      // plain `onClick` `<div>` *inside* the box's `foreignObject` (e.g. a
+      // List row) isn't natively focusable, so Chrome's click-to-focus
+      // algorithm falls back to focusing the nearest SVG ancestor instead
+      // — this exact `<g>` — and draws its own default browser focus ring
+      // around it, `outline: auto 5px`. Firefox doesn't do this for
+      // `foreignObject`-embedded content, which is why the same click
+      // never showed anything there. Reported directly, from a real
+      // screenshot, and precisely diagnosed by the user before this was
+      // even confirmed here: "这个框正好是一个G标签的范围...选择的那个蓝色的
+      // collection节点，作为这个框的左上角，右下角是Panel的右下角的那个框" (the
+      // frame exactly matches a <g> tag's bounds — the selected Collection
+      // node is its top-left corner, the Panel's own bottom-right is its
+      // bottom-right). Confirmed by reading `document.activeElement` right
+      // after clicking a row: it resolved to exactly this `<g>`, with
+      // `outlineStyle: 'auto'` — the browser's own default focus ring, not
+      // anything this app ever intentionally draws. Suppressed directly,
+      // since there's nothing meaningful for this purely structural,
+      // non-interactive wrapper to visibly "have focus" at all — every
+      // real interactive control inside it (buttons, inputs, rows) keeps
+      // its own, correct focus behavior untouched.
+      style={{ outline: 'none' }}
+    >
+      {/* A real edge, not just adjacent placement — drawn with the same
+       * `linkGenerator` (and the same stroke) used for every other
+       * parent→child connection in this tree, just fed local coordinates
+       * instead of global hierarchy points. The box is a floating overlay
+       * (see the `layout` useMemo above) — it doesn't participate in the
+       * tree's own row layout at all, so this line is the only visual tie
+       * back to wherever it connects from. */}
+      <path
+        d={
+          // Connects near the target's own top edge, not its vertical
+          // center — `linkHorizontal`'s curve is shaped for spans with
+          // real horizontal distance (normal node-to-node links cross
+          // LEVEL_WIDTH); aimed at the center of a box that's mostly
+          // *below* its source, the resulting bezier had almost no
+          // horizontal component and rendered as an invisible sliver
+          // hugging the boundary. A target near the top reproduces the
+          // same proportions as an ordinary sibling link.
+          linkGenerator({ source: connectorSource, target: connectorTarget }) ?? undefined
+        }
+        fill="none"
+        style={{ stroke: 'var(--color-border)' }}
+        strokeWidth={1.5}
+      />
+      <foreignObject x={foreignX} y={foreignY} width={size.width} height={size.height}>
+        <div
+          ref={contentRef}
+          // Scrolling the list, clicking a row/button, or typing in the
+          // search box inside here must never also pan the canvas —
+          // `data-block-pan` is the single, central rule `zoom.filter()`
+          // checks for that (see StructureTree above and docs/DESIGN.md
+          // §32's update), covering wheel/mousedown/touchstart uniformly
+          // instead of hand-picking event types to `stopPropagation()` on.
+          data-block-pan="true"
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-selection)',
+            borderRadius: 'var(--radius-sm)',
+            padding: 8,
+            boxSizing: 'border-box',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+            cursor: 'default',
+            // A flex column, not plain block flow — so the box's own
+            // content (below) can genuinely fill whatever height this box
+            // currently has (via `flex: 1`) rather than sitting at a fixed
+            // pixel height that a resize wouldn't actually change
+            // anything about.
+            display: 'flex',
+            flexDirection: 'column',
+            // Safety net, not the primary mechanism — the content inside
+            // sizes itself to the available space; this only kicks in if
+            // the box's own chrome ever pushes the total past its height.
+            overflow: 'auto',
+          }}
         >
-          {/* A real edge, not just adjacent placement — drawn with the
-           * same `linkGenerator` (and the same stroke) used for every
-           * other parent→child connection in this tree, just fed local
-           * coordinates (node at its own origin) instead of global
-           * hierarchy points. The box is a floating overlay now (see the
-           * `layout` useMemo above) — it doesn't participate in the tree's
-           * own row layout at all, so this line is the only visual tie
-           * back to the node it belongs to. */}
-          <path
-            d={
-              // Connects to just below the box's top edge, not its
-              // vertical center — `linkHorizontal`'s curve is shaped for
-              // spans with real horizontal distance (normal node-to-node
-              // links cross LEVEL_WIDTH); aimed at the center of a box
-              // that's mostly *below* the node, the resulting bezier had
-              // almost no horizontal component and rendered as an
-              // invisible sliver hugging the node/box boundary. A target
-              // near the top reproduces the same proportions as an
-              // ordinary sibling link.
-              linkGenerator({
-                source: { x: 0, y: 0 },
-                // Follows the box's own drag offset (docs/DESIGN.md §32) —
-                // otherwise the line would stay pointing at where the box
-                // *used to be* the moment it's dragged anywhere else.
-                target: { x: 34 + boxOffset.dyVert, y: boxNearX + effectiveBoxOffsetDxHoriz },
-              }) ?? undefined
-            }
-            fill="none"
-            style={{ stroke: 'var(--color-border)' }}
-            strokeWidth={1.5}
+          {/* A dedicated grip, not the whole box — the box is full of its
+           * own click/scroll/type targets (rows, buttons, a text input),
+           * so making the entire card draggable would fight all of them.
+           * Asked for directly: "我可以拖拽这个item的panel...这样子自由度...
+           * 就是这个样子" (I want to be able to drag the item panel — that
+           * kind of freedom is what I'm after). */}
+          <div
+            ref={boxHandleRef}
+            title="Drag to move this panel"
+            style={{
+              flexShrink: 0,
+              height: 14,
+              marginBottom: 6,
+              borderRadius: 999,
+              background: 'var(--color-border)',
+              opacity: 0.7,
+              cursor: 'grab',
+            }}
           />
-          <foreignObject
-            x={(labelOnLeft ? boxNearX - clampedBoxSize.width : boxNearX) + effectiveBoxOffsetDxHoriz}
-            y={14 + boxOffset.dyVert}
-            width={clampedBoxSize.width}
-            height={clampedBoxSize.height}
-          >
-            <div
-              ref={itemSetBoxRef}
-              // Scrolling the list, clicking a row/button, or typing in
-              // the search box inside here must never also pan the
-              // canvas — `data-block-pan` is the single, central rule
-              // `zoom.filter()` checks for that (see StructureTree above
-              // and docs/DESIGN.md §32's update), covering wheel/mousedown/
-              // touchstart uniformly instead of hand-picking event types
-              // to `stopPropagation()` on.
-              data-block-pan="true"
-              style={{
-                position: 'relative',
-                width: '100%',
-                height: '100%',
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-selection)',
-                borderRadius: 'var(--radius-sm)',
-                padding: 8,
-                boxSizing: 'border-box',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-                cursor: 'default',
-                // A flex column, not plain block flow — so ItemSetBrowser's
-                // own content (below) can genuinely fill whatever height
-                // this box currently has (via `flex: 1`) rather than
-                // sitting at a fixed pixel height that a resize wouldn't
-                // actually change anything about.
-                display: 'flex',
-                flexDirection: 'column',
-                // Safety net, not the primary mechanism — the list/plot
-                // area inside sizes itself to the available space
-                // (ItemSetBrowser.tsx); this only kicks in if the box's
-                // other chrome (tabs, search input, footer) ever pushes
-                // the total past the box's own height.
-                overflow: 'auto',
-              }}
-            >
-              {/* A dedicated grip, not the whole box — the box is full of
-               * its own click/scroll/type targets (rows, buttons, a text
-               * input), so making the entire card draggable would fight
-               * all of them. Asked for directly: "我可以拖拽这个item的
-               * panel...这样子自由度...就是这个样子" (I want to be able to
-               * drag the item panel — that kind of freedom is what I'm
-               * after). */}
-              <div
-                ref={boxHandleRef}
-                title="Drag to move this panel"
-                style={{
-                  flexShrink: 0,
-                  height: 14,
-                  marginBottom: 6,
-                  borderRadius: 999,
-                  background: 'var(--color-border)',
-                  opacity: 0.7,
-                  cursor: 'grab',
-                }}
-              />
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <ItemSetBrowser node={node} />
-              </div>
-              {/* A real corner grip, not a whole-edge drag — matches the
-               * same "dedicated handle, not the whole box" reasoning as
-               * the move-handle above, and the familiar OS-window resize
-               * convention (diagonal cursor at the corner that actually
-               * moves). Which corner that is depends on which side the
-               * box sits on: when it's on the node's *left* (labelOnLeft),
-               * the box's near/right edge is pinned to the node's own
-               * connector line and it grows further left instead — so the
-               * grip sits at the bottom-*left* there, with the mirrored
-               * cursor, not bottom-right; the drag effect above already
-               * flips the sign of `dx` to match. */}
-              <div
-                ref={resizeHandleRef}
-                title="Drag to resize this panel"
-                style={{
-                  position: 'absolute',
-                  ...(labelOnLeft ? { left: 3 } : { right: 3 }),
-                  bottom: 3,
-                  width: 12,
-                  height: 12,
-                  cursor: labelOnLeft ? 'nesw-resize' : 'nwse-resize',
-                  ...(labelOnLeft
-                    ? { borderLeft: '2px solid var(--color-text-faint)', borderRadius: '0 0 0 3px' }
-                    : { borderRight: '2px solid var(--color-text-faint)', borderRadius: '0 0 3px 0' }),
-                  borderBottom: '2px solid var(--color-text-faint)',
-                  opacity: 0.6,
-                }}
-              />
-            </div>
-          </foreignObject>
-        </g>,
-        boxLayer,
-      )}
+          {/* `display:'flex', flexDirection:'column'`, not just `flex:1,
+           * minHeight:0` — this wrapper is itself a flex item within the
+           * box's own outer column (so it correctly shrinks to the
+           * remaining space below the drag handle), but it also needs to
+           * establish its own flex context for `opts.children`'s sake:
+           * without it, `opts.children`'s own `flex:1`/`height:'100%'`
+           * styling is meaningless (flex sizing only applies inside an
+           * actual flex container; a percentage height only resolves
+           * against a parent with a *definite* height, which a plain
+           * auto-height block-level div here would never have) — so its
+           * content renders at its own natural height instead of being
+           * bounded to the box, requiring this whole wrapper's ancestor
+           * (`overflow:'auto'`, above) to scroll just to reach a page's own
+           * footer. Confirmed as the real cause directly: this same
+           * pattern (a `flex:1, minHeight:0` div missing `display:'flex'`)
+           * was found and fixed once already, one link up the chain, for
+           * cursor mode's own portal-target divs — this is the second,
+           * deeper occurrence of the identical mistake, affecting both
+           * modes (links mode's shorter default content happened to still
+           * fit without it, so this one stayed invisible until cursor
+           * mode's own longer content exposed it). */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{opts.children}</div>
+          {/* A real corner grip, not a whole-edge drag — matches the same
+           * "dedicated handle, not the whole box" reasoning as the
+           * move-handle above, and the familiar OS-window resize
+           * convention (diagonal cursor at the corner that actually
+           * moves). Which corner that is depends on which side the box
+           * sits on: when it's on the node's *left* (labelOnLeft), the
+           * box's near/right edge is pinned and it grows further left
+           * instead — so the grip sits at the bottom-*left* there, with
+           * the mirrored cursor, not bottom-right; the drag effect already
+           * flips the sign of `dx` to match (`useBoxDragHandles`). */}
+          <div
+            ref={resizeHandleRef}
+            title="Drag to resize this panel"
+            style={{
+              position: 'absolute',
+              ...(labelOnLeft ? { left: 3 } : { right: 3 }),
+              bottom: 3,
+              width: 12,
+              height: 12,
+              cursor: labelOnLeft ? 'nesw-resize' : 'nwse-resize',
+              ...(labelOnLeft
+                ? { borderLeft: '2px solid var(--color-text-faint)', borderRadius: '0 0 0 3px' }
+                : { borderRight: '2px solid var(--color-text-faint)', borderRadius: '0 0 3px 0' }),
+              borderBottom: '2px solid var(--color-text-faint)',
+              opacity: 0.6,
+            }}
+          />
+        </div>
+      </foreignObject>
     </g>
   )
 }

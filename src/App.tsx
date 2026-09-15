@@ -3,8 +3,10 @@ import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
 import { useSelectionStore } from './store/selection'
+import { useItemSetStore } from './store/itemSet'
 import { useElementSize } from './hooks/useElementSize'
 import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
+import { encodeSearchQuery } from './stac/searchQueryUrl'
 import { Spinner } from './components/Spinner'
 import { loader } from './stac/loaderInstance'
 import type { StacNode } from './stac/types'
@@ -26,6 +28,18 @@ function App() {
   const [rootHref, setRootHref] = useState<string | null>(null)
   const select = useSelectionStore((s) => s.select)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
+  const browsingHref = useSelectionStore((s) => s.browsingHref)
+  // Which Item Set box's search (if any) belongs on the URL right now —
+  // scoped to `browsingHref` (the Collection whose Item Set box is open),
+  // not `selectedHref` (which can drill into an Item inside it): see
+  // `store/itemSet.ts`. `itemSetForHref === browsingHref` guards against a
+  // one-render-stale value from a just-abandoned box before its own
+  // `setVisible`/`setAppliedQuery` catch up.
+  const itemSetForHref = useItemSetStore((s) => s.forHref)
+  const itemSetAppliedQuery = useItemSetStore((s) => s.appliedQuery)
+  const setPendingInitialQuery = useItemSetStore((s) => s.setPendingInitialQuery)
+  const queryStringForSelection =
+    itemSetForHref && itemSetForHref === browsingHref ? encodeSearchQuery(itemSetAppliedQuery ?? {}) : ''
   // Time/Space used to be their own always-visible panels stacked below
   // Detail's facts, each with its own on/off toggle here, then briefly a
   // pair of Inspector tabs — now folded directly into the Human tab's own
@@ -129,10 +143,16 @@ function App() {
   const { booting, error: bootError, target } = useDeepLinkBootstrap()
   useEffect(() => {
     if (!target) return
+    // Register the restored query *before* selecting — `select` can
+    // synchronously trigger `CursorItemSetPanels`'s mount (an already-open
+    // Structure Tree box for `target.rootHref`), whose one-shot
+    // `consumePendingInitialQuery(node.href)` call needs to find it there
+    // already.
+    if (target.appliedQuery) setPendingInitialQuery(target.appliedQuery.forHref, target.appliedQuery.query)
     setRootHref(target.rootHref)
     if (target.selectedHref) select(target.selectedHref)
-  }, [target, select])
-  useShareableUrlSync(rootHref, selectedHref, booting)
+  }, [target, select, setPendingInitialQuery])
+  useShareableUrlSync(rootHref, selectedHref, booting, queryStringForSelection)
   // The browser's own Back/Forward — previously did nothing at all (the
   // address bar changed, but nothing on screen did), which combined with
   // `useShareableUrlSync` only ever having one history entry per app
@@ -141,7 +161,7 @@ function App() {
   // 真的没有办法么" (pressing the browser's back button goes straight to
   // the browser's own default page — is there really no way around
   // this?). See both hooks' own docs for the full mechanism.
-  usePopStateSync(setRootHref, select)
+  usePopStateSync(setRootHref, select, setPendingInitialQuery)
 
   function openCatalog(href: string) {
     select(null) // a selection from a previous catalog can't mean anything here

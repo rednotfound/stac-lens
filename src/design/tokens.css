@@ -130,7 +130,13 @@ body {
  * full override of Leaflet's rendering, just its UI chrome. */
 .leaflet-container {
   font-family: var(--font-sans);
-  background: var(--color-bg);
+  /* !important — Leaflet's own leaflet.css sets `background: #ddd` on this
+   * same selector, imported per-component (ItemsMap.tsx) rather than once
+   * globally, so it can land after this token stylesheet in the bundle's
+   * CSS order and win on source order alone at equal specificity. Without
+   * this, the light gray default shows through at unfilled edges and
+   * mid-load tiles, clashing with the dark theme. */
+  background: var(--color-bg) !important;
 }
 .leaflet-control-zoom a {
   color: var(--color-text) !important;
