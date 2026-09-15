@@ -48,20 +48,38 @@ function App() {
     if (inspectorWidth > 0) lastOpenWidthRef.current = inspectorWidth
   }, [inspectorWidth])
 
-  // Manual mousedown/mousemove/mouseup, not d3-drag — this is a single
-  // linear pixel value on a plain HTML divider, not an SVG element bound
-  // to d3 selections the way the tree's own draggable nodes are; d3-drag
-  // would add a dependency here for no real benefit over a few native
-  // listeners. Attached to `window`, not the handle itself, so the drag
-  // keeps tracking correctly even if the cursor briefly leaves the thin
-  // handle strip mid-drag — a real, common case for a fast mouse movement.
+  // Pointer Events with `setPointerCapture`, not mousedown/mousemove/mouseup
+  // on `window` (the original approach) — a real, confirmed bug: dragging
+  // the handle to collapse (or anywhere near a Leaflet map, e.g. Spatial's
+  // inline map in DetailPanel) could end the drag with the browser button
+  // released *without* a `mouseup` ever reaching `window` — either because
+  // the cursor left the browser window entirely before release (a fast
+  // drag to the edge, or resizing to fully collapsed is exactly a drag
+  // toward the edge) or because Leaflet calls `stopPropagation` on the
+  // pointer/mouse events it handles for its own map dragging, which stops
+  // the event from ever bubbling up to `window`. Either way the stale
+  // `onMove`/`onUp` pair from that drag stayed attached to `window`
+  // forever, with `startX`/`startWidth` frozen from the drag that never
+  // cleanly ended — so *any* later mouse movement anywhere on the page
+  // kept re-firing that ghost handler, immediately recomputing `next` from
+  // its stale closure and snapping the width straight back to 0 in a
+  // fight against any new, legitimate resize attempt: the handle looked
+  // permanently stuck at collapsed until a full page reload discarded the
+  // listener. `setPointerCapture` on the handle itself fixes this at the
+  // source — once captured, the browser keeps routing pointermove/pointerup
+  // to this element regardless of what's under the cursor or whether the
+  // pointer leaves the document, so `pointerup`/`pointercancel` are
+  // guaranteed to fire and clean the listeners up every time.
   const beginResize = useCallback(
-    (startEvent: React.MouseEvent) => {
+    (startEvent: React.PointerEvent<HTMLDivElement>) => {
       startEvent.preventDefault()
+      const handle = startEvent.currentTarget
+      const pointerId = startEvent.pointerId
+      handle.setPointerCapture(pointerId)
       const startX = startEvent.clientX
       const startWidth = inspectorWidth
 
-      function onMove(e: MouseEvent) {
+      function onMove(e: PointerEvent) {
         // Handle sits to the *left* of Inspector, so dragging left (cursor
         // x decreases) should grow it — the delta is inverted relative to
         // a plain "drag right to grow" control.
@@ -71,12 +89,15 @@ function App() {
         if (next < MIN_INSPECTOR_WIDTH) next = 0
         setInspectorWidth(Math.max(next, 0))
       }
-      function onUp() {
-        window.removeEventListener('mousemove', onMove)
-        window.removeEventListener('mouseup', onUp)
+      function onUp(e: PointerEvent) {
+        handle.releasePointerCapture(e.pointerId)
+        handle.removeEventListener('pointermove', onMove)
+        handle.removeEventListener('pointerup', onUp)
+        handle.removeEventListener('pointercancel', onUp)
       }
-      window.addEventListener('mousemove', onMove)
-      window.addEventListener('mouseup', onUp)
+      handle.addEventListener('pointermove', onMove)
+      handle.addEventListener('pointerup', onUp)
+      handle.addEventListener('pointercancel', onUp)
     },
     [inspectorWidth, containerWidth],
   )
@@ -190,7 +211,26 @@ function App() {
   const hasSelection = !!selectedHref
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    // `overflow: 'hidden'` here is load-bearing, not decorative — this is
+    // a fixed-viewport app (every scrollable area, Structure Lens's own
+    // canvas and Inspector's own column, already manages its own internal
+    // scrolling), so nothing here should ever need the *page* itself to
+    // scroll. Without this, any descendant that's even a few pixels wider
+    // than its own visual container — a real, reported case: the
+    // Inspector-collapse chevron button is deliberately larger (22px) than
+    // the divider handle it's centered on (`HANDLE_WIDTH`, 8px) for a
+    // comfortable click target, so it overflows ~7px past the divider on
+    // each side by design — bleeds all the way out to `body`/`html`
+    // (neither clips by default), which then grow a real page-level
+    // scrollbar in both directions to accommodate it: "当我点了那个按钮以后...
+    // 导致我在Chrome里面右侧和底部都出现了滚动条" (after I clicked that button,
+    // scrollbars showed up on the right and bottom in Chrome) — confirmed
+    // in Firefox too, since neither browser clips overflow that nothing in
+    // the ancestor chain ever asked it to clip. This boundary is the right
+    // place to guarantee that never happens, regardless of what a future
+    // deliberately-larger-than-its-box affordance like this one does deep
+    // inside either column.
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <header
         style={{
           padding: '10px 16px',
@@ -307,26 +347,71 @@ function App() {
         </div>
         {hasSelection && (
           <>
-            {/* The one control for Inspector's width — grab to resize
-             * continuously, drag past `MIN_INSPECTOR_WIDTH` to snap it
-             * fully away, drag it back out from the right edge to bring it
-             * back, or double-click for a quick collapse/restore without
-             * dragging at all. */}
+            {/* The divider resizes Inspector continuously while it's open
+             * (drag past `MIN_INSPECTOR_WIDTH` snaps it fully away), but a
+             * drag alone was never a reliable way back once collapsed —
+             * reported directly: "我直接拖拽是不行" (dragging alone doesn't
+             * work) even after the pointer-capture fix above made the
+             * *listener* itself stop getting stuck, because a fully
+             * collapsed divider is just a bare 8px sliver at the very edge
+             * of the window with nothing to grab. Rather than keep
+             * chasing that edge case, this is the standard resizable-panel
+             * pattern instead — a small chevron button that's always
+             * there and always a plain click, independent of drag
+             * geometry entirely, layered on the same divider (double-click
+             * still works too, this doesn't replace it). */}
             <div
-              onMouseDown={beginResize}
+              onPointerDown={beginResize}
               onDoubleClick={toggleCollapse}
-              title={
-                inspectorWidth > 0
-                  ? 'Drag to resize · double-click to hide Inspector'
-                  : 'Drag left, or double-click, to show Inspector'
-              }
+              title={inspectorWidth > 0 ? 'Drag to resize' : 'Drag to show Inspector'}
               style={{
+                position: 'relative',
                 width: HANDLE_WIDTH,
                 flexShrink: 0,
                 cursor: 'col-resize',
                 background: 'var(--color-border)',
+                touchAction: 'none',
               }}
-            />
+            >
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={toggleCollapse}
+                title={inspectorWidth > 0 ? 'Hide Inspector' : 'Show Inspector'}
+                aria-label={inspectorWidth > 0 ? 'Hide Inspector' : 'Show Inspector'}
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 22,
+                  height: 36,
+                  borderRadius: 6,
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-surface)',
+                  color: 'var(--color-text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    // Points the direction the panel actually moves on
+                    // click — right (away) to hide, matching the same
+                    // "drag left grows it" convention `beginResize`
+                    // already uses, just inverted for collapsing.
+                    d={inspectorWidth > 0 ? 'M8 4l6 6-6 6' : 'M12 4 6 10l6 6'}
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
             {inspectorWidth > 0 && (
               <div ref={inspectorScrollRef} style={{ width: inspectorWidth, flexShrink: 0, overflow: 'auto' }}>
                 <DetailPanel />

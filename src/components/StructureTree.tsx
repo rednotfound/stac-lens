@@ -169,6 +169,40 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   const [viewTransform, setViewTransform] = useState({ x: 80, y: 0, k: 1 })
   const viewTransformRef = useRef(viewTransform)
   const lastCenteredRef = useRef<string | null>(null)
+  // Real, live pixel size of the SVG's own container — used only to cap
+  // how big an open Item Set box is allowed to render (below), so it can
+  // never visually extend past this column's own right/bottom edge
+  // regardless of window size, the Structure/Inspector divider's current
+  // position, or how the box was last resized. A real, reported bug:
+  // "现在会出现一个框，这个框就会框住我选择的那个Collection和我的目标的这个Panel"
+  // (a frame now shows up, framing both the Collection I selected and my
+  // target panel) — the box (640px wide by default, or wider if manually
+  // resized) had no ceiling tied to the actually-available column width at
+  // all, so once it exceeded that width it visually crossed into the
+  // Inspector column's own screen region. Structure Lens's own `overflow:
+  // hidden` (App.tsx) was assumed to clip that overflow away, per an
+  // earlier comment on this exact class of problem (§66) — confirmed
+  // directly, via a real user report, that this is NOT reliable: Chrome
+  // does not clip a `foreignObject`'s overflowing content against an
+  // ancestor HTML element's `overflow: hidden` the same way Firefox does,
+  // so the same markup that merely got a box cut off cleanly in Firefox
+  // instead visibly bled into Inspector's own opaque, later-painted div in
+  // Chrome. A `ResizeObserver` directly on `svgRef` (not `useElementSize`,
+  // which needs a callback ref — `svgRef` is already a plain ref other
+  // effects here already safely read post-mount) keeps this reactive to
+  // real window/divider resizes, not just the initial mount size.
+  const [svgSize, setSvgSize] = useState({ width: 0, height: 0 })
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      setSvgSize({ width: entry.contentRect.width, height: entry.contentRect.height })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const [dragging, setDragging] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   // The currently-open Item Set box is portaled here (a dedicated `<g>`
@@ -359,9 +393,33 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     const currentScreenX = currentTransform.x + targetPos.y * currentTransform.k
     const currentScreenY = currentTransform.y + targetPos.x * currentTransform.k
     const VISIBILITY_MARGIN = 100
+
+    // When this target has its own open Item Set box, "already visible"
+    // has to mean "the box's own side has real room too," not just "the
+    // bare node isn't touching an edge" — a real, confirmed bug found
+    // *because* the plain node-visibility check above already passed for
+    // a node that was nowhere near any edge, yet its box (needing several
+    // hundred px, not the ~100px this check has always used) still
+    // drifted straight past the Structure/Inspector boundary into
+    // Inspector's own screen region: "现在会出现一个框，这个框就会框住我选择的
+    // 那个Collection和我的目标的这个Panel" (a frame shows up now, framing
+    // both the Collection I selected and my target panel). The two checks
+    // were previously unrelated — this one could short-circuit before the
+    // box-fitting bias below (`BOX_SIDE_MARGIN`) ever even ran once, on
+    // any node that happened to satisfy the generic 100px margin alone.
+    // Sized to the box's own actual current width (its last manual
+    // resize, or the default) plus a little breathing room, not a flat
+    // guess — the box's real default width doubled to 640 (§59) well
+    // after this margin was first tuned at 140, and was never revisited.
+    const targetLabelOnLeft = !!target.children && target.depth !== 0
+    const hasOpenBox = boxHref === panHref
+    const BOX_SIDE_MARGIN = (boxSizes.get(panHref)?.width ?? DEFAULT_BOX_WIDTH) + 40
+    const leftMargin = hasOpenBox && targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
+    const rightMargin = hasOpenBox && !targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
+
     const alreadyVisible =
-      currentScreenX >= VISIBILITY_MARGIN &&
-      currentScreenX <= svgEl.clientWidth - VISIBILITY_MARGIN &&
+      currentScreenX >= leftMargin &&
+      currentScreenX <= svgEl.clientWidth - rightMargin &&
       currentScreenY >= VISIBILITY_MARGIN &&
       currentScreenY <= svgEl.clientHeight - VISIBILITY_MARGIN
     if (alreadyVisible) {
@@ -372,26 +430,16 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     lastCenteredRef.current = panHref
     const k = viewTransformRef.current.k
     const cy = svgEl.clientHeight / 2
-    // Centering the node itself in the middle of the column leaves only
-    // half the column's width for its Item Set box (§27's fan + box,
-    // together comfortably over 400px wide) to fit in before hitting the
-    // Structure/Inspector column boundary — confirmed directly: a real
-    // "Draw area" button inside that box rendered at a screen position
-    // whose center resolved (via `elementFromPoint`) to Detail Panel's
-    // own div, not the button, because the box had drifted past the
-    // boundary into the Inspector column's own screen region (a sibling
-    // box, not something the tree's own overflow clipping — see App.tsx —
-    // could make clickable again by itself). Bias the pan instead so the
-    // node sits near whichever edge is *away* from its box, leaving the
-    // box's own side the full remaining width to render in.
-    const targetLabelOnLeft = !!target.children && target.depth !== 0
-    const BOX_SIDE_MARGIN = 140
-    const cx =
-      boxHref === panHref
-        ? targetLabelOnLeft
-          ? Math.max(svgEl.clientWidth - BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
-          : Math.min(BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
-        : svgEl.clientWidth / 2
+    // Bias the pan so the node sits near whichever edge is *away* from its
+    // box, leaving the box's own side the full remaining width to render
+    // in — same `BOX_SIDE_MARGIN` computed above, so the target this pan
+    // aims for and the check that decided a pan was even needed always
+    // agree on how much room the box actually requires.
+    const cx = hasOpenBox
+      ? targetLabelOnLeft
+        ? Math.max(svgEl.clientWidth - BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
+        : Math.min(BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
+      : svgEl.clientWidth / 2
     // `targetPos` (the *effective*, not raw layout, position — a manually-
     // dragged node's on-screen location can differ from what `tree()`
     // computed for it, §32) was already computed above for the visibility
@@ -535,6 +583,8 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                 boxSize={
                   boxSizes.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }
                 }
+                viewTransform={viewTransform}
+                svgSize={svgSize}
                 onBoxResizeBy={(dxLocal, dyLocal) => {
                   setBoxSizes((prev) => {
                     const next = new Map(prev)
@@ -555,7 +605,18 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
            * portals its content here and always paints above every
            * ordinary node/link, on top by construction rather than by
            * traversal-order coincidence. */}
-          <g ref={setBoxLayer} />
+          {/* `outline: 'none'` here, not (only) on the per-node `<g>`
+           * portaled inside it — confirmed directly (`document.
+           * activeElement` read right after clicking a plain `onClick`
+           * `<div>` row inside the box) that Chrome's click-to-focus
+           * fallback, when the actual click target isn't natively
+           * focusable, lands on *this* outer layer `<g>`, not the inner
+           * one — Chrome draws its own default focus ring there
+           * (`outlineStyle: 'auto'`), which is the exact "frame" reported:
+           * "这个框正好是一个G标签的范围" (this frame exactly matches a <g>
+           * tag's bounds). Firefox never focuses anything here for the
+           * same click, which is why this was never visible there. */}
+          <g ref={setBoxLayer} style={{ outline: 'none' }} />
         </g>
       </svg>
       {/* Centered, not tucked in a corner — this is the fetch a user is
@@ -857,6 +918,13 @@ interface TreeNodeProps {
   onBoxDragBy: (dxLocal: number, dyLocal: number) => void
   boxSize: { width: number; height: number }
   onBoxResizeBy: (dxLocal: number, dyLocal: number) => void
+  /** The live zoom/pan transform and the SVG's own real pixel size — used
+   *  together with this node's own `x`/`y` to cap how big the open Item
+   *  Set box is allowed to render (see `clampedBoxSize` below), so it can
+   *  never visually extend past this column's own edge regardless of
+   *  where the node currently sits on screen. */
+  viewTransform: { x: number; y: number; k: number }
+  svgSize: { width: number; height: number }
   /** Where this node's own box (connector + `foreignObject`) actually gets
    *  rendered, via a portal, instead of inline in this node's own `<g>` —
    *  see the `boxLayer` state in the parent for why. `null` for the one
@@ -908,6 +976,8 @@ function TreeNodeView({
   boxSize,
   onBoxResizeBy,
   boxLayer,
+  viewTransform,
+  svgSize,
 }: TreeNodeProps) {
   const itemSetBoxRef = useRef<HTMLDivElement | null>(null)
   // Computed early (not just where the label itself renders, further
@@ -1113,6 +1183,73 @@ function TreeNodeView({
   const boxNearX = labelOnLeft
     ? labelDx - labelWidth - ITEM_SET_BOX_GAP
     : labelDx + labelWidth + ITEM_SET_BOX_GAP
+
+  // Keeps the box on screen, within Structure Lens's own column, even when
+  // there isn't remotely enough room for it at its stored size *or*
+  // position — a real, reported bug: "现在会出现一个框，这个框就会框住我选择的
+  // 那个Collection和我的目标的这个Panel" (a frame now shows up, framing both
+  // the Collection I selected and my target panel). The box (640px by
+  // default, or wider once resized) had no ceiling tied to actually-
+  // available space at all, so it visually crossed into the Inspector
+  // column's own screen region once it didn't fit — confirmed via direct
+  // user report to be Chrome-specific: Firefox happened to clip a
+  // `foreignObject`'s overflow against Structure Lens's own `overflow:
+  // hidden` (App.tsx) the way one might assume any browser would; Chrome
+  // does not, so the exact same box that was merely (still wrongly) cut
+  // off cleanly in Firefox instead visibly bled into Inspector's own
+  // later-painted, opaque div in Chrome — not something to route around by
+  // assuming one specific browser's clipping behavior.
+  //
+  // A width clamp alone isn't enough, confirmed directly by instrumenting
+  // the real live values rather than assuming: `boxNearX` (the box's near
+  // edge, past the *label's own rendered width*, not just the node's bare
+  // position) can by itself already land close to the column's edge for a
+  // long label, before the box's width even enters into it — a real
+  // measured case put the box's own near edge at screen x=754 in an
+  // 832px-wide column, only 78px of nominal room left, nowhere near
+  // `MIN_BOX_WIDTH`. So this also nudges the box's own *position* — via the
+  // exact same `dxHoriz` offset a manual drag already uses, purely for
+  // rendering, never written back to the stored `boxOffsets` map — just
+  // enough to guarantee at least `MIN_BOX_WIDTH` fits, before clamping
+  // width against whatever room remains after that correction.
+  const BOX_EDGE_MARGIN = 24
+  const { clampedBoxSize, effectiveBoxOffsetDxHoriz } = (() => {
+    if (svgSize.width <= 0 || svgSize.height <= 0) {
+      return { clampedBoxSize: boxSize, effectiveBoxOffsetDxHoriz: boxOffset.dxHoriz }
+    }
+    const { k } = viewTransform
+    // The box's own near-edge screen position, before any correction —
+    // its *right* edge when `labelOnLeft` (it grows further left from
+    // here), its *left* edge otherwise (it grows further right).
+    const idealNearScreenX = viewTransform.x + k * (y + boxNearX + boxOffset.dxHoriz)
+    const boxTopScreenY = viewTransform.y + k * (x + 14 + boxOffset.dyVert)
+
+    let positionCorrectionScreen = 0
+    if (labelOnLeft) {
+      const minAllowedNearScreenX = MIN_BOX_WIDTH * k + BOX_EDGE_MARGIN
+      if (idealNearScreenX < minAllowedNearScreenX) {
+        positionCorrectionScreen = minAllowedNearScreenX - idealNearScreenX
+      }
+    } else {
+      const maxAllowedNearScreenX = svgSize.width - MIN_BOX_WIDTH * k - BOX_EDGE_MARGIN
+      if (idealNearScreenX > maxAllowedNearScreenX) {
+        positionCorrectionScreen = maxAllowedNearScreenX - idealNearScreenX
+      }
+    }
+    const correctedNearScreenX = idealNearScreenX + positionCorrectionScreen
+
+    const maxWidthScreen = labelOnLeft
+      ? correctedNearScreenX - BOX_EDGE_MARGIN
+      : svgSize.width - correctedNearScreenX - BOX_EDGE_MARGIN
+    const maxHeightScreen = svgSize.height - boxTopScreenY - BOX_EDGE_MARGIN
+    return {
+      clampedBoxSize: {
+        width: Math.min(boxSize.width, Math.max(MIN_BOX_WIDTH, maxWidthScreen / k)),
+        height: Math.min(boxSize.height, Math.max(MIN_BOX_HEIGHT, maxHeightScreen / k)),
+      },
+      effectiveBoxOffsetDxHoriz: boxOffset.dxHoriz + positionCorrectionScreen / k,
+    }
+  })()
   // The "API" tag's own geometry — a small pill, not plain text, so it
   // reads as a real, distinct signal rather than something to skim past:
   // "得有一个标签也好,highlight也好什么东西,因为你看这个Stack Browser里面,它就
@@ -1319,7 +1456,32 @@ function TreeNodeView({
         ))
       )}
       {showItemSetBox && boxLayer && createPortal(
-        <g transform={`translate(${y}, ${x})`}>
+        <g
+          transform={`translate(${y}, ${x})`}
+          // Chrome-specific, confirmed directly (not guessed): clicking a
+          // plain `onClick` `<div>` *inside* the box's `foreignObject`
+          // (e.g. a List row) isn't natively focusable, so Chrome's click-
+          // to-focus algorithm falls back to focusing the nearest SVG
+          // ancestor instead — this exact `<g>` — and draws its own
+          // default browser focus ring around it, `outline: auto 5px`.
+          // Firefox doesn't do this for `foreignObject`-embedded content,
+          // which is why the same click never showed anything there.
+          // Reported directly, from a real screenshot, and precisely
+          // diagnosed by the user before this was even confirmed here:
+          // "这个框正好是一个G标签的范围...选择的那个蓝色的collection节点，作为这个
+          // 框的左上角，右下角是Panel的右下角的那个框" (the frame exactly matches
+          // a <g> tag's bounds — the selected Collection node is its top-
+          // left corner, the Panel's own bottom-right is its bottom-right).
+          // Confirmed by reading `document.activeElement` right after
+          // clicking a row: it resolved to exactly this `<g>`, with
+          // `outlineStyle: 'auto'` — the browser's own default focus ring,
+          // not anything this app ever intentionally draws. Suppressed
+          // directly, since there's nothing meaningful for this purely
+          // structural, non-interactive wrapper to visibly "have focus" at
+          // all — every real interactive control inside it (buttons,
+          // inputs, rows) keeps its own, correct focus behavior untouched.
+          style={{ outline: 'none' }}
+        >
           {/* A real edge, not just adjacent placement — drawn with the
            * same `linkGenerator` (and the same stroke) used for every
            * other parent→child connection in this tree, just fed local
@@ -1344,7 +1506,7 @@ function TreeNodeView({
                 // Follows the box's own drag offset (docs/DESIGN.md §32) —
                 // otherwise the line would stay pointing at where the box
                 // *used to be* the moment it's dragged anywhere else.
-                target: { x: 34 + boxOffset.dyVert, y: boxNearX + boxOffset.dxHoriz },
+                target: { x: 34 + boxOffset.dyVert, y: boxNearX + effectiveBoxOffsetDxHoriz },
               }) ?? undefined
             }
             fill="none"
@@ -1352,10 +1514,10 @@ function TreeNodeView({
             strokeWidth={1.5}
           />
           <foreignObject
-            x={(labelOnLeft ? boxNearX - boxSize.width : boxNearX) + boxOffset.dxHoriz}
+            x={(labelOnLeft ? boxNearX - clampedBoxSize.width : boxNearX) + effectiveBoxOffsetDxHoriz}
             y={14 + boxOffset.dyVert}
-            width={boxSize.width}
-            height={boxSize.height}
+            width={clampedBoxSize.width}
+            height={clampedBoxSize.height}
           >
             <div
               ref={itemSetBoxRef}
