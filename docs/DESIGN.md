@@ -5147,9 +5147,77 @@ datetime`), free-text `q`, `ids`/`intersects`, arbitrary-field sort via
 `queryables`, CQL2 filter, `fields`; `overview`/`visual` asset roles and
 `rel=preview`; `alternate`/`via`/`license` links in Inspector; auth
 headers and a CORS proxy option; an "Open in STAC Browser" link. Listed
-in §92.
+in §93.
 
-## 92. What's deliberately deferred (not forgotten)
+## 92. Collection Search — built, verified against a real server, then parked by decision; and a failed search now looks like a failure
+
+Built as the first item of §91's open list: a third box, `Collections`,
+on an API root whose `conformsTo` declares STAC API - Collection Search,
+shown when the root is selected and stacked above the root's existing
+cross-collection Item Search/Results pair; Text (`#free-text`) / Date /
+Area rows; **its result was the tree itself** — the root's child list
+reloaded through `/collections?q&bbox&datetime`, "240 of 422 collections
+match" from `numberMatched`, the query in the shareable URL as
+`#<root>?q=…`, and a Collection opened underneath got its Item Search
+draft pre-filled with the root's bbox/datetime. Facts established on the
+way, worth keeping: Collection Search is API-only (static catalogs are
+"browseable" — a client "search" of one is a crawl; STAC Browser shows a
+search panel only when the API declares the classes); Planetary Computer
+and Earth Search declare no such class and ignore the params, but 14 of
+the 34 API roots on this app's landing page implement it (Copernicus Data
+Space, NASA CMR, Digital Earth Africa, HOT OSM, Thünen, GEO BON…), all
+with `q`; declared URIs vary by version (`rc.1`/`1.0.0`/`1.1.0`), so the
+gate matched by path suffix. Verified end to end in Playwright on
+Copernicus Data Space (422 → 239 with `q=sentinel`, URL round-trip,
+prefill, clear).
+
+Then parked, not shipped: "我对于用 API search collection...虽然官方可能支
+持了...但我觉得这个事情我还是有疑问。我们的系统暂时不支持,回退过去吧...等我想清
+楚了,我们再来做" (I still have doubts about searching collections via the
+API, even if the spec supports it — don't support it for now, revert, and
+come back when I've thought it through). The doubt is about the model,
+not the implementation: the tree is meant to show the publisher's
+structure, and a search that silently swaps the root's children for a
+filtered subset sits uneasily with that — the same instinct that ruled
+out a client-derived grouping layer (§93). The complete work lives on the
+local branch `parked/collection-search` (one WIP commit on top of
+`5fbdfbb`, not pushed) so the decision, when it comes, starts from a
+verified implementation rather than from scratch. What it also surfaced
+and this section keeps: the root of an API gets an Item Search pair today
+(its `items.kind` is `cursor` via `/search`), and on Planetary Computer
+that search can never succeed — the server answers any query without
+`collections=` with `422 collection is required` — which raised, and left
+open, whether the root should carry an Item Search box at all.
+
+One piece kept on `main`, because it is a plain bug regardless of any of
+the above: that 422 used to render as "no items match this query — 0
+items total". A failed request is not an empty result. `fetchSearchPage`/
+`fetchNodeListPage` now raise an error carrying the server's own body
+(under HTTP/2 `statusText` is empty, so "422" alone said nothing),
+`useCursorQueriedItemSet` exposes an `'error'` status with the message,
+and `ItemSetResultsPanel` shows it in warning color in place of the list
+("⚠ Search request failed: 422 — collection is required"), with the
+footer reading "search failed" instead of a page count.
+
+## 93. What's deliberately deferred (not forgotten)
+
+- **Parked by decision, complete on `parked/collection-search`:
+  Collection Search on API roots (§92).** To revisit: whether the tree
+  should ever show a *filtered* root at all, or whether collection
+  discovery belongs somewhere other than the structure view; and, tied
+  to it, whether an API root should carry an Item Search box (Planetary
+  Computer rejects cross-collection search outright).
+- **Decided against, not deferred: inventing a grouping layer over a
+  flat API root.** Copernicus Data Space lists 422 Collections with no
+  `child` Catalogs at all (220 CLMS products split by variable ×
+  resolution × cadence × version × file format, 150 Sentinel by
+  instrument × level × product × timeliness). A client *could* derive
+  CLMS / Sentinel-1 / … groups from ID prefixes or `keywords` and show
+  them as tree levels. The user ruled it out: "我只是觉得源数据制作单位没有
+  太认真的去思考而已,我们也不应该多做这一层" (the publisher just didn't think
+  it through — that isn't a layer we should add either). Structure Lens
+  shows the structure the publisher actually made, flat where it is flat.
+  Same principle as never fabricating a count or a search result.
 
 - **From §91's spec audit, the not-yet-built half** (each gated on
   `conformsTo` like Sort already is; static catalogs unaffected):

@@ -22,10 +22,13 @@ export interface ItemSetResultsPanelProps {
    *  mode, search-first — see `usePagedCursorResults`). Renders
    *  `idleMessage` in place of the pager/List/Time & Space UI entirely;
    *  links mode never passes this. */
-  status: 'idle' | 'loading' | 'ready'
+  status: 'idle' | 'loading' | 'ready' | 'error'
   /** Shown only while `status === 'idle'`. Required in that case, unused
    *  otherwise. */
   idleMessage?: string
+  /** The failure, while `status === 'error'` — rendered in place of the
+   *  list, in warning color, never as an empty-result message. */
+  error?: string
   pageItems: StacNode[]
   /** Every other already-loaded page's items — shown de-emphasized on the
    *  Time & Space view. Links mode: every other cached page. Cursor mode:
@@ -77,6 +80,7 @@ export function ItemSetResultsPanel({
   setView,
   status,
   idleMessage,
+  error,
   pageItems,
   dimmedItems,
   pageIndex,
@@ -177,6 +181,8 @@ export function ItemSetResultsPanel({
         >
           {status === 'loading' ? (
             <LoadingState>Loading items…</LoadingState>
+          ) : status === 'error' ? (
+            <div style={{ padding: 8, fontSize: 12, color: 'var(--color-node-warning)' }}>⚠ {error ?? 'search failed'}</div>
           ) : pageItems.length === 0 ? (
             <div style={{ padding: 8, fontSize: 12, color: 'var(--color-text-faint)' }}>{emptyListMessage}</div>
           ) : (
@@ -235,9 +241,15 @@ export function ItemSetResultsPanel({
           background: 'var(--color-bg)',
         }}
       >
-        page {pageIndex + 1} of {totalPages}
-        {totalPagesIsLowerBound ? '+' : ''}
-        {totalItems != null && ` — ${totalItems}${totalPagesIsLowerBound ? '+' : ''} items total`}
+        {status === 'error' ? (
+          'search failed — nothing to page through'
+        ) : (
+          <>
+            page {pageIndex + 1} of {totalPages}
+            {totalPagesIsLowerBound ? '+' : ''}
+            {totalItems != null && ` — ${totalItems}${totalPagesIsLowerBound ? '+' : ''} items total`}
+          </>
+        )}
       </div>
     </div>
   )

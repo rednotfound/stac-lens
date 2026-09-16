@@ -72,6 +72,22 @@ export interface SearchPage {
   matched?: number
 }
 
+/** An error that carries what the server actually said, not just the
+ *  status — a STAC API's refusal is usually a one-line body (Planetary
+ *  Computer's `/search` answers a cross-collection query with a bare
+ *  `422 collection is required`), and under HTTP/2 `statusText` is
+ *  empty, so without the body the user would see only "422". */
+async function httpError(prefix: string, res: Response): Promise<Error> {
+  let body = ''
+  try {
+    body = (await res.text()).replace(/\s+/g, ' ').trim().slice(0, 200)
+  } catch {
+    // body unreadable — the status alone will have to do
+  }
+  const status = res.statusText ? `${res.status} ${res.statusText}` : String(res.status)
+  return new Error(`${prefix}: ${status}${body ? ` — ${body}` : ''}`)
+}
+
 function withQuery(base: string, params: Record<string, string>): string {
   const url = new URL(base)
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
@@ -182,9 +198,7 @@ export async function fetchSearchPage(
   const res = opts.next
     ? await followNext(opts.next, buildPostBody(opts.limit, opts.filter, opts.collections))
     : await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Search request failed: ${res.status} ${res.statusText}`)
-  }
+  if (!res.ok) throw await httpError('Search request failed', res)
   const raw = (await res.json()) as RawSearchResponse
   const features = raw.features ?? []
 
@@ -224,9 +238,7 @@ async function fetchNodeListPage(
 ): Promise<NodeListPage> {
   const url = opts.next?.href ?? withQuery(endpoint, { limit: String(opts.limit) })
   const res = opts.next ? await followNext(opts.next, { limit: opts.limit }) : await fetch(url)
-  if (!res.ok) {
-    throw new Error(`${key === 'children' ? 'Children' : 'Collections'} request failed: ${res.status} ${res.statusText}`)
-  }
+  if (!res.ok) throw await httpError(`${key === 'children' ? 'Children' : 'Collections'} request failed`, res)
   const raw = (await res.json()) as Record<string, unknown> & { links?: RawSearchLink[] }
   const entries = Array.isArray(raw[key]) ? (raw[key] as RawStacObject[]) : []
 

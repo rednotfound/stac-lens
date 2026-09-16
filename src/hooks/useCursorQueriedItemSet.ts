@@ -23,7 +23,14 @@ export type CursorItemSetState =
        *  API mode is search-first: "在API没有search之前,没有结果" (before an
        *  API search runs, there's no result at all) — no request is made
        *  until `applyQuery` is actually called at least once. */
-      status: 'idle' | 'loading' | 'ready'
+      status: 'idle' | 'loading' | 'ready' | 'error'
+      /** Set while `status === 'error'`: the last request for the current
+       *  query failed — shown as such, never as an empty result. A server
+       *  refusing the query (Planetary Computer's `/search` answers a
+       *  cross-collection request with `422 collection is required`) used
+       *  to surface as "no items match this query," which is a different
+       *  claim entirely. */
+      error?: string
       items: StacNode[]
       /** Undefined when genuinely unknown, not zero — some STAC API
        *  implementations never report a total match count at all. Reflects
@@ -69,6 +76,7 @@ export function useCursorQueriedItemSet(
   const [items, setItems] = useState<StacNode[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [matched, setMatched] = useState<number | undefined>(undefined)
+  const [error, setError] = useState<string | undefined>(undefined)
   const [appliedQuery, setAppliedQuery] = useState<CursorQuery>(initialQuery ?? EMPTY_QUERY)
   // A restored `initialQuery` (from a shareable URL) counts as "already
   // searched" — it's replaying a real search someone actually ran, not
@@ -92,6 +100,7 @@ export function useCursorQueriedItemSet(
     setItems([])
     setLoadingMore(false)
     setMatched(undefined)
+    setError(undefined)
   }
 
   // One effect, not two — resetting state and (conditionally) kicking off
@@ -145,6 +154,7 @@ export function useCursorQueriedItemSet(
       if (generation !== generationRef.current) return
       console.error('[useCursorQueriedItemSet] search request failed', err)
       exhaustedRef.current = true // don't retry a broken endpoint forever
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       // Only this generation's own request may clear the loading flags. A
       // superseded request (a newer `applyQuery`/node-change already reset
@@ -177,7 +187,8 @@ export function useCursorQueriedItemSet(
   if (!node) return { status: 'empty' }
 
   return {
-    status: !hasSearched ? 'idle' : items.length === 0 && loadingMore ? 'loading' : 'ready',
+    status: !hasSearched ? 'idle' : error ? 'error' : items.length === 0 && loadingMore ? 'loading' : 'ready',
+    error,
     items,
     totalCount: matched,
     hasMore: !exhaustedRef.current,

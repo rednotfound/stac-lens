@@ -11,7 +11,9 @@ export type PagedCursorResultsState =
       /** `idle`: no search has been run yet (search-first — see
        *  `CursorItemSetState.status`'s own doc). No pager/results to show;
        *  render a "run a search" prompt instead. */
-      status: 'idle' | 'loading' | 'ready'
+      status: 'idle' | 'loading' | 'ready' | 'error'
+      /** See `CursorItemSetState.error`. */
+      error?: string
       pageItems: StacNode[]
       dimmedItems: StacNode[]
       pageIndex: number
@@ -164,6 +166,7 @@ export function usePagedCursorResults(
 
   return {
     status: inner.status,
+    error: inner.error,
     pageItems,
     dimmedItems,
     pageIndex,

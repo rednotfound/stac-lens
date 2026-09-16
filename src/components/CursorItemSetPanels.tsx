@@ -169,6 +169,7 @@ export function CursorItemSetPanels({
           view={view}
           setView={setView}
           status={state.status}
+          error={state.error}
           idleMessage="Set your search filters above and click Search to see results."
           pageItems={pageItems}
           dimmedItems={state.dimmedItems}
