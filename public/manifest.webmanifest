@@ -1,0 +1,14 @@
+{
+  "name": "STAC Lens",
+  "short_name": "STAC Lens",
+  "description": "See the shape of your STAC data — structure, time, and space as one coordinated view.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf9f7",
+  "theme_color": "#0EB4AE",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

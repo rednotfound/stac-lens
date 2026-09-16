@@ -5147,7 +5147,7 @@ datetime`), free-text `q`, `ids`/`intersects`, arbitrary-field sort via
 `queryables`, CQL2 filter, `fields`; `overview`/`visual` asset roles and
 `rel=preview`; `alternate`/`via`/`license` links in Inspector; auth
 headers and a CORS proxy option; an "Open in STAC Browser" link. Listed
-in §93.
+in §94.
 
 ## 92. Collection Search — built, verified against a real server, then parked by decision; and a failed search now looks like a failure
 
@@ -5179,7 +5179,7 @@ come back when I've thought it through). The doubt is about the model,
 not the implementation: the tree is meant to show the publisher's
 structure, and a search that silently swaps the root's children for a
 filtered subset sits uneasily with that — the same instinct that ruled
-out a client-derived grouping layer (§93). The complete work lives on the
+out a client-derived grouping layer (§94). The complete work lives on the
 local branch `parked/collection-search` (one WIP commit on top of
 `5fbdfbb`, not pushed) so the decision, when it comes, starts from a
 verified implementation rather than from scratch. What it also surfaced
@@ -5199,7 +5199,41 @@ and `ItemSetResultsPanel` shows it in warning color in place of the list
 ("⚠ Search request failed: 422 — collection is required"), with the
 footer reading "search failed" instead of a page count.
 
-## 93. What's deliberately deferred (not forgotten)
+## 93. A logo, real icons, and the hierarchy palette moved onto the STAC brand's three colors
+
+The user drew the mark (`src/assets/stac-lens-logo.svg`): the STAC
+logo's three nested squares — `#C4E2EF`, `#0EB4AE`, `#144E63`, outermost
+to innermost — with a white lens over the front one. Their reading, now
+the app's: the three squares are the three levels, Catalog → Collection
+→ Item. (The STAC site's page accent `#6CC24A` is a different green from
+the mark's own squares — checked, since the request called them
+"greens"; what the logo actually uses is this blue-teal triad.)
+
+Used everywhere one asset should: the same SVG is `public/favicon.svg`
+(vector, any size), the header mark (20px, part of the title-is-home
+button) and the landing title (44px) via `<Logo>`, and — rendered from
+the same file with Playwright, no design-tool round trip — a 32px PNG
+favicon, a 180px opaque Apple touch icon and 192/512px manifest icons,
+with a `manifest.webmanifest` (theme color = the Collection teal) and a
+proper `<title>`. The previous `favicon.svg` was the purple Vite/React
+template leftover.
+
+The palette followed, with one measured constraint. The request was to
+use the three colors on the three levels directly; contrast said the
+exact values can't carry both themes: `#C4E2EF` is 1.4:1 on the light
+surface, `#144E63` is 1.7:1 on the dark one — a 1.5px node ring or a
+12px type icon disappears at either. Three options were put to the
+user; chosen: **same hues, luminance per theme.** Each level keeps the
+exact brand value in the theme where it already reads — Catalog in
+dark, Item in light, Collection (`#0EB4AE`) in both — and takes a same-
+hue shade/tint in the other: light Catalog `#2F7A99` (4.8:1), dark Item
+`#6FB3D2` (6.8:1). Asset (a fourth type the brand doesn't define; never a
+tree node) keeps its muted plum, deliberately outside the family. The
+old orange Item color also lived as a literal in `ItemsMap.tsx`'s Leaflet
+palette (Leaflet's SVG attributes can't read CSS variables) — updated in
+step; `--color-node-warning` stays orange, it's a state, not a level.
+
+## 94. What's deliberately deferred (not forgotten)
 
 - **Parked by decision, complete on `parked/collection-search`:
   Collection Search on API roots (§92).** To revisit: whether the tree

@@ -9,17 +9,30 @@
   --color-text-muted: #8a8478;
   --color-text-faint: #b7b1a4;
 
-  --color-node-catalog: #55524a;
-  --color-node-collection: #0f766e;
-  --color-node-item: #b45309;
+  /* The three hierarchy colors are the STAC logo's own three squares — the
+   * user's mark (`src/assets/stac-lens-logo.svg`) keeps them verbatim:
+   * Catalog #C4E2EF, Collection #0EB4AE, Item #144E63, outermost to
+   * innermost. Used *as hues*, with luminance set per theme, because the
+   * exact values don't survive both surfaces: measured, #C4E2EF sits at
+   * 1.4:1 on the light surface and #144E63 at 1.7:1 on the dark one — a
+   * 1.5px ring or a 12px icon vanishes at either. So each level uses the
+   * exact brand value in the theme where it already reads (Catalog in
+   * dark, Item in light, Collection in both) and a same-hue shade/tint in
+   * the other (light Catalog #2F7A99 = 4.8:1, dark Item #6FB3D2 = 6.8:1).
+   * Decided with the user over "exact colors, accept the loss" and "exact
+   * fills with a dark outline". */
+  --color-node-catalog: #2f7a99;
+  --color-node-collection: #0eb4ae;
+  --color-node-item: #144e63;
   /* Not a tree-node type (Assets are never tree nodes) — a fourth hue for
    * Inspector's own type iconography only, alongside the three above,
    * requested directly: "把这个三个层级...Collection,Catalog,Item,和Asset,
    * 都用一些...简单的icon去代替" (give these levels — Collection, Catalog,
-   * Item, and Asset — simple icons each). Muted plum, matching the same
-   * desaturated-earthy register as the other three rather than a bright
-   * accent, and deliberately outside the blue family already claimed by
-   * `--color-selection`/the API badge. */
+   * Item, and Asset — simple icons each). Muted plum — kept when the three
+   * levels moved to the brand's blue-teal family precisely because it
+   * belongs to none of them: the brand defines three levels, and Asset is
+   * not one (confirmed with the user over a neutral grey). Also outside
+   * the blue already claimed by `--color-selection`/the API badge. */
   --color-node-asset: #7c4a72;
   --color-node-warning: #b45309;
   --color-selection: #2563eb;
@@ -64,9 +77,11 @@
     --color-text-muted: #a39c8c;
     --color-text-faint: #6b6558;
 
-    --color-node-catalog: #b8b2a3;
-    --color-node-collection: #2dd4bf;
-    --color-node-item: #f0a253;
+    /* Brand values where they read on the dark surface (Catalog, Collection),
+     * a same-hue tint for Item — see the light-theme note above. */
+    --color-node-catalog: #c4e2ef;
+    --color-node-collection: #0eb4ae;
+    --color-node-item: #6fb3d2;
     --color-node-asset: #d199c4;
     --color-node-warning: #f0a253;
     --color-selection: #60a5fa;

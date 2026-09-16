@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Logo } from './Logo'
 
 const KNOWN_CATALOGS = [
   {
@@ -643,7 +644,20 @@ export function LandingPage({
       }}
     >
       <div style={{ textAlign: 'center' }}>
-        <h1 style={{ fontSize: 32, margin: 0, color: 'var(--color-text)' }}>STAC Lens</h1>
+        <h1
+          style={{
+            fontSize: 32,
+            margin: 0,
+            color: 'var(--color-text)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 14,
+          }}
+        >
+          <Logo size={44} />
+          STAC Lens
+        </h1>
         <p style={{ color: 'var(--color-text-muted)', marginTop: 8, maxWidth: 480, lineHeight: 1.5 }}>
           See the shape of your STAC data. Structure, time, and space as one coordinated view —
           not another STAC Browser.

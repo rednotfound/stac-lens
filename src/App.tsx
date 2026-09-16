@@ -8,6 +8,7 @@ import { useElementSize } from './hooks/useElementSize'
 import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
 import { encodeSearchQuery } from './stac/searchQueryUrl'
 import { Spinner } from './components/Spinner'
+import { Logo } from './components/Logo'
 import { loader } from './stac/loaderInstance'
 import type { StacNode } from './stac/types'
 
@@ -285,8 +286,12 @@ function App() {
             background: 'none',
             color: 'var(--color-text)',
             cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
           }}
         >
+          <Logo size={20} />
           STAC Lens
         </button>
         <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', flexShrink: 0 }} />

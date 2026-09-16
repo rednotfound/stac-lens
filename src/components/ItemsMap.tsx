@@ -16,8 +16,8 @@ const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyrigh
 // the way our own `style={{ fill: 'var(...)' }}` SVG elements do elsewhere
 // in this app, so the palette is duplicated here rather than referenced.
 const PALETTE = {
-  light: { item: '#b45309', selection: '#2563eb', textFaint: '#b7b1a4' },
-  dark: { item: '#f0a253', selection: '#60a5fa', textFaint: '#6b6558' },
+  light: { item: '#144e63', selection: '#2563eb', textFaint: '#b7b1a4' },
+  dark: { item: '#6fb3d2', selection: '#60a5fa', textFaint: '#6b6558' },
 }
 
 function useIsDark(): boolean {
