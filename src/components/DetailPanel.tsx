@@ -233,9 +233,31 @@ export function DetailPanel() {
                 only.
               </div>
             )}
+            {node.spatial?.bboxCount === 2 && (
+              <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
+                ⚠ source declares exactly two spatial bboxes — STAC 1.1 reports that as invalid (the
+                first must be the overall extent of the rest). Showing the first only.
+              </div>
+            )}
+            {node.spatial?.bboxCount != null && node.spatial.bboxCount > 2 && (
+              <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
+                source declares {node.spatial.bboxCount} spatial bboxes — the first (overall extent)
+                is shown; the {node.spatial.bboxCount - 1} sub-extents are not drawn.
+              </div>
+            )}
           </Field>
 
-          {node.license && <Field label="License (source)">{node.license}</Field>}
+          {node.license && (
+            <Field label="License (source)">
+              {node.license}
+              {(node.license === 'proprietary' || node.license === 'various') && (
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  {' '}
+                  — deprecated value since STAC 1.1 (an SPDX expression or `other` is expected)
+                </span>
+              )}
+            </Field>
+          )}
 
           {node.keywords && node.keywords.length > 0 && (
             <Field label="Keywords (source)">{node.keywords.join(', ')}</Field>

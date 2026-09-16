@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
-import { fetchSearchPage, type SearchFilter } from '../stac/apiSearch'
+import { fetchSearchPage, type NextLink, type SearchFilter } from '../stac/apiSearch'
+import { resolveSearchTarget } from '../stac/conformance'
 import type { StacNode } from '../stac/types'
 
 // A cursor-mode page costs one network round-trip regardless of how many
@@ -75,7 +76,7 @@ export function useCursorQueriedItemSet(
   const [hasSearched, setHasSearched] = useState(initialQuery !== undefined)
 
   const generationRef = useRef(0)
-  const nextHrefRef = useRef<string | undefined>(undefined)
+  const nextRef = useRef<NextLink | undefined>(undefined)
   const exhaustedRef = useRef(false)
   const appliedQueryRef = useRef<CursorQuery>(initialQuery ?? EMPTY_QUERY)
   // Synchronous companion to `loadingMore` state — closes the React
@@ -85,7 +86,7 @@ export function useCursorQueriedItemSet(
 
   function resetForNewQueryOrNode() {
     generationRef.current += 1
-    nextHrefRef.current = undefined
+    nextRef.current = undefined
     exhaustedRef.current = false
     loadingRef.current = false
     setItems([])
@@ -108,15 +109,24 @@ export function useCursorQueriedItemSet(
   }, [nodeHref])
 
   async function fetchOneCursorPage(cursorNode: StacNode & { items: { kind: 'cursor' } }, generation: number) {
-    const page = await fetchSearchPage(cursorNode.items.endpoint, {
+    // The root's `/search` scoped to this Collection when the API has one,
+    // else the Collection's own `rel:items` — see `resolveSearchTarget` for
+    // the real server behavior that makes this choice matter.
+    const target = await resolveSearchTarget(cursorNode)
+    if (generation !== generationRef.current) return
+    // `filter`/`collections` are passed on every call — they shape the fresh
+    // request, and stay the merge base for a `next` link followed by POST
+    // (`fetchSearchPage` never re-appends them to a followed href).
+    const page = await fetchSearchPage(target.endpoint, {
       limit: CURSOR_PAGE_SIZE,
-      nextHref: nextHrefRef.current,
-      filter: nextHrefRef.current ? undefined : appliedQueryRef.current,
+      next: nextRef.current,
+      filter: appliedQueryRef.current,
+      collections: target.collections,
     })
     if (generation !== generationRef.current) return // a newer applyQuery/node-change superseded this in flight
     for (const item of page.items) loader.cachePreFetched(item)
-    nextHrefRef.current = page.nextHref
-    if (!page.nextHref) exhaustedRef.current = true
+    nextRef.current = page.next
+    if (!page.next) exhaustedRef.current = true
     if (page.matched != null) setMatched(page.matched)
     setItems((prev) => {
       const seen = new Set(prev.map((i) => i.href))
@@ -132,11 +142,22 @@ export function useCursorQueriedItemSet(
     try {
       await fetchOneCursorPage(node, generation)
     } catch (err) {
+      if (generation !== generationRef.current) return
       console.error('[useCursorQueriedItemSet] search request failed', err)
       exhaustedRef.current = true // don't retry a broken endpoint forever
     } finally {
-      loadingRef.current = false
-      setLoadingMore(false)
+      // Only this generation's own request may clear the loading flags. A
+      // superseded request (a newer `applyQuery`/node-change already reset
+      // and re-armed them for *its* in-flight fetch) must leave them alone
+      // — clearing them here used to expose a window where the newer fetch
+      // was still in flight but `loadingMore` read false, so the UI briefly
+      // showed "ready, 0 items" and `usePagedCursorResults`'s catch-up
+      // effect fired a duplicate request for the same query (measured
+      // directly: three identical requests for one restored search).
+      if (generation === generationRef.current) {
+        loadingRef.current = false
+        setLoadingMore(false)
+      }
     }
   }
 

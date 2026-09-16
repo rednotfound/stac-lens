@@ -222,7 +222,19 @@ export function ItemSetResultsPanel({
        * anyway. Paging through the numbered pager above is the only way
        * to see everything now — slower, but never a single click away
        * from rendering thousands of markers at once. */}
-      <div style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 4 }}>
+      {/* Footer status line, bled out over the body's 8px padding so it
+       * reads as the box's own bottom bar (matching the title bar above);
+       * the pager itself deliberately stays at the top, next to the tabs. */}
+      <div
+        style={{
+          fontSize: 11,
+          color: 'var(--color-text-faint)',
+          margin: '6px -8px -8px',
+          padding: '4px 10px',
+          borderTop: '1px solid var(--color-border)',
+          background: 'var(--color-bg)',
+        }}
+      >
         page {pageIndex + 1} of {totalPages}
         {totalPagesIsLowerBound ? '+' : ''}
         {totalItems != null && ` — ${totalItems}${totalPagesIsLowerBound ? '+' : ''} items total`}

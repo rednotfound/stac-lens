@@ -4,6 +4,55 @@ import type { StacNode } from './types'
 interface RawSearchLink {
   rel?: string
   href?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: Record<string, unknown>
+  merge?: boolean
+}
+
+/** A pagination link as the spec actually defines it — STAC API's
+ *  "Pagination" sections (Features and Item Search alike: "these
+ *  mechanisms apply to both item and collection pagination") and, since
+ *  STAC 1.1, the core Link object itself: not just an `href`, but
+ *  optionally a `method` (POST), extra `headers`, a request `body`, and
+ *  `merge` — whether that body is the whole next request or only the
+ *  fields to change on top of the original one. A client that reads only
+ *  `href` (as this one did) silently loses every page after the first
+ *  from an implementation that paginates by POST. */
+export interface NextLink {
+  href: string
+  method: 'GET' | 'POST'
+  headers?: Record<string, string>
+  body?: Record<string, unknown>
+  merge?: boolean
+}
+
+function findNextLink(links: RawSearchLink[] | undefined, baseUrl: string): NextLink | undefined {
+  const link = (links ?? []).find((l) => l.rel === 'next' && l.href)
+  if (!link) return undefined
+  return {
+    href: resolveHref(baseUrl, link.href!),
+    method: link.method?.toUpperCase() === 'POST' ? 'POST' : 'GET',
+    headers: link.headers,
+    body: link.body,
+    merge: link.merge,
+  }
+}
+
+/** Follows a pagination link exactly as advertised. `originalBody` is the
+ *  POST-shaped equivalent of the request that produced the first page —
+ *  what a `merge: true` body is merged into. Headers are only sent when
+ *  the link asks for them (custom headers cost a CORS preflight). */
+function followNext(next: NextLink, originalBody: Record<string, unknown>): Promise<Response> {
+  if (next.method === 'POST') {
+    const body = next.merge ? { ...originalBody, ...(next.body ?? {}) } : (next.body ?? {})
+    return fetch(next.href, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(next.headers ?? {}) },
+      body: JSON.stringify(body),
+    })
+  }
+  return next.headers ? fetch(next.href, { headers: next.headers }) : fetch(next.href)
 }
 
 interface RawSearchResponse {
@@ -17,7 +66,7 @@ interface RawSearchResponse {
 
 export interface SearchPage {
   items: StacNode[]
-  nextHref?: string
+  next?: NextLink
   /** Total match count, when the implementation reports one at all — see
    *  the note on `fetchSearchPage` below. Absent, not zero, when unknown. */
   matched?: number
@@ -63,8 +112,26 @@ export function filterToParams(filter?: SearchFilter): Record<string, string> {
   return params
 }
 
-function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<string, string> {
-  return { limit: String(limit), ...filterToParams(filter) }
+function buildFreshQueryParams(limit: number, filter?: SearchFilter, collections?: string[]): Record<string, string> {
+  return {
+    limit: String(limit),
+    ...(collections?.length ? { collections: collections.join(',') } : {}),
+    ...filterToParams(filter),
+  }
+}
+
+/** The same request in Item Search's POST shape — arrays instead of
+ *  comma-separated strings, `sortby` as `[{field, direction}]` objects (the
+ *  Sort extension's POST form). Only ever used as the merge base for a
+ *  `next` link that asks to be followed by POST with `merge: true`. */
+function buildPostBody(limit: number, filter?: SearchFilter, collections?: string[]): Record<string, unknown> {
+  const body: Record<string, unknown> = { limit }
+  if (collections?.length) body.collections = collections
+  if (filter?.bbox) body.bbox = filter.bbox
+  const datetime = filterToParams(filter).datetime
+  if (datetime) body.datetime = datetime
+  if (filter?.sortDirection) body.sortby = [{ field: 'properties.datetime', direction: filter.sortDirection }]
+  return body
 }
 
 /** Fetches one page of Items from a STAC API `/search` or `rel:items`
@@ -75,13 +142,14 @@ function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<str
  *  body would, which matters for a pure-frontend app with no backend to
  *  route through.
  *
- *  `nextHref`, when given, is followed *verbatim* rather than
+ *  `next`, when given, is followed *exactly as advertised* rather than
  *  reconstructed — the spec deliberately leaves the shape of a `rel:next`
  *  link's own parameters up to the implementation (`page`, `next`,
  *  `token`, or anything else), so a client must never assume it knows how
  *  to build the next page's URL itself (see docs/DESIGN.md §18's earlier
  *  finding on this for the same reason, applied here to a different
- *  endpoint).
+ *  endpoint) — and that includes the link's `method`/`headers`/`body`/
+ *  `merge`, not only its `href` (`NextLink`, `followNext`).
  *
  *  Real implementations disagree on how (or whether) they report a total
  *  match count at all: Earth Search returns `context.matched`; Microsoft
@@ -95,17 +163,25 @@ function buildFreshQueryParams(limit: number, filter?: SearchFilter): Record<str
  *  now lives in the Item Set panel itself (docs/DESIGN.md §68), distinct
  *  from the Inspector-wide interactive draw-a-bbox/select-a-range tool
  *  dropped entirely in §39 (and its now-deleted global `store/query.ts`).
- *  `opts.filter` is only ever consulted when `!opts.nextHref` — a followed
- *  `rel:next` link already encodes whatever filter/sort produced it
- *  server-side, and the spec leaves that link's own shape entirely up to
- *  the implementation, so re-appending filter params on top of it would be
- *  redundant at best and wrong at worst. */
+ *  `opts.filter`/`opts.collections` shape the *fresh* request's URL; for a
+ *  followed `rel:next` link they are never re-appended to its href (the
+ *  link already encodes whatever produced it server-side, in a shape the
+ *  spec leaves entirely to the implementation) — they only serve as the
+ *  merge base when that link asks to be followed by POST with `merge`.
+ *
+ *  Which endpoint a Collection's search actually goes to is decided by
+ *  `resolveSearchTarget` (stac/conformance.ts), not here — a cross-
+ *  collection `/search` needs `opts.collections` to stay scoped to the one
+ *  Collection being browsed; a Collection's own `rel:items` link is already
+ *  scoped by its URL and must not get it. */
 export async function fetchSearchPage(
   endpoint: string,
-  opts: { limit: number; nextHref?: string; filter?: SearchFilter },
+  opts: { limit: number; next?: NextLink; filter?: SearchFilter; collections?: string[] },
 ): Promise<SearchPage> {
-  const url = opts.nextHref ?? withQuery(endpoint, buildFreshQueryParams(opts.limit, opts.filter))
-  const res = await fetch(url)
+  const url = opts.next?.href ?? withQuery(endpoint, buildFreshQueryParams(opts.limit, opts.filter, opts.collections))
+  const res = opts.next
+    ? await followNext(opts.next, buildPostBody(opts.limit, opts.filter, opts.collections))
+    : await fetch(url)
   if (!res.ok) {
     throw new Error(`Search request failed: ${res.status} ${res.statusText}`)
   }
@@ -123,24 +199,48 @@ export async function fetchSearchPage(
     return buildNode(itemHref, feature)
   })
 
-  const nextLink = (raw.links ?? []).find((l) => l.rel === 'next' && l.href)
   const matched = raw.context?.matched ?? raw.numberMatched
 
   return {
     items,
-    nextHref: nextLink?.href,
+    next: findNextLink(raw.links, url),
     matched,
   }
 }
 
-interface RawCollectionsResponse {
-  collections?: RawStacObject[]
-  links?: RawSearchLink[]
+export interface NodeListPage {
+  items: StacNode[]
+  next?: NextLink
 }
 
-export interface CollectionsPage {
-  items: StacNode[]
-  nextHref?: string
+/** One page of an endpoint that lists whole Catalog/Collection objects
+ *  under a single array key — `/collections` (`collections`) and the
+ *  Children extension's `/children` (`children`) share this exact shape,
+ *  including the same pagination mechanism. */
+async function fetchNodeListPage(
+  endpoint: string,
+  key: 'collections' | 'children',
+  opts: { limit: number; next?: NextLink },
+): Promise<NodeListPage> {
+  const url = opts.next?.href ?? withQuery(endpoint, { limit: String(opts.limit) })
+  const res = opts.next ? await followNext(opts.next, { limit: opts.limit }) : await fetch(url)
+  if (!res.ok) {
+    throw new Error(`${key === 'children' ? 'Children' : 'Collections'} request failed: ${res.status} ${res.statusText}`)
+  }
+  const raw = (await res.json()) as Record<string, unknown> & { links?: RawSearchLink[] }
+  const entries = Array.isArray(raw[key]) ? (raw[key] as RawStacObject[]) : []
+
+  const items = entries.map((entry) => {
+    const selfLink = (entry.links ?? []).find((l) => l.rel === 'self' && l.href)
+    // Same fallback reasoning as `fetchSearchPage` above — not every
+    // implementation's listed entry carries its own `rel:self` link.
+    const entryHref = selfLink
+      ? resolveHref(url, selfLink.href!)
+      : resolveHref(endpoint.endsWith('/') ? endpoint : `${endpoint}/`, String(entry.id ?? ''))
+    return buildNode(entryHref, entry)
+  })
+
+  return { items, next: findNextLink(raw.links, url) }
 }
 
 /** Fetches one page from an OGC API - Features "Collections" listing
@@ -155,32 +255,13 @@ export interface CollectionsPage {
  *  ignored and every Collection comes back in one response regardless —
  *  `rel:next` is still checked and followed rather than assumed absent,
  *  since a different implementation may genuinely paginate this). */
-export async function fetchCollectionsPage(
-  endpoint: string,
-  opts: { limit: number; nextHref?: string },
-): Promise<CollectionsPage> {
-  const url = opts.nextHref ?? withQuery(endpoint, { limit: String(opts.limit) })
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Collections request failed: ${res.status} ${res.statusText}`)
-  }
-  const raw = (await res.json()) as RawCollectionsResponse
-  const collections = raw.collections ?? []
+export function fetchCollectionsPage(endpoint: string, opts: { limit: number; next?: NextLink }): Promise<NodeListPage> {
+  return fetchNodeListPage(endpoint, 'collections', opts)
+}
 
-  const items = collections.map((collection) => {
-    const selfLink = (collection.links ?? []).find((l) => l.rel === 'self' && l.href)
-    // Same fallback reasoning as `fetchSearchPage` above — not every
-    // implementation's listed Collection carries its own `rel:self` link.
-    const collectionHref = selfLink
-      ? resolveHref(url, selfLink.href!)
-      : resolveHref(endpoint.endsWith('/') ? endpoint : `${endpoint}/`, String(collection.id ?? ''))
-    return buildNode(collectionHref, collection)
-  })
-
-  const nextLink = (raw.links ?? []).find((l) => l.rel === 'next' && l.href)
-
-  return {
-    items,
-    nextHref: nextLink?.href,
-  }
+/** One page of a STAC API - Children endpoint (`rel:children`) — see
+ *  `StacNode.childrenEndpoint` for why it's preferred over following each
+ *  `child` link separately. */
+export function fetchChildrenPage(endpoint: string, opts: { limit: number; next?: NextLink }): Promise<NodeListPage> {
+  return fetchNodeListPage(endpoint, 'children', opts)
 }

@@ -4907,7 +4907,267 @@ Fixed by wrapping both computations in `useMemo`, keyed on `[items, pageIndex, p
 
 Verified directly, before and after, with the identical instrumented pan gesture against the identical ~4,000-Item buffer: **42 layer rebuilds → 0**. Separately confirmed the fix doesn't stop *real* updates from happening — paging to an actually different page still produces a fresh `pageItems`/`dimmedItems` reference (since `pageIndex` is itself a memo dependency) and correctly triggers exactly the rebuilds it should.
 
-## 87. What's deliberately deferred (not forgotten)
+## 87. Inspector's Spatial map never flew to a Collection's declared bbox — the fit ran, on a map React StrictMode had already thrown away
+
+Reported with a real repro (Planetary Computer's `3dep-lidar-returns`):
+"inspector的Spatial的地图并没有fly to bbox,让我可以第一时间找到,我只是猜测这个
+数据在us,我移动过去才看到的" (Inspector's Spatial map didn't fly to the
+bbox so I could find it right away — I only guessed the data was in the
+US and panned there myself). Investigated by measuring, not reading:
+the raw Collection JSON has a perfectly good `extent.spatial.bbox`
+(two entries — CONUS+Alaska first, a small Guam box second; `firstBbox`
+correctly takes the first), the same value comes back from both the
+direct fetch and the `/collections` listing, `statedBbox` reached
+`ItemsMap` intact, the container had a real 426×318px size, and
+`map.fitBounds()` was genuinely called with the right bounds — yet
+`getZoom()/getCenter()` right afterwards still read zoom 2 at (0, 0).
+
+Root cause: React 18 StrictMode's dev-only double-invoke of mount
+effects. `ItemsMap`'s mount effect creates the Leaflet map, StrictMode
+immediately runs its cleanup (`map.remove()`) and runs it again,
+creating a *second* map — the one that actually stays on screen. The
+fit effect had already run against the first map and recorded "done for
+this `fitKey`" in `lastFitTargetRef`; that ref survives the effect
+cleanup/remount cycle untouched, so on the real map the fit effect
+early-returned forever. Fix: the mount effect's cleanup now also resets
+`lastFitTargetRef`/`lastFlyHrefRef` — a "fitted already" memory is a
+fact about one map instance and must die with it. Production never
+re-runs a mount effect without a real unmount, so this only ever showed
+in dev — but a test environment that silently shows a broken behavior
+that isn't real is its own problem worth fixing outright, not just
+noting. Verified in Playwright: the map now opens on North America
+(zoom 3, dashed extent visible) instead of the whole-world default.
+
+## 88. "第二次搜索永远不刷新" — a real server-side cache bug in Planetary Computer's `/items` endpoint; searches now go through the root's `GET /search?collections=…`
+
+Reported precisely: the first API search (near New York) returned four
+results; every later search — a new area near Miami, then Phoenix, even
+"Clear filters" — kept showing the same four: "它永远只给我第一次搜索的纽约
+的那四个结果". Reproduced in Playwright step by step, then instrumented:
+the second search *did* send the right request with the new `bbox`, the
+URL updated, `applyQuery` reset the buffer to 0 and the response was
+applied correctly — the response itself was the old result set. Even
+the unfiltered `Clear filters` request came back with the identical 130
+New Jersey items and no `next` link.
+
+Confirmed directly with `curl`, no app code involved: on
+`/collections/3dep-lidar-returns/items`, the first request for a given
+`limit` is computed correctly, and every later request with the *same*
+`limit` but a different `bbox` — or an added `datetime`, or a cache-
+busting query param — returns that first result verbatim. Two fresh
+`limit` values proved it both ways (NJ first → PHX returned NJ; PHX
+first → NJ returned PHX). The same server's `/search` endpoint, GET and
+POST alike, returned distinct, correct results for the identical
+sequence, and its CORS preflight allows POST too. So the OGC-Features
+per-collection endpoint on this server caches responses under a key
+that omits the spatial/temporal parameters — a genuine upstream bug.
+
+Fix (`resolveSearchTarget` in `stac/conformance.ts`, used by
+`useCursorQueriedItemSet`): a cursor-mode Collection's searches now
+prefer the governing API root's own `rel:search` endpoint, scoped with
+`collections=<id>`, and fall back to the Collection's own `rel:items`
+link only when no such root/search link is known. Checked against the
+spec rather than assumed: STAC API - Item Search states "Implementing
+`GET /search` is required, `POST /search` is optional, but recommended"
+— so staying with GET keeps both the no-preflight property and full
+spec coverage. Both real roots (Planetary Computer, Earth Search)
+advertise GET and POST as two separate `rel:search` links told apart by
+`method`; `detectSourceKind` now picks the GET one instead of whichever
+came first. Item Search is also what every mainstream client
+(pystac-client, STAC Browser) uses for filtered queries — this is the
+well-trodden path, not a workaround for one server. Verified: the
+second search now returns 0 items for an ocean box, "Clear filters"
+returns the real unfiltered set (250+, Utah first), and Earth Search
+still works through the same request shape (250 features, 3,999
+matched, `next` present).
+
+A second, smaller real bug fell out of the same instrumentation: a
+restored search fired **three** identical requests. StrictMode's double
+mount explains two (the first is superseded by generation), but the
+superseded request's `finally` still cleared `loadingRef`/`loadingMore`
+— flags that by then belonged to the *newer* in-flight request — so the
+UI briefly read "ready, 0 items" and `usePagedCursorResults`'s catch-up
+effect fired a third, duplicate request. Only the current generation
+may clear those flags now (and the async endpoint resolution gives the
+superseded run an early exit before it ever hits the network): one
+request per restored search.
+
+## 89. The bbox modal couldn't be panned — explicit Draw-box tool with navigate-by-default, framed on the Collection's extent; and §85's `stopPropagation` fix quietly broke Leaflet's drag inside it
+
+Two problems in one report. First, the design one: "我可以绘制一个框框...但
+是同时我也失去了拖拽地图的能力...那这样子我要如何先找到一个地方去...zoom in,找到
+一个地方,移动,找到一个地方,再绘制这个area呢" (I can draw a box, but I lose
+the ability to drag the map — then how do I first get somewhere, zoom
+in, find a place, and *then* draw?). `ItemsMap`'s draw mode has to take
+the drag gesture away from Leaflet's drag-to-pan (the only way the two
+coexist on one map), and the modal opened already in that mode. Every
+dedicated draw tool handles this the same way — Leaflet.draw, Copernicus
+Browser's and NASA Earthdata Search's area tools: the map pans/zooms
+normally, an explicit tool button arms drawing, and drawing one shape
+disarms it again so the very next drag pans rather than replacing the
+box you just drew. `BboxPickerModal` now does exactly that (a "Draw
+box"/"Redraw"/"Cancel drawing" toggle in its header, hint text per
+mode), and opens *framed*: on the existing box when re-editing one,
+otherwise on the Collection's own declared extent (`statedBbox`, drawn
+dashed) — the direct answer to "how do I find the place first."
+
+Second, the bug that would have made navigate mode useless anyway: even
+with dragging enabled (`leaflet-grab` present), a drag in the modal
+didn't pan while wheel-zoom worked fine. Cause: §85's fix for the stuck
+tooltip — `onMouseMove={(e) => e.stopPropagation()}` on the modal root.
+React's synthetic `stopPropagation()` also stops the *native* event
+(verified in react-dom's source), and it runs from the portal container
+(`document.body`) — before the event reaches `document`, which is
+exactly where Leaflet's `Draggable._onDown` binds `mousemove`/`mouseup`
+(verified in Leaflet's source). §85 itself noted that stopping
+propagation is only safe where "no real native/window-level listener"
+sits above — and then the modal's own map turned out to be that
+listener. The tooltip leak is now stopped where it belongs instead:
+the tree node's hover handlers ignore any event whose target isn't a
+real DOM descendant of that node's own `<g>` (`isNotThisNode`), the
+same explicit-containment approach §61/§62 already chose over
+`stopPropagation` for the box. Verified in Playwright: no tooltip while
+moving over the modal, the tooltip still shows on the node's own label,
+drag pans the modal map both before and after a box is drawn, and the
+Inspector map still pans. One deliberate side effect: hovering exactly
+on a box's 1.5px connector stroke (portaled into `boxLayer`, so React
+counted it as the node's descendant) no longer shows the node tooltip
+— it never should have.
+
+## 90. The boxes get a real title bar — the bare grey grip strip was chrome no other product has
+
+Reported directly, with the request to research before designing: "每个
+panel的顶部都有一个...灰色的长条,好像可以拖着它...这个UI UX做得非常的奇怪。我其实
+没有见过第二个产品是长这个样子的...一个正常的panel通常也是带有头,像一个窗口一
+样,有一个头部,头部上面有它的title,然后下面才是这个内容。然后可能假设它底部有
+按钮" (each panel has a grey strip on top you can drag — I've never seen a
+second product that looks like this; a normal panel has a head like a
+window, with its title, then the content, and maybe buttons at the
+bottom). The strip came from §59's "dedicated handle, not the whole box"
+reasoning — correct about *what* should be draggable, but it separated
+"where do I grab this" from "what is this" with nothing on it.
+
+Prior art checked, all pointing the same way:
+- **OS title bars.** Fluent: a 32px bar, a 16px icon then a caption-style
+  title, "all empty space in the title bar or space taken up by non-
+  interactive elements like the window title should be draggable"; macOS
+  HIG: move by dragging the frame, resize by the edges.
+- **Node editors** (the closest analogue to two boxes on a canvas joined
+  by a line): ComfyUI/LiteGraph — "the title bar serves as the drag point
+  for moving nodes," a collapse toggle at its left, a resize control at
+  the bottom-right corner; Unreal Blueprints — a title bar coloured by
+  node kind with icon + title over a body of pins; Blender — a header
+  with the node's name and collapse arrow, body of sockets below.
+- **Tool windows** (JetBrains): a header with a one-or-two-word title and
+  an icon; frequently used actions in a toolbar; content below.
+- **Design-system cards** (Fluent 2, Spectrum, Carbon, PatternFly): header
+  (title, optional badge/actions), body, and a footer that "is used for
+  important or routine actions... such as Approve or Submit."
+
+Built (`renderBox`): a 28px title bar — glyph, short title ("Search" /
+"Results" / "Items"; JetBrains' two-word rule, and the Collection's own
+name is already on the tree node and in Inspector), the "API" pill at
+the right edge for the two API-mode boxes — with the bar itself as the
+d3-drag handle (grab cursor, full-bleed, bottom rule). The body keeps
+its padding; the Search box's action row and the Results box's "page N
+of M" line become genuine bottom bars, bled out over that padding so
+their rule runs the box's full width like the title bar's. The separate
+`ApiBadge` component (a pill plus a long line at the top of the Search
+content) is gone. Decided with the user before building, from three
+options each: fixed "Search" title over a Collection-name title; the
+pager stays at the top next to the tabs (the bottom bar is status
+only); no window controls (collapse/close) in the bar for now — the
+box's lifetime is already the node selection's. Resize stays a corner
+grip, unchanged (every reference above agrees on that one). Verified in
+Playwright for all three boxes: bars present with the right text/badge,
+dragging the bar moves the box, footers flush with the box edges.
+
+## 91. A spec audit, and its first fix round — pagination links as the spec defines them, STAC 1.1 `bands`, the Children endpoint, two Inspector notes
+
+Asked for directly once the panel work settled: "广泛地搜索...STAC的基准和要
+求...看看我们有哪些做得不是特别对,然后支持得也不是特别充分的部分...跟官方的思
+想和官方的哲学出入比较大的部分...或者跟那个STAC Browser出入比较大的部分" (search
+broadly for STAC's standards and requirements; where are we not quite
+right, not sufficiently supported, or at odds with the official
+philosophy or with STAC Browser). Audited against the spec texts
+themselves (STAC API Core/Features/Item Search, the extensions index,
+Collection Search, Children, Sort, the STAC 1.1.0 changelog, best-
+practices) and STAC Browser's README, options and `SearchFilter.vue` —
+not from memory. Verdict in brief: the philosophy is aligned (never
+enumerate, follow links verbatim, resolve relative links against the
+document, gate UI on `conformsTo`, both `context` and `numberMatched`);
+the gaps are (1) a handful of hard compliance misses, (2) most Item
+Search extensions and all of Collection Search / Children unsupported
+where STAC Browser supports them, (3) two *deliberate* divergences worth
+naming — API mode is search-first where STAC Browser lists a
+Collection's first page immediately via `rel=items`, and a tree instead
+of thumbnail cards.
+
+This round fixed the compliance misses, in the order proposed:
+
+- **Pagination links are objects, not hrefs.** Features and Item Search
+  both say a `next` link may carry `method`, `headers`, `body` and
+  `merge` ("these mechanisms apply to both item and collection
+  pagination"), and STAC 1.1 put `method`/`headers`/`body` into the core
+  Link object. We read only `href` and always GET — every page after the
+  first from a POST-paginating implementation was silently lost.
+  `apiSearch.ts` now models `NextLink` and follows it exactly as
+  advertised; for `merge: true` the original request is re-expressed in
+  Item Search's POST shape (`buildPostBody`: arrays, `sortby` as
+  `[{field, direction}]`) and merged under the link's body. Verified by
+  rewriting a real Earth Search response's `next` into a POST+merge link
+  and capturing what was sent: `{"limit":250,"collections":
+  ["sentinel-2-pre-c1-l2a"],"bbox":[…],"token":"abc123"}`.
+- **STAC 1.1 `bands`.** 1.1 replaced `eo:bands`/`raster:bands` with a
+  common `bands` array and allows `data_type` directly on an asset; the
+  asset badge read only `raster:bands[0].data_type`, so 1.1 catalogs lost
+  it. Now `bands[0].data_type` → `data_type` → `raster:bands[0].data_type`.
+- **Children extension (`rel=children` → `/children`).** Taken whenever
+  advertised, even alongside `child` links, for exactly the reason the
+  extension gives (following each `child` link "just to find any
+  information about the children (e.g., title, description)... can cause
+  significant performance issues"). Same list-page shape as
+  `/collections` (`fetchNodeListPage` serves both), same pagination. No
+  public server at hand implements it, so verified by injecting a
+  `children` link into Planetary Computer's real landing page and
+  serving a two-entry `/children`: the tree showed exactly those two and
+  never called `/collections`. The "+N more" leaf is skipped for an
+  endpoint-sourced child list — the endpoint is complete by definition.
+- **Two Inspector notes from 1.1:** `license: proprietary`/`various` is
+  flagged as a deprecated value (SPDX expression or `other` expected),
+  and a Collection declaring exactly two spatial bboxes gets a ⚠ — the
+  1.1 changelog's "two spatial bounding boxes in a Collection don't make
+  sense and will be reported as invalid" — with the first shown; three
+  or more get a muted note that sub-extents aren't drawn. Planetary
+  Computer's `3dep-lidar-returns` is a live example of both.
+
+Still open from the same audit, deliberately not in this round because
+each needs a UI decision: Collection Search (`/collections?q&bbox&
+datetime`), free-text `q`, `ids`/`intersects`, arbitrary-field sort via
+`queryables`, CQL2 filter, `fields`; `overview`/`visual` asset roles and
+`rel=preview`; `alternate`/`via`/`license` links in Inspector; auth
+headers and a CORS proxy option; an "Open in STAC Browser" link. Listed
+in §92.
+
+## 92. What's deliberately deferred (not forgotten)
+
+- **From §91's spec audit, the not-yet-built half** (each gated on
+  `conformsTo` like Sort already is; static catalogs unaffected):
+  Collection Search (candidate extension — `GET /collections?bbox&
+  datetime&limit`, plus `q`/`filter`/`sortby`/`fields` by further
+  conformance classes; the real pain it solves is finding one of ~136
+  Collections under an API root), free-text `q` on Item Search, `ids`
+  and `intersects`, Sort on arbitrary fields via `queryables`, CQL2
+  Filter (already parked in §68/§84), `fields`. Inspector-side: the
+  `overview`/`visual` asset roles and `rel=preview` links best-practices
+  defines for visualization (only `thumbnail` is inlined today), and the
+  discovery/provenance links `alternate` (HTML), `via`, `license`,
+  `derived_from`, `canonical`. Access: auth headers / API keys and a
+  CORS proxy option (STAC Browser: `authConfig`, `requestHeaders`,
+  `~param`, `stacProxyUrl`). Interop: an "Open in STAC Browser" link
+  (`#/external/<url>`). Also still silent: a `/collections` or
+  `/children` listing past `COLLECTIONS_SAFETY_CAP` (2000) is truncated
+  without a "+N more" leaf.
 
 - A real, resolved lesson from §61, worth keeping in mind for future
   additions inside Structure Lens's Item Set box specifically: anything

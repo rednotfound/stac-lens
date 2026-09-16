@@ -20,6 +20,7 @@ interface StacLink {
   href?: string
   type?: string
   title?: string
+  method?: string
 }
 
 export interface RawStacObject {
@@ -60,7 +61,13 @@ function detectType(raw: RawStacObject): StacNodeType {
  *  `conformsTo` and a rel=search link — neither ever appears on a static
  *  catalog.json. This is the sole signal for picking a loader strategy. */
 export function detectSourceKind(raw: RawStacObject, href: string): StacSourceKind {
-  const searchLink = (raw.links ?? []).find((l) => l.rel === 'search' && l.href)
+  const searchLinks = (raw.links ?? []).filter((l) => l.rel === 'search' && l.href)
+  // Item Search advertises GET and POST as two separate `rel:search` links
+  // told apart by `method` (both real roots checked — Planetary Computer,
+  // Earth Search — list GET first, but nothing guarantees that order).
+  // Every request this app makes is a plain GET, so pick the GET link; a
+  // missing `method` means GET per the spec.
+  const searchLink = searchLinks.find((l) => !l.method || l.method.toUpperCase() === 'GET') ?? searchLinks[0]
   if (raw.conformsTo || searchLink) {
     return {
       kind: 'api-search',
@@ -102,9 +109,17 @@ function normalizeProviders(raw: unknown): StacProvider[] | undefined {
 function buildAssets(href: string, raw: RawStacObject): ResolvedAsset[] {
   if (!raw.assets) return []
   return Object.entries(raw.assets).map(([key, asset]) => {
+    // STAC 1.1 moved band metadata into common metadata: a plain `bands`
+    // array (replacing `eo:bands`/`raster:bands`) and `data_type` directly
+    // on the asset. 1.0 catalogs still carry `raster:bands`; read all
+    // three, newest first.
+    const bands = Array.isArray(asset.bands) ? (asset.bands as Record<string, unknown>[]) : undefined
     const rasterBands = Array.isArray(asset['raster:bands'])
       ? (asset['raster:bands'] as Record<string, unknown>[])
       : undefined
+    const dataType = [bands?.[0]?.data_type, asset.data_type, rasterBands?.[0]?.data_type].find(
+      (v): v is string => typeof v === 'string',
+    )
     return {
       key,
       href: resolveHref(href, String(asset.href ?? '')),
@@ -113,10 +128,7 @@ function buildAssets(href: string, raw: RawStacObject): ResolvedAsset[] {
       type: typeof asset.type === 'string' ? asset.type : undefined,
       roles: Array.isArray(asset.roles) ? (asset.roles as string[]) : undefined,
       gsd: typeof asset.gsd === 'number' ? asset.gsd : undefined,
-      dataType:
-        rasterBands?.[0] && typeof rasterBands[0].data_type === 'string'
-          ? (rasterBands[0].data_type as string)
-          : undefined,
+      dataType,
     }
   })
 }
@@ -141,6 +153,11 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const dataLink = links.find((l) => l.rel === 'data' && l.href)
   const collectionsEndpoint =
     childHrefs.length === 0 && dataLink ? resolveHref(href, dataLink.href!) : undefined
+  // STAC API - Children: one response with every immediate child as a
+  // complete object — taken whenever advertised, even alongside `child`
+  // links (see `StacNode.childrenEndpoint`).
+  const childrenLink = links.find((l) => l.rel === 'children' && l.href)
+  const childrenEndpoint = childrenLink ? resolveHref(href, childrenLink.href!) : undefined
   const itemHrefs = dedupe(
     links.filter((l) => l.rel === 'item' && l.href).map((l) => resolveHref(href, l.href!)),
   )
@@ -208,6 +225,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     declaredRootHref,
     childHrefs,
     collectionsEndpoint,
+    childrenEndpoint,
     items,
     sourceKind,
     declaredConformsTo: raw.conformsTo,
@@ -217,7 +235,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
       type === 'Item'
         ? normalizeSpatial({ bbox: raw.bbox, geometry: raw.geometry })
         : type === 'Collection'
-          ? normalizeSpatial({ bbox: firstBbox(raw.extent) })
+          ? collectionSpatial(raw.extent)
           : undefined,
 
     temporal:
@@ -248,11 +266,17 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   }
 }
 
-function firstBbox(extent: unknown): number[] | undefined {
+/** A Collection's `extent.spatial.bbox` is an *array* of bboxes whose first
+ *  entry is the overall extent (the rest, if any, are finer sub-extents).
+ *  The first is what gets drawn; the count is kept so Inspector can flag
+ *  the shape STAC 1.1 calls invalid (exactly two) — see `SpatialExtent.
+ *  bboxCount`. */
+function collectionSpatial(extent: unknown): SpatialExtent | undefined {
   if (!extent || typeof extent !== 'object') return undefined
-  const spatial = (extent as { spatial?: { bbox?: unknown } }).spatial
-  const bbox = spatial?.bbox
-  return Array.isArray(bbox) && Array.isArray(bbox[0]) ? (bbox[0] as number[]) : undefined
+  const bboxes = (extent as { spatial?: { bbox?: unknown } }).spatial?.bbox
+  if (!Array.isArray(bboxes) || !Array.isArray(bboxes[0])) return undefined
+  const spatial = normalizeSpatial({ bbox: bboxes[0] as number[] })
+  return spatial && bboxes.length > 1 ? { ...spatial, bboxCount: bboxes.length } : spatial
 }
 
 function dedupe(hrefs: string[]): string[] {

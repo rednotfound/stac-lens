@@ -1323,7 +1323,7 @@ function TreeNodeView({
   // the fallback discovery path for a node with no static `rel:child`
   // links at all (Microsoft Planetary Computer's root, e.g.) — expandable
   // exactly the same way once found, just fetched differently.
-  const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint
+  const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
   // Classic tidy-tree convention, extended: filled = there's something
   // behind this circle you haven't opened yet (either tree children, or —
   // since a leaf-items node has no children to expand at all — its own
@@ -1468,15 +1468,32 @@ function TreeNodeView({
   function isInsideItemSetBox(target: Element): boolean {
     return !!itemSetBoxRef.current?.contains(target) || !!resultsBoxRef.current?.contains(target)
   }
+  // The same trap, one level further out: React bubbles synthetic events
+  // along the *React* tree, and `createPortal` only moves where a
+  // component renders, not its place in that tree — so `BboxPickerModal`
+  // (opened from the Search box, portaled to `document.body`) is still a
+  // React descendant of this `<g>`, and every mouse move over its map
+  // fired `handleMove` here, re-showing this node's tooltip wherever the
+  // cursor was over the modal: "在modal出来...我的那个光标会有一个collection的
+  // 那个pop-up出现...当我取消了那个modal之后,就又不见了" (once the modal is
+  // open a Collection popup follows my cursor; it's gone once I cancel the
+  // modal). Stopping propagation at the modal instead was tried and broke
+  // Leaflet's drag-to-pan inside it (see that file). Real DOM containment
+  // against this very `<g>` is the honest test of "is this hover actually
+  // on this node" — anything portaled elsewhere fails it by construction.
+  function isNotThisNode(e: React.MouseEvent): boolean {
+    const target = e.target as Element
+    return !(e.currentTarget as Node).contains(target) || isInsideItemSetBox(target)
+  }
   function handleEnter(e: React.MouseEvent) {
-    if (isInsideItemSetBox(e.target as Element)) {
+    if (isNotThisNode(e)) {
       onHover(null, 0, 0)
       return
     }
     onHover(hoverInfo, e.clientX, e.clientY)
   }
   function handleMove(e: React.MouseEvent) {
-    if (isInsideItemSetBox(e.target as Element)) return
+    if (isNotThisNode(e)) return
     onHover(hoverInfo, e.clientX, e.clientY)
   }
   function handleLeave() {
@@ -1614,6 +1631,9 @@ function TreeNodeView({
               // eslint-disable-next-line react-hooks/refs
               renderBox({
                 key: 'search',
+                title: 'Search',
+                icon: 'search',
+                badge: 'API',
                 connectorSource: { x: 0, y: 0 },
                 connectorTarget: { x: 14 + searchBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET, y: boxNearX + searchBox.offset.dxHoriz },
                 foreignX: searchBoxLeftX,
@@ -1656,6 +1676,9 @@ function TreeNodeView({
               // eslint-disable-next-line react-hooks/refs
               renderBox({
                 key: 'results',
+                title: 'Results',
+                icon: 'list',
+                badge: 'API',
                 // Drawn from the Search box's own current bottom edge, not
                 // the node — this is the connector that reads as "data
                 // flows from Search into Results" (asked for directly: "我
@@ -1711,6 +1734,8 @@ function TreeNodeView({
             // eslint-disable-next-line react-hooks/refs
             renderBox({
               key: 'main',
+              title: 'Items',
+              icon: 'list',
               connectorSource: { x: 0, y: 0 },
               connectorTarget: { x: 14 + boxOffset.dyVert + BOX_CONNECTOR_TARGET_INSET, y: boxNearX + boxOffset.dxHoriz },
               foreignX: (labelOnLeft ? boxNearX - boxSize.width : boxNearX) + boxOffset.dxHoriz,
@@ -1730,11 +1755,42 @@ function TreeNodeView({
   )
 }
 
+type BoxHeaderIconKind = 'search' | 'list'
+
+/** Title-bar glyphs — tiny inline SVGs in the same stroke language as the
+ *  app's own `TypeIcon` set, no icon library. */
+function BoxHeaderIcon({ kind }: { kind: BoxHeaderIconKind }) {
+  const common = {
+    width: 12,
+    height: 12,
+    viewBox: '0 0 12 12',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+  if (kind === 'search') {
+    return (
+      <svg {...common}>
+        <circle cx="5" cy="5" r="3.5" />
+        <path d="M7.7 7.7 L11 11" />
+      </svg>
+    )
+  }
+  return (
+    <svg {...common}>
+      <path d="M1.5 3h9M1.5 6h9M1.5 9h9" />
+    </svg>
+  )
+}
+
 /** One box's full rendered shape — connector line (from an arbitrary
  *  source point, in the same swapped `{x: vertical, y: horizontal}`
  *  convention `linkGenerator` already uses elsewhere in this file) plus
- *  the `foreignObject` itself (drag-handle strip, arbitrary `children`,
- *  resize-handle grip). A static catalog's single box and each of a
+ *  the `foreignObject` itself (a title bar that doubles as the drag
+ *  handle, arbitrary `children`, resize-handle grip). A static catalog's single box and each of a
  *  cursor-mode node's two independent boxes (Search/Results) all render
  *  through this one function — same chrome, same connector logic, just
  *  different content and a different connector source (the node's own
@@ -1744,6 +1800,14 @@ function TreeNodeView({
  *  render. */
 function renderBox(opts: {
   key: string
+  /** Title-bar text — short, like a tool window's name ("Search",
+   *  "Results", "Items"), not the Collection's own name, which the tree
+   *  node and Inspector already show. */
+  title: string
+  icon: BoxHeaderIconKind
+  /** Optional pill at the title bar's right edge — the "API" tag for the
+   *  two API-mode boxes, carrying the tree node's own signal through. */
+  badge?: string
   connectorSource: { x: number; y: number }
   connectorTarget: { x: number; y: number }
   foreignX: number
@@ -1757,6 +1821,9 @@ function renderBox(opts: {
   children: React.ReactNode
 }) {
   const {
+    title,
+    icon,
+    badge,
     connectorSource,
     connectorTarget,
     foreignX,
@@ -1835,7 +1902,7 @@ function renderBox(opts: {
             background: 'var(--color-surface)',
             border: '1px solid var(--color-selection)',
             borderRadius: 'var(--radius-sm)',
-            padding: 8,
+            padding: 0,
             boxSizing: 'border-box',
             boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
             cursor: 'default',
@@ -1846,31 +1913,69 @@ function renderBox(opts: {
             // anything about.
             display: 'flex',
             flexDirection: 'column',
-            // Safety net, not the primary mechanism — the content inside
-            // sizes itself to the available space; this only kicks in if
-            // the box's own chrome ever pushes the total past its height.
-            overflow: 'auto',
+            // Clips the title bar's full-bleed background to the rounded
+            // corners; the body wrapper below owns the overflow safety net.
+            overflow: 'hidden',
           }}
         >
-          {/* A dedicated grip, not the whole box — the box is full of its
-           * own click/scroll/type targets (rows, buttons, a text input),
-           * so making the entire card draggable would fight all of them.
-           * Asked for directly: "我可以拖拽这个item的panel...这样子自由度...
-           * 就是这个样子" (I want to be able to drag the item panel — that
-           * kind of freedom is what I'm after). */}
+          {/* A real title bar, which is also the drag handle — not a bare
+           * grip strip. The earlier version was a 14px grey pill above the
+           * content with nothing on it, which split "what is this box" from
+           * "where do I grab it" in a way no other product does: "我其实没有
+           * 见过第二个产品是长这个样子的...一个正常的panel通常也是带有头,像一个窗口
+           * 一样,有一个头部,头部上面有它的title,然后下面才是这个内容" (I've never
+           * seen a second product that looks like this — a normal panel has
+           * a head, like a window: a header with its title, and the content
+           * below). Every reference checked converges on the same anatomy:
+           * OS title bars (Fluent: "all empty space in the title bar or
+           * space taken up by non-interactive elements like the window
+           * title should be draggable"; macOS: move by dragging the frame),
+           * node editors (ComfyUI/LiteGraph, Unreal Blueprints, Blender: a
+           * title bar you drag, a body of ports/fields, a resize corner),
+           * tool windows (JetBrains: a one-or-two-word title plus an icon),
+           * and design-system cards (Fluent 2/Spectrum/Carbon: header with
+           * title + badge/actions, body, footer for actions). Still a
+           * dedicated handle rather than the whole box — the body is full
+           * of its own click/scroll/type targets. */}
           <div
             ref={boxHandleRef}
             title="Drag to move this panel"
             style={{
               flexShrink: 0,
-              height: 14,
-              marginBottom: 6,
-              borderRadius: 999,
-              background: 'var(--color-border)',
-              opacity: 0.7,
+              height: 28,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '0 10px',
+              borderBottom: '1px solid var(--color-border)',
+              background: 'var(--color-bg)',
+              color: 'var(--color-text)',
+              fontSize: 12,
+              fontWeight: 600,
               cursor: 'grab',
+              userSelect: 'none',
             }}
-          />
+          >
+            <span style={{ display: 'flex', color: 'var(--color-text-muted)' }}>
+              <BoxHeaderIcon kind={icon} />
+            </span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+            {badge && (
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '2px 7px',
+                  borderRadius: 999,
+                  background: 'var(--color-badge-api-bg)',
+                  color: 'var(--color-badge-api-text)',
+                }}
+              >
+                {badge}
+              </span>
+            )}
+          </div>
           {/* `display:'flex', flexDirection:'column'`, not just `flex:1,
            * minHeight:0` — this wrapper is itself a flex item within the
            * box's own outer column (so it correctly shrinks to the
@@ -1892,7 +1997,9 @@ function renderBox(opts: {
            * modes (links mode's shorter default content happened to still
            * fit without it, so this one stayed invisible until cursor
            * mode's own longer content exposed it). */}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{opts.children}</div>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 8, overflow: 'auto' }}>
+            {opts.children}
+          </div>
           {/* A real corner grip, not a whole-edge drag — matches the same
            * "dedicated handle, not the whole box" reasoning as the
            * move-handle above, and the familiar OS-window resize

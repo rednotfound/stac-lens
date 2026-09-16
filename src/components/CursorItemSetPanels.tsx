@@ -9,7 +9,7 @@ import { useItemSetStore } from '../store/itemSet'
 import { ItemSetResultsPanel } from './ItemSetResultsPanel'
 import { ItemSetSearchPanel } from './ItemSetSearchPanel'
 import { BboxPickerModal } from './BboxPickerModal'
-import { ApiBadge, useResetShowOnLenses, usePublishVisible, type ItemSetView } from './ItemSetBrowser'
+import { useResetShowOnLenses, usePublishVisible, type ItemSetView } from './ItemSetBrowser'
 import type { StacNode } from '../stac/types'
 
 function toRfc3339Start(dateOnly: string): string {
@@ -138,7 +138,6 @@ export function CursorItemSetPanels({
     <>
       {createPortal(
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <ApiBadge />
           <ItemSetSearchPanel
             draft={draft}
             setDraft={setDraft}
@@ -157,6 +156,7 @@ export function CursorItemSetPanels({
       {bboxModalOpen && (
         <BboxPickerModal
           initialBbox={draft.bbox}
+          statedBbox={node.spatial?.bbox}
           onConfirm={(bbox) => {
             setDraft((d) => ({ ...d, bbox }))
             setBboxModalOpen(false)

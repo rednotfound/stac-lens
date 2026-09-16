@@ -27,6 +27,7 @@ const NOOP_SELECT = () => {}
  *  it was opened from. */
 export function BboxPickerModal({
   initialBbox,
+  statedBbox,
   onConfirm,
   onCancel,
 }: {
@@ -34,10 +35,29 @@ export function BboxPickerModal({
    *  modal's own starting point so re-opening to adjust an already-drawn
    *  area doesn't discard it. */
   initialBbox?: [number, number, number, number]
+  /** The Collection's own declared extent — drawn as the usual dashed
+   *  reference outline and, for a fresh draw, what the map opens framed
+   *  on, so the user starts where the data actually is instead of at a
+   *  whole-world view. */
+  statedBbox?: number[]
   onConfirm: (bbox: [number, number, number, number]) => void
   onCancel: () => void
 }) {
   const [drawnBbox, setDrawnBbox] = useState<[number, number, number, number] | undefined>(initialBbox)
+  // Two explicit modes, not permanent draw mode. `ItemsMap`'s draw mode
+  // has to take the drag gesture away from Leaflet's own drag-to-pan (the
+  // only way the two can coexist on one map), so a modal that opened
+  // *already* in draw mode had no way to pan at all — reported directly:
+  // "我也失去了拖拽地图的能力...那这样子我要如何先找到一个地方去...zoom in,找到一个
+  // 地方,移动,找到一个地方,再绘制这个area呢" (I also lose the ability to drag
+  // the map — then how am I supposed to first get somewhere, zoom in,
+  // find a place, move, and *then* draw the area?). Every dedicated draw
+  // tool does this the same way — Leaflet.draw, Copernicus Browser's and
+  // NASA Earthdata Search's area tools: the map pans/zooms normally, an
+  // explicit tool button arms drawing, and drawing one shape disarms it
+  // again (so the very next drag pans, rather than accidentally replacing
+  // the box you just drew).
+  const [drawing, setDrawing] = useState(false)
   // Memoized — this is `ItemsMap`'s own `onBboxDrawn`, one of its draw-mode
   // effect's dependencies. A fresh closure on every render (which a plain
   // inline arrow function here would be, since `setDrawnBbox` itself
@@ -49,36 +69,33 @@ export function BboxPickerModal({
   // in the old combined Search+Results component this modal replaces.
   const handleBboxDrawn = useCallback((bbox: [number, number, number, number]) => {
     setDrawnBbox(bbox)
+    setDrawing(false)
   }, [])
+
+  const hint = drawing
+    ? 'Drag on the map to draw a box'
+    : drawnBbox
+      ? 'Area set — Confirm to apply, or Redraw'
+      : 'Drag to pan, scroll to zoom — then click Draw box'
 
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Draw a search area"
-      // Stops React's own *synthetic* event bubbling here — deliberately
-      // not a DOM-nesting concern (this whole subtree lives under
-      // `document.body`, nowhere near the SVG canvas, so no real native/
-      // window-level listener there — d3-zoom's pan gesture, a box's own
-      // drag handles — is affected by this at all). React bubbles
-      // synthetic events along the *React component tree*, not the actual
-      // DOM tree, and `createPortal` only changes where a component
-      // renders, not its place in that React tree: this modal is still a
-      // React descendant of whichever tree node's own `<g onMouseEnter/
-      // onMouseMove>` opened it (via `CursorItemSetPanels`), so every
-      // mouse move over the map here was bubbling straight up to that
-      // node's own hover handler and re-showing *its* tooltip, positioned
-      // wherever the cursor was over the modal instead. Confirmed
-      // directly: "在modal出来...我一旦我绘制结束以后...我的那个光标会有一个
-      // collection的那个pop-up出现...当我取消了那个modal之后,就又不见了" (once
-      // the modal is open, a Collection popup appears near my cursor —
-      // it disappears once I cancel the modal). The existing
-      // `isInsideItemSetBox` DOM-containment check (`StructureTree.tsx`)
-      // can't catch this — this modal's real DOM position is never inside
-      // either box's own ref — so it's stopped here instead, at the
-      // actual source.
-      onMouseEnter={(e) => e.stopPropagation()}
-      onMouseMove={(e) => e.stopPropagation()}
+      // No `stopPropagation` here, deliberately. React bubbles synthetic
+      // events along the *React* tree, so this portal is still a React
+      // descendant of the tree node that opened it, and its mouse moves
+      // used to re-show that node's own tooltip. An earlier fix stopped
+      // `mousemove` right here — but React's synthetic `stopPropagation()`
+      // also stops the *native* event, and it runs from the portal
+      // container (`document.body`), before the event ever reaches
+      // `document` — which is exactly where Leaflet's drag handler listens
+      // for `mousemove`/`mouseup` (`Draggable._onDown`). Net effect: the
+      // map in here could zoom but never pan. The tooltip leak is now
+      // stopped where it belongs instead — the node's own hover handlers
+      // ignore any event whose target isn't a real DOM descendant of that
+      // node (`StructureTree.tsx`) — so nothing here fights propagation.
       style={{
         position: 'fixed',
         inset: 0,
@@ -118,12 +135,41 @@ export function BboxPickerModal({
           }}
         >
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>Draw a search area</span>
-          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-            {drawnBbox ? 'Area set — drag again to redraw, or Confirm to apply' : 'Drag on the map to draw a box'}
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flex: 1, textAlign: 'right', marginRight: 12 }}>
+            {hint}
           </span>
+          <button
+            onClick={() => setDrawing((d) => !d)}
+            aria-pressed={drawing}
+            style={{
+              fontSize: 12,
+              padding: '4px 12px',
+              borderRadius: 999,
+              border: '1px solid var(--color-selection)',
+              background: drawing ? 'var(--color-selection)' : 'var(--color-bg)',
+              color: drawing ? 'var(--color-bg)' : 'var(--color-selection)',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            {drawing ? 'Cancel drawing' : drawnBbox ? 'Redraw' : 'Draw box'}
+          </button>
         </div>
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          <ItemsMap items={[]} onSelectItem={NOOP_SELECT} drawMode appliedBbox={drawnBbox} onBboxDrawn={handleBboxDrawn} />
+          {/* Framed once on open: on the existing box when re-editing one,
+           * otherwise on the Collection's own extent (`statedBbox` is left
+           * out of the fit when re-editing, or a small drawn box would be
+           * lost inside a continent-sized union). `fitKey` is constant —
+           * the modal mounts fresh every time it opens. */}
+          <ItemsMap
+            items={[]}
+            onSelectItem={NOOP_SELECT}
+            drawMode={drawing}
+            appliedBbox={drawnBbox}
+            statedBbox={initialBbox ? undefined : statedBbox}
+            fitKey="bbox-picker"
+            onBboxDrawn={handleBboxDrawn}
+          />
         </div>
         <div
           style={{

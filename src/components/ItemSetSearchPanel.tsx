@@ -65,8 +65,9 @@ export interface ItemSetSearchPanelProps {
 /** API mode's query controls — date range, sort, an area condition —
  *  rendered by `CursorItemSetPanels` into its own dedicated Search
  *  `foreignObject` (a genuinely separate box from Results, not a div
- *  sharing one — see `StructureTree.tsx`'s two-box render logic), alongside
- *  the `ApiBadge`. The interactive bbox/datetime-range tool that used to
+ *  sharing one — see `StructureTree.tsx`'s two-box render logic; the box's
+ *  own title bar carries the "API" tag). The interactive bbox/datetime-
+ *  range tool that used to
  *  hang off Inspector's own Space/Time Lens (a global store) was pulled out
  *  entirely in a past pass — this is a deliberately different, later
  *  addition: a query module scoped locally to *this* panel's own state
@@ -85,7 +86,7 @@ export function ItemSetSearchPanel({
   draftDirty,
 }: ItemSetSearchPanelProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
       <ConditionRow label="Date">
         <input
           type="date"
@@ -156,14 +157,19 @@ export function ItemSetSearchPanel({
         )}
       </ConditionRow>
 
+      {/* The box's footer — actions live at the bottom, like a card's or
+       * dialog's action row. Pinned to the bottom edge (`marginTop: auto`)
+       * and bled out over the body's 8px padding so its top rule and
+       * background run the box's full width, mirroring the title bar. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          marginTop: 4,
-          paddingTop: 6,
+          margin: 'auto -8px -8px',
+          padding: '6px 10px',
           borderTop: '1px solid var(--color-border)',
+          background: 'var(--color-bg)',
         }}
       >
         <button onClick={onSearch} disabled={searchDisabled} style={searchButtonStyle}>

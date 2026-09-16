@@ -252,28 +252,6 @@ export function usePublishVisible(nodeHref: string, items: StacNode[]) {
   }, [nodeHref, items, setVisible])
 }
 
-export const ApiBadge = () => (
-  // Same tag as Structure Lens's own tree node (StructureTree.tsx) —
-  // carried through here too so it reads as one consistent signal rather
-  // than something only visible before you open the panel: "得有一个标签也
-  // 好,highlight也好什么东西,因为你看这个Stack Browser里面,它就是有一个tag在"
-  // (it needs a tag or highlight — STAC Browser has a tag for this).
-  <span
-    style={{
-      display: 'inline-block',
-      fontSize: 10,
-      fontWeight: 700,
-      padding: '2px 7px',
-      borderRadius: 999,
-      background: 'var(--color-badge-api-bg)',
-      color: 'var(--color-badge-api-text)',
-      marginBottom: 6,
-    }}
-  >
-    API
-  </span>
-)
-
 export const TabBar = ({ view, setView }: { view: ItemSetView; setView: (v: ItemSetView) => void }) => (
   <div style={{ display: 'flex', gap: 4, marginBottom: 6, borderBottom: '1px solid var(--color-border)' }}>
     <TabButton label="List" active={view === 'list'} onClick={() => setView('list')} />

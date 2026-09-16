@@ -126,6 +126,25 @@ export function ItemsMap({
       map.remove()
       mapRef.current = null
       layerGroupRef.current = null
+      // The fit/fly "already done" guards below are meaningless once *this*
+      // map instance is gone — without resetting them here, React 18
+      // StrictMode's dev-only double-invoke of this exact effect (mount →
+      // cleanup → mount again, to surface missing-cleanup bugs) destroys
+      // this first map and builds a second, real one, but the guards
+      // (plain refs, unaffected by that cleanup/remount cycle) still
+      // remember "already fitted" from the map that's now gone — so the fit
+      // effect below silently no-ops on the real, final map, permanently
+      // stuck at the default whole-world view. Confirmed directly: a fresh
+      // Collection with a real declared bbox (Planetary Computer's
+      // `3dep-lidar-returns`) never flew to it at all, reported directly —
+      // "Inspector的Spatial的地图并没有fly to bbox...我移动过去才看到的". Only
+      // reproduces in dev (StrictMode's double-invoke is a dev-only
+      // behavior — production never re-runs a mount effect without a real
+      // unmount), but a testing environment silently showing broken
+      // behavior that isn't real is its own problem worth fixing outright,
+      // not just noting away.
+      lastFitTargetRef.current = undefined
+      lastFlyHrefRef.current = undefined
     }
   }, [])
 

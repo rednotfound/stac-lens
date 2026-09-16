@@ -32,6 +32,15 @@ export interface SpatialExtent {
    *  GeoJSON geometry object (e.g. a bare bbox array) — a real bug seen
    *  in the wild, not a hypothetical. We fall back to bbox-only. */
   geometryInvalid?: boolean
+  /** How many bboxes the source's `extent.spatial.bbox` array declared,
+   *  when more than one — `bbox` above is always the first (the overall
+   *  extent, per spec). STAC 1.1's changelog: "Two spatial bounding boxes
+   *  in a Collection don't make sense and will be reported as invalid" —
+   *  the first must be the union of the rest, which a single sub-extent
+   *  can't differ from. Seen in the wild: Planetary Computer's
+   *  `3dep-lidar-returns` declares exactly two, disjoint (CONUS+Alaska,
+   *  then Guam). Absent when there was one bbox or none. */
+  bboxCount?: number
 }
 
 /** Publisher-declared, non-authoritative hints about expected item shape.
@@ -130,6 +139,15 @@ export interface StacNode {
    *  never needs this fallback. `undefined` on any node without a `data`
    *  link, never a placeholder. */
   collectionsEndpoint?: string
+  /** A STAC API - Children endpoint (`rel:children`, conformance
+   *  `https://api.stacspec.org/v1.0.0/children`) — every immediate child
+   *  Catalog/Collection as complete objects in one paginated response.
+   *  Preferred over following `childHrefs` one fetch each whenever a node
+   *  advertises it, for exactly the reason the extension gives: "this
+   *  scheme requires a client to retrieve each resource URL to find any
+   *  information about the children (e.g., title, description), which can
+   *  cause significant performance issues." */
+  childrenEndpoint?: string
   items: ItemEnumeration
   /** This node's own API capability — a landing page/root declaring
    *  `conformsTo`/`rel:search` is `api-search`; everything else is
@@ -201,7 +219,7 @@ export type NodeShape =
   | 'leaf-empty' // has neither — a real, valid terminal state, not "unloaded"
 
 export function classifyNodeShape(node: StacNode): NodeShape {
-  const hasChildren = node.childHrefs.length > 0 || !!node.collectionsEndpoint
+  const hasChildren = node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
   const hasItems =
     node.items.kind === 'links'
       ? node.items.hrefs.length > 0

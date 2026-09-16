@@ -25,6 +25,53 @@ export function supportsSort(conformsTo: string[] | undefined): boolean {
  *  genuinely unknown (no root link, an unresolvable root, or a root that
  *  itself never declared conformsTo) — callers must treat that as "don't
  *  know" and hide any conformance-gated UI, never guess either way. */
+export interface SearchTarget {
+  endpoint: string
+  /** The `collections=` constraint to send with a fresh request — set only
+   *  when `endpoint` is the API root's cross-collection `/search`, never for
+   *  a Collection's own `rel:items` link (already scoped by its URL). */
+  collections?: string[]
+}
+
+/** Which endpoint a cursor-mode Collection's searches actually go to.
+ *  Prefers the governing API root's own `rel:search` (STAC API - Item
+ *  Search: `GET /search` is *required* by that spec, POST only optional),
+ *  scoped with `collections=<id>`, over the Collection's own `rel:items`
+ *  link (OGC API - Features); falls back to `rel:items` only when no such
+ *  root/search link is known. Not a stylistic preference — confirmed
+ *  directly against Microsoft Planetary Computer (2026-09-16) that its
+ *  `/collections/{id}/items` endpoint serves a server-side cached response
+ *  keyed *without* `bbox`/`datetime`: the first request for a given
+ *  `limit` is computed correctly, and every later request with the same
+ *  `limit` but a different `bbox` (or an added `datetime`, or a cache-
+ *  busting param) gets that first result back verbatim — so a second
+ *  search from the UI silently returned the first search's items no matter
+ *  what area was drawn, even with every filter cleared. The same server's
+ *  `/search` (GET and POST alike) returned distinct, correct results for
+ *  the identical sequence. Item Search is also what every mainstream STAC
+ *  client (pystac-client, STAC Browser) uses for filtered queries, so this
+ *  is the well-trodden path, not a special case for one server. Resolved
+ *  at fetch time rather than in `buildNode` because a deep-linked
+ *  Collection is built before its root has ever been fetched. */
+export async function resolveSearchTarget(node: StacNode & { items: { kind: 'cursor' } }): Promise<SearchTarget> {
+  const own: SearchTarget = { endpoint: node.items.endpoint }
+  // An API root searching through its own `/search` already covers every
+  // Collection — nothing to scope.
+  if (node.sourceKind.kind === 'api-search') return own
+  const rootHref = node.declaredRootHref
+  if (!rootHref) return own
+  let root = loader.get(rootHref)
+  if (!root) {
+    try {
+      root = await loader.load(rootHref)
+    } catch {
+      return own
+    }
+  }
+  if (root.sourceKind.kind !== 'api-search') return own
+  return { endpoint: root.sourceKind.searchHref, collections: [node.id] }
+}
+
 export async function resolveApiConformance(node: StacNode): Promise<string[] | undefined> {
   if (node.declaredConformsTo) return node.declaredConformsTo
   if (!node.declaredRootHref) return undefined

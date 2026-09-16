@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
-import { fetchCollectionsPage } from '../stac/apiSearch'
+import { fetchChildrenPage, fetchCollectionsPage, type NextLink, type NodeListPage } from '../stac/apiSearch'
 import { useSelectionStore } from '../store/selection'
 import type { StacNode } from '../stac/types'
 
@@ -49,15 +49,18 @@ export interface TreeDatum {
  *  each result via `cachePreFetched` the same way a search response's
  *  Items already do, since each Collection here arrives whole, not as a
  *  bare href needing its own follow-up fetch. */
-async function loadAllCollections(endpoint: string): Promise<StacNode[]> {
+async function loadAllFromListEndpoint(
+  fetchPage: (endpoint: string, opts: { limit: number; next?: NextLink }) => Promise<NodeListPage>,
+  endpoint: string,
+): Promise<StacNode[]> {
   const all: StacNode[] = []
-  let nextHref: string | undefined
+  let next: NextLink | undefined
   do {
-    const page = await fetchCollectionsPage(endpoint, { limit: COLLECTIONS_SAFETY_CAP, nextHref })
+    const page = await fetchPage(endpoint, { limit: COLLECTIONS_SAFETY_CAP, next })
     for (const node of page.items) loader.cachePreFetched(node)
     all.push(...page.items)
-    nextHref = page.nextHref
-  } while (nextHref && all.length < COLLECTIONS_SAFETY_CAP)
+    next = page.next
+  } while (next && all.length < COLLECTIONS_SAFETY_CAP)
   return all
 }
 
@@ -89,11 +92,15 @@ export function useStructureTree(rootHref: string) {
 
     try {
       const node = loader.get(href) ?? (await loader.load(href))
-      const children =
-        node.childHrefs.length > 0
+      // A Children endpoint wins over static `child` links even when both
+      // exist: one response carrying every child as a complete object,
+      // versus one fetch per link just to learn each child's title.
+      const children = node.childrenEndpoint
+        ? await loadAllFromListEndpoint(fetchChildrenPage, node.childrenEndpoint)
+        : node.childHrefs.length > 0
           ? await loader.loadChildren(node, CHILD_PAGE_SIZE)
           : node.collectionsEndpoint
-            ? await loadAllCollections(node.collectionsEndpoint)
+            ? await loadAllFromListEndpoint(fetchCollectionsPage, node.collectionsEndpoint)
             : []
 
       setUiState((prev) => {
@@ -266,7 +273,11 @@ export function useStructureTree(rootHref: string) {
     if (state?.expanded && !state.loading) {
       children = (state.childHrefs ?? []).map(buildDatum).filter((d): d is TreeDatum => !!d)
 
-      const totalChildren = node.childHrefs.length
+      // A Children endpoint's response is the complete list by definition
+      // (paginated to exhaustion above), so the static `child` link count
+      // is not the yardstick for it — only a bounded `child`-link page can
+      // leave a remainder worth a "+N more" leaf.
+      const totalChildren = node.childrenEndpoint ? 0 : node.childHrefs.length
       const loadedChildren = state.childHrefs?.length ?? 0
       if (totalChildren > loadedChildren) {
         children.push({
