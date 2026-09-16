@@ -5244,13 +5244,42 @@ was also chosen from options: a landing-page footer ("STAC Lens v0.1.0 ·
 Apache-2.0 license · Source on GitHub", the version inlined from
 package.json through a Vite `define` so it can't drift) plus the bare
 GitHub mark at the catalog header's far edge — STAC Browser's footer-
-links convention, not an About dialog. Second, `npx tsc --noEmit -p .`
+links convention, not an About dialog. A second, fainter footer row
+then places the app in its ecosystem (asked for once the site was live):
+STAC's home, the core and API specs, both extension registries (the
+Inspector's extension facts and the API gating are read against them),
+STAC Browser (the reference this one is explicitly "not another" of),
+STAC Index (where the landing list comes from), stac-utils, the
+tutorials, and STAC's OGC community-standard page — every URL checked
+live before listing. Second, `npx tsc --noEmit -p .`
 had been checking *nothing* all along: the root `tsconfig.json` is a
 references-only shell (`"files": []`), so every "tsc clean" this session
 was vacuous; the first real `npm run build` (`tsc -b`) failed on a
 missing type import from §91's own bbox-count change. Fixed, and the
 verification command is now `npx tsc -b` — recorded in memory so it
 isn't repeated.
+
+**Where it deploys, and how.** Pure static output, no backend, every
+data request browser-to-STAC-server: any static host serves it. Compared
+for the user: Cloudflare Pages (unlimited bandwidth), Netlify (100 GB/
+month free), Vercel (100 GB/month, non-commercial Hobby terms), GitHub
+Pages (sub-path unless a custom domain, so Vite `base` and manifest paths
+would need changing). At ~600 KB per visit the bandwidth caps are
+notional, so the user's existing **Netlify** account decided it — the
+one thing Cloudflare had over it was moot. Live at **https://staclens.com**
+(Netlify; `www` and plain `http` both 301 to the apex; checked from
+outside: 200, correct title, hashed assets, icons, manifest — the only
+nit was `.webmanifest` served as `application/octet-stream`, fixed with a
+headers rule). Settings live in the repo,
+not the dashboard: `netlify.toml` (build `npm run build`, publish `dist`,
+Node 22, immutable caching for Vite's hashed `/assets/*`; deliberately
+*no* SPA redirect rule — routing is hash-based, every path is a real
+file), `.nvmrc` (22), and `.github/workflows/ci.yml` running lint plus
+the real `tsc -b && vite build` on every push and pull request — the
+check that would have caught the import error above the day it was
+introduced. The landing-page list was scanned for plain `http://`
+catalogs (blocked as mixed content from an HTTPS page): none — the one
+such candidate had already been excluded in §19/§47 for that reason.
 
 ## 94. What's deliberately deferred (not forgotten)
 

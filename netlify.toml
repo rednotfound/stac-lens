@@ -1,0 +1,32 @@
+# Netlify build settings, kept in the repo rather than the dashboard so a
+# fresh "Import from Git" needs no manual configuration.
+#
+# STAC Lens is a static site: no functions, no redirects. Routing is
+# hash-based (`#<stac href>`), so the SPA fallback rule other Vite apps
+# need (`/* -> /index.html 200`) is deliberately absent — every real path
+# is a real file.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite 8 needs Node 20.19+ / 22.12+; pinned here and in .nvmrc so local,
+  # CI and Netlify agree.
+  NODE_VERSION = "22"
+
+# Vite emits content-hashed filenames under /assets, so those can be
+# cached forever; index.html and the icons keep Netlify's default
+# (revalidate on every request) so a deploy shows up immediately.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Netlify doesn't know the .webmanifest extension and served it as
+# application/octet-stream (checked on the live site); browsers are
+# lenient about it, but the registered type is this one.
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"

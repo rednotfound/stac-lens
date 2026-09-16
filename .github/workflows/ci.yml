@@ -1,0 +1,25 @@
+# The real build on every push and pull request: `tsc -b && vite build`,
+# plus lint. This exists because a type error sat unnoticed on main for a
+# day while a weaker local check (`tsc --noEmit -p .`, which type-checks
+# nothing against this repo's references-only tsconfig) kept reporting
+# clean — see docs/DESIGN.md §93. Netlify runs the same build to deploy;
+# this runs it on PRs too, before anything reaches main.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build

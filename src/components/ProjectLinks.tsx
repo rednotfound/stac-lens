@@ -17,12 +17,38 @@ const linkStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--color-border)',
 }
 
+/** The STAC ecosystem this app sits in — the spec and its API, the two
+ *  registries the Inspector's extension facts and the API capability gating
+ *  are read against, the reference browser this one is explicitly "not
+ *  another" of, the directory the landing list comes from, and the
+ *  tooling most people arrive from. Every URL checked live before being
+ *  listed. */
+const ECOSYSTEM_LINKS: { label: string; href: string; title: string }[] = [
+  { label: 'STAC', href: 'https://stacspec.org/', title: 'SpatioTemporal Asset Catalog — the specification’s home' },
+  { label: 'Spec', href: 'https://github.com/radiantearth/stac-spec', title: 'STAC core specification (Catalog, Collection, Item)' },
+  { label: 'API spec', href: 'https://github.com/radiantearth/stac-api-spec', title: 'STAC API specification' },
+  { label: 'Extensions', href: 'https://stac-extensions.github.io/', title: 'STAC extensions registry' },
+  { label: 'API extensions', href: 'https://stac-api-extensions.github.io/', title: 'STAC API extensions registry' },
+  { label: 'STAC Browser', href: 'https://radiantearth.github.io/stac-browser/', title: 'The reference STAC browser' },
+  { label: 'STAC Index', href: 'https://stacindex.org/', title: 'Public directory of STAC catalogs and APIs — the source of the landing list' },
+  { label: 'stac-utils', href: 'https://github.com/stac-utils', title: 'PySTAC, stac-fastapi, stac-validator and friends' },
+  { label: 'Tutorials', href: 'https://stacspec.org/en/tutorials/', title: 'STAC tutorials' },
+  { label: 'OGC', href: 'https://www.ogc.org/standards/stac/', title: 'STAC as an OGC Community Standard' },
+]
+
 /** The landing page's page foot: version, license, source — the three
  *  facts a visitor to a deployed instance needs to place what they're
  *  looking at, and the only place they live in full (the catalog view's
  *  header keeps just the GitHub mark). Same footer-links convention STAC
  *  Browser uses; no logo repetition, no marketing line. */
 export function LandingFooter() {
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  }
   return (
     <footer
       style={{
@@ -31,27 +57,43 @@ export function LandingFooter() {
         fontSize: 12,
         color: 'var(--color-text-muted)',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        gap: 8,
-        flexWrap: 'wrap',
-        justifyContent: 'center',
+        gap: 10,
       }}
     >
-      <span>STAC Lens v{__APP_VERSION__}</span>
-      <span aria-hidden="true">·</span>
-      <a href={LICENSE_URL} target="_blank" rel="noreferrer" style={linkStyle}>
-        Apache-2.0 license
-      </a>
-      <span aria-hidden="true">·</span>
-      <a
-        href={REPO_URL}
-        target="_blank"
-        rel="noreferrer"
-        style={{ ...linkStyle, display: 'inline-flex', alignItems: 'center', gap: 5 }}
-      >
-        <GitHubMark size={13} />
-        Source on GitHub
-      </a>
+      {/* Row 1: this project. */}
+      <div style={rowStyle}>
+        <span>STAC Lens v{__APP_VERSION__}</span>
+        <span aria-hidden="true">·</span>
+        <a href={LICENSE_URL} target="_blank" rel="noreferrer" style={linkStyle}>
+          Apache-2.0 license
+        </a>
+        <span aria-hidden="true">·</span>
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...linkStyle, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+        >
+          <GitHubMark size={13} />
+          Source on GitHub
+        </a>
+      </div>
+      {/* Row 2: the ecosystem it belongs to — fainter, one step below the
+       * project's own line, so the two read as "about this" then "about
+       * STAC" rather than one undifferentiated link pile. */}
+      <nav aria-label="STAC ecosystem" style={{ ...rowStyle, color: 'var(--color-text-faint)', fontSize: 11.5 }}>
+        <span style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', fontSize: 10 }}>STAC ecosystem</span>
+        {ECOSYSTEM_LINKS.map((l, i) => (
+          <span key={l.href} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {i > 0 && <span aria-hidden="true">·</span>}
+            <a href={l.href} target="_blank" rel="noreferrer" title={l.title} style={linkStyle}>
+              {l.label}
+            </a>
+          </span>
+        ))}
+      </nav>
     </footer>
   )
 }

@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <strong><a href="https://staclens.com">staclens.com</a></strong>
+</p>
+
+<p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-144E63"></a>
   <img alt="STAC 1.0 and 1.1" src="https://img.shields.io/badge/STAC-1.0%20%7C%201.1-0EB4AE">
   <img alt="Client-side only" src="https://img.shields.io/badge/backend-none-C4E2EF">
@@ -86,8 +90,9 @@ Requires Node 20.19+ or 22.12+ (Vite 8's own range).
 
 STAC Lens is a static site with no backend; every request goes from the visitor's browser straight to the STAC server they're exploring. Any static host works. Routing is hash-based, so no rewrite rules are needed.
 
-- **Build command:** `npm run build` · **Publish directory:** `dist`
+- **Build command:** `npm run build` · **Publish directory:** `dist` — already declared in [`netlify.toml`](netlify.toml) (with Node pinned via [`.nvmrc`](.nvmrc)), so on Netlify "Import from Git" needs no further settings. Other hosts: the same two values.
 - Serve from a domain root (asset paths are absolute). For a sub-path, set Vite's `base`.
+- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint and the real build on every push and pull request.
 - Serve over HTTPS; browsers block requests from an HTTPS page to `http://` catalogs.
 - A catalog that doesn't allow cross-origin requests (CORS) can't be opened from any client-side app, STAC Lens included — it is reported as such in the UI.
 
