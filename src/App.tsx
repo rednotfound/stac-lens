@@ -9,6 +9,7 @@ import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './ho
 import { encodeSearchQuery } from './stac/searchQueryUrl'
 import { Spinner } from './components/Spinner'
 import { Logo } from './components/Logo'
+import { GitHubMark, REPO_URL } from './components/ProjectLinks'
 import { loader } from './stac/loaderInstance'
 import type { StacNode } from './stac/types'
 
@@ -332,6 +333,18 @@ function App() {
             </span>
           )}
         </div>
+        {/* Source link, kept to the bare mark — the landing page's footer
+         * carries version/license/source in full; here it only needs to be
+         * findable, at the header's far edge, away from the catalog title. */}
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer"
+          title="Source on GitHub"
+          style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--color-text-muted)', display: 'flex' }}
+        >
+          <GitHubMark size={18} />
+        </a>
       </header>
       {/* Show only what's needed right now: nothing selected means Structure
        * is the whole story so far, full width — the Inspector column only

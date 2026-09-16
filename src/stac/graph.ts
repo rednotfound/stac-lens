@@ -2,6 +2,7 @@ import type {
   ItemEnumeration,
   ResolvedAsset,
   SchemaHints,
+  SpatialExtent,
   StacNode,
   StacNodeType,
   StacProvider,

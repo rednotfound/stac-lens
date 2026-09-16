@@ -5233,6 +5233,25 @@ old orange Item color also lived as a literal in `ItemsMap.tsx`'s Leaflet
 palette (Leaflet's SVG attributes can't read CSS variables) — updated in
 step; `--color-node-warning` stays orange, it's a state, not a level.
 
+**Preparing to deploy surfaced two things.** First, the repository had no
+license at all — no `LICENSE`, no `license` field — so a public repo was
+legally "all rights reserved" and the UI had nothing true to show. The
+user chose **Apache-2.0** (what the STAC spec and STAC Browser use; a
+patent grant MIT lacks) over MIT and over staying unlicensed; the
+canonical text was downloaded from apache.org, `package.json` gained
+`license`/`repository` and a first real version, `0.1.0`. Where it shows
+was also chosen from options: a landing-page footer ("STAC Lens v0.1.0 ·
+Apache-2.0 license · Source on GitHub", the version inlined from
+package.json through a Vite `define` so it can't drift) plus the bare
+GitHub mark at the catalog header's far edge — STAC Browser's footer-
+links convention, not an About dialog. Second, `npx tsc --noEmit -p .`
+had been checking *nothing* all along: the root `tsconfig.json` is a
+references-only shell (`"files": []`), so every "tsc clean" this session
+was vacuous; the first real `npm run build` (`tsc -b`) failed on a
+missing type import from §91's own bbox-count change. Fixed, and the
+verification command is now `npx tsc -b` — recorded in memory so it
+isn't repeated.
+
 ## 94. What's deliberately deferred (not forgotten)
 
 - **Parked by decision, complete on `parked/collection-search`:

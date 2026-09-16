@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Logo } from './Logo'
+import { LandingFooter } from './ProjectLinks'
 
 const KNOWN_CATALOGS = [
   {
@@ -844,6 +845,7 @@ export function LandingPage({
           </div>
         )}
       </div>
+      <LandingFooter />
     </div>
   )
 }
