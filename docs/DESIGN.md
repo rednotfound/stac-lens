@@ -5333,6 +5333,27 @@ Collections is browsing, so parking it was right; whether a server
 capability page. Written into the README the same day, as a "who it's
 for" section and an explicit side-by-side with STAC Browser.
 
+The immediate follow-up question was the right one: "目录健康度的话,有标准
+么?没有标准的话我们也不知道怎么做" (is there a standard for catalog health?
+Without one we wouldn't know what to build). There is no score standard,
+and this project will not invent one — but there are three layers of
+rules with authors: the spec's own REQUIRED/MUST/SHOULD (schema-checked
+by `stac-validator`), `best-practices.md`'s RECOMMENDED (linted by
+stac-utils' `stac-check`, whose rule list — lowercase ids, `datetime`
+null, unlocated Items, bloated links/metadata, `self` links, `summaries`,
+link titles, coordinate sanity — is the closest thing to a community
+standard), and "declared conformance vs. actual response" as a method
+(`stac-api-validator`), which is exactly what this app's live-server
+findings extend. So "health" is defined as **findings, each citing its
+rule, in four tiers**: Invalid (normative), Warning (recommendation),
+Behavior (a server contradicting its own `conformsTo`, shown only after
+a real request), and Observation (a fact with no rule behind it — a flat
+root is one; §95's principle, made structural). The full rule list, with
+sources and what is built, is `docs/HEALTH-RULES.md`; adding a rule means
+adding a row there first. What distinguishes this app from those three
+tools is not new rules but placing all three layers on the same picture,
+in a browser, for any public catalog.
+
 ## 95. What's deliberately deferred (not forgotten)
 
 - **Parked by decision, complete on `parked/collection-search`:

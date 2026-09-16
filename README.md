@@ -86,6 +86,8 @@ STAC Lens reads STAC 1.0 and 1.1 static catalogs and STAC APIs, and follows the 
 
 Not yet: CQL2 filtering and free-text search, arbitrary-field sort, `overview`/`visual` asset rendering, authenticated APIs, and in-browser COG display. The current list is kept in the last section of `docs/DESIGN.md`.
 
+What "health" means here is not a score but a list of rules, each cited to the STAC spec, its best-practices document, the community linters (`stac-check`, `stac-api-validator`) or a verified observation against a live server, and tiered as *invalid* / *warning* / *behavior* / *observation*. The full list, with what is built and what isn't, is [`docs/HEALTH-RULES.md`](docs/HEALTH-RULES.md).
+
 ## Principles
 
 - **Never enumerate what can't be enumerated.** A 51-million-Item collection is browsed through the API's own cursor, one page at a time. There is no "load everything".
