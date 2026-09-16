@@ -22,9 +22,29 @@
   <img src="docs/images/screenshot-structure.png" alt="STAC Lens exploring Microsoft Planetary Computer: the Structure Lens tree, a Collection's Search and Results boxes, and the Inspector" width="1000">
 </p>
 
-STAC Lens is a client-side visual explorer for [STAC](https://stacspec.org/) (SpatioTemporal Asset Catalog) catalogs and APIs. A STAC dataset has several shapes at once — the hierarchy its publisher curated, a spatial footprint, a temporal extent, and a metadata vocabulary. Most tools show one of these at a time. STAC Lens treats them as coordinated views of the same data: select a node in one and the others follow.
+STAC Lens is a client-side lens on [STAC](https://stacspec.org/) (SpatioTemporal Asset Catalog) catalogs and APIs. Point it at any catalog and it shows three things a field-by-field browser doesn't: the **shape** of the dataset (how the publisher actually organized it — deep, flat, wide), its **health** (where the metadata contradicts itself or the spec), and its **distance from the specification** (what an API declares it supports versus what it really does when asked). Structure, time, and space are coordinated views of the same data: select a node in one and the others follow.
 
-It is deliberately **not another STAC Browser**. It does not try to be the canonical way to read every field of every object; it tries to make a dataset's shape legible before you commit to reading it.
+### Who it's for
+
+- **People choosing a data source** — see how a catalog is organized, what it covers in time and space, and whether its API behaves, before writing a line of code against it. The landing page's 102 catalogs are each verified to be live, real STAC, and reachable from a browser.
+- **Publishers checking their own catalog** — a picture of the structure you shipped, with the problems marked: two disjoint spatial extents, a `rel:collection` that disagrees with `rel:parent`, deprecated license values, a root with 400 collections and no hierarchy, an API that returns the wrong page for a filtered query. Schema validators check the JSON; this checks what the JSON *does*.
+- **People learning STAC** — the Catalog → Collection → Item model, extents, links, and API capabilities as one visual language rather than a set of documents.
+- **The STAC community** — an empirical view of conformance in the wild. Everything the app has learned about real servers is written down in [`docs/DESIGN.md`](docs/DESIGN.md), with the requests that established it.
+
+### How it relates to STAC Browser
+
+[STAC Browser](https://github.com/radiantearth/stac-browser) is the reference browser and it does its job well; STAC Lens is not a replacement for it and is not trying to become one.
+
+| | STAC Browser | STAC Lens |
+|---|---|---|
+| Purpose | Read a catalog: every object, every field, faithfully | Understand a catalog: its shape, health, and real behavior |
+| Deployment | One instance per catalog, configured by its publisher | One instance, any catalog — paste a URL |
+| Unit of view | The current object (a page per Catalog / Collection / Item) | The whole graph, with time and space alongside it |
+| Server behavior | Trusts the server | Exercises the server and reports what it actually does |
+| Metadata problems | Renders what's there | Flags contradictions and deprecated forms, never silently resolves them |
+| Item browsing | Complete | Deliberately sufficient — lists, pages, a timeline and a map |
+
+If you publish a catalog and want visitors to read it, deploy STAC Browser. If you want to see what a catalog *is* — yours or anyone's — open it in STAC Lens.
 
 Full design rationale, research notes, and the reasoning behind every non-obvious decision live in [`docs/DESIGN.md`](docs/DESIGN.md).
 

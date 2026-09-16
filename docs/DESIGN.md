@@ -5147,7 +5147,7 @@ datetime`), free-text `q`, `ids`/`intersects`, arbitrary-field sort via
 `queryables`, CQL2 filter, `fields`; `overview`/`visual` asset roles and
 `rel=preview`; `alternate`/`via`/`license` links in Inspector; auth
 headers and a CORS proxy option; an "Open in STAC Browser" link. Listed
-in §94.
+in §95.
 
 ## 92. Collection Search — built, verified against a real server, then parked by decision; and a failed search now looks like a failure
 
@@ -5179,7 +5179,7 @@ come back when I've thought it through). The doubt is about the model,
 not the implementation: the tree is meant to show the publisher's
 structure, and a search that silently swaps the root's children for a
 filtered subset sits uneasily with that — the same instinct that ruled
-out a client-derived grouping layer (§94). The complete work lives on the
+out a client-derived grouping layer (§95). The complete work lives on the
 local branch `parked/collection-search` (one WIP commit on top of
 `5fbdfbb`, not pushed) so the decision, when it comes, starts from a
 verified implementation rather than from scratch. What it also surfaced
@@ -5270,7 +5270,10 @@ one thing Cloudflare had over it was moot. Live at **https://staclens.com**
 (Netlify; `www` and plain `http` both 301 to the apex; checked from
 outside: 200, correct title, hashed assets, icons, manifest — the only
 nit was `.webmanifest` served as `application/octet-stream`, fixed with a
-headers rule). Settings live in the repo,
+headers rule). The repository itself is still private at the time of
+writing, so the site's source/license links 404 for visitors — known,
+and left as they are because the repo is to be made public; flipping
+visibility is the whole fix, not a UI change. Settings live in the repo,
 not the dashboard: `netlify.toml` (build `npm run build`, publish `dist`,
 Node 22, immutable caching for Vite's hashed `/assets/*`; deliberately
 *no* SPA redirect rule — routing is hash-based, every path is a real
@@ -5281,7 +5284,56 @@ introduced. The landing-page list was scanned for plain `http://`
 catalogs (blocked as mixed content from an HTTPS page): none — the one
 such candidate had already been excluded in §19/§47 for that reason.
 
-## 94. What's deliberately deferred (not forgotten)
+## 94. Positioning — a lens, not a browser
+
+Raised by the user right after the first public deployment, as a real
+doubt rather than a marketing exercise: "Stack Browser 的定位...你要发布自己
+的数据,你想让别人看的时候有一个 Browser 来看...我们其实并不是让人去...作为一个
+open source 的产品的意义不是很大...别人要发布产品的时候也不需要一个我们这样子的
+工具...我有点没有看到这个我们这个开源项目的价值点所在" (STAC Browser makes
+sense for someone publishing data who wants visitors to have a browser;
+we aren't that — publishers don't need a tool like ours — I'm not sure
+where the value of this open-source project is).
+
+The answer came from reading what had actually been built, not from
+what was intended. Nothing distinctive in this app is *browsing*: it is
+cross-catalog (one entry point, 102 verified catalogs, versus STAC
+Browser's one `catalogUrl` per deployment); it shows a catalog's shape
+(Copernicus Data Space's 422 flat Collections are visible as a flat
+fan-out, not a long list); it shows the distance between spec and
+reality by exercising servers (Planetary Computer's `/items` cache
+ignoring `bbox`, its 422 on any cross-collection search, POST-only
+pagination links, 14 of 34 APIs implementing Collection Search); it
+flags metadata that contradicts itself or the spec (two disjoint bboxes,
+`rel:collection` vs `rel:parent`, deprecated licenses) rather than
+rendering it; and it teaches the three-level model by carrying one color
+per level through tree, Inspector, timeline and map. STAC Browser
+assumes the server is right and renders every field faithfully — that
+is its job, it does it well, and this app should not compete with it.
+
+Positioning, stated positively rather than as "not another STAC
+Browser": **see the shape of a STAC dataset, its health, and its
+distance from the specification.** Four audiences, in order of how
+distinctive the value is: the STAC community (an empirical conformance
+view nobody publishes — STAC Index has only an `isApi` flag), publishers
+checking their own catalog before or after shipping it (a linter with a
+picture; schema validators check the JSON, this checks what the JSON
+does), people choosing a data source, and people learning STAC. The
+author's own use ("我是为着我自己") is a legitimate fifth — most good
+tools start there.
+
+Consequences for scope, which this section exists to make binding:
+strengthen the lens (a catalog-health summary aggregating the existing
+⚠ flags; an API root's "declared vs. observed" capability page;
+cross-catalog comparison) and hold Item-level browsing at "deliberately
+sufficient" — a longer field list is STAC Browser's lane. This also
+settles the morning's Collection Search doubt (§92): searching for
+Collections is browsing, so parking it was right; whether a server
+*supports* Collection Search is diagnosis, so that fact belongs on a
+capability page. Written into the README the same day, as a "who it's
+for" section and an explicit side-by-side with STAC Browser.
+
+## 95. What's deliberately deferred (not forgotten)
 
 - **Parked by decision, complete on `parked/collection-search`:
   Collection Search on API roots (§92).** To revisit: whether the tree
