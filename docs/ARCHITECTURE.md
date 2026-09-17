@@ -64,6 +64,8 @@ Two zustand stores, deliberately small:
 
 ## Components — `src/components/`
 
+**`src/data/catalogs.json`** — the landing page's known-catalog list, typed by `src/data/knownCatalogs.ts`. Data, not code: inclusion criteria, the removal log and the verifier (`npm run verify:catalogs`) are in `docs/CATALOGS.md`.
+
 **`App.tsx`** composes everything: the landing page until a root is chosen; then a header (mark, catalog title, source link), `StructureTree` on the left, `DetailPanel` on the right, and a draggable divider between them (drag to resize, snap to collapse, double-click to toggle). It also owns the URL wiring: computes the query string for the current selection and hands restored queries to the store.
 
 **`LandingPage.tsx`** — one field that opens a pasted URL or filters the verified catalog list (each entry was checked for CORS and real STAC content when added); footer via `ProjectLinks.tsx`.

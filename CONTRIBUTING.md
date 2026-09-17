@@ -57,6 +57,8 @@ This project has one hard rule about verification, learned the expensive way: **
 4. **Pin what you verified.** A fact about the data layer (a link rule, a parameter format, a server behavior you worked around) gets a Vitest case in `src/stac/__tests__/`; a user-visible path gets a check in `tests/smoke.mjs`, driven by recorded responses in `tests/fixtures/` so it runs offline. Record a fixture with `curl`, trim it, and keep it byte-for-byte otherwise — the point is that it is what a real server sent.
 5. **Facts about servers come from requests, not memory.** Before writing code against how an API behaves, `curl` it. Several of this project's design decisions exist because a server did not do what its documentation or the spec said (see `DESIGN.md`).
 
+To add a catalog to the landing page's list, or to understand why one was removed, see [`docs/CATALOGS.md`](docs/CATALOGS.md) — the list is data (`src/data/catalogs.json`) with written criteria and a verifier, not an ad-hoc array.
+
 Catalogs that exercise specific paths:
 
 | Catalog | Exercises |

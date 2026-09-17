@@ -1,0 +1,822 @@
+[
+  {
+    "title": "Africa Agriculture Adaptation Atlas",
+    "description": "Climate hazard rasters, scenarios, and real metadata inconsistencies — the primary stress-test fixture for this project.",
+    "href": "https://digital-atlas.s3.amazonaws.com/stac/public_stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "STAC spec example catalog",
+    "description": "The spec's own minimal example tree — the floor case: bare-minimum valid STAC, empty collections, no extensions.",
+    "href": "https://raw.githubusercontent.com/radiantearth/stac-spec/master/examples/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Earth Search (Element84)",
+    "description": "A real STAC API, not a static catalog — Sentinel-2, Landsat, and more, queried live rather than link-walked.",
+    "href": "https://earth-search.aws.element84.com/v1",
+    "kind": "api",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Microsoft Planetary Computer",
+    "description": "~136 real-world Collections (Sentinel, Landsat, MODIS, Daymet, and more) via a pure STAC API with no static rel:child links at all — discovered through its OGC \"Collections\" listing endpoint instead.",
+    "href": "https://planetarycomputer.microsoft.com/api/stac/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Capella Space Open Data",
+    "description": "SAR (synthetic aperture radar) satellite imagery.",
+    "href": "https://capella-open-data.s3.us-west-2.amazonaws.com/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Maxar Open Data Catalog",
+    "description": "High-resolution optical imagery released for disaster-response events.",
+    "href": "https://maxar-opendata.s3.amazonaws.com/events/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "NZ Imagery",
+    "description": "Aerial imagery of New Zealand — a genuinely large tree (800+ links) for scale-testing.",
+    "href": "https://nz-imagery.s3.ap-southeast-2.amazonaws.com/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "fiboa Field Boundaries",
+    "description": "Vector agricultural field-boundary datasets.",
+    "href": "https://fiboa.org/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Polar Geospatial Center DEMs",
+    "description": "High-resolution digital elevation models of the polar regions.",
+    "href": "https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/pgc-data-stac.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Overture Maps Releases",
+    "description": "Overture Maps Foundation releases — buildings, places, addresses, transportation, divisions and base layers as GeoParquet, one Collection per layer per release (table extension).",
+    "href": "https://stac.overturemaps.org/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-07",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "CIESIN STAC",
+    "description": "Datasets from Columbia's Center for International Earth Science Information Network (CIESIN), including GRID3 population and settlement data.",
+    "href": "https://ciesin.github.io/sci-apps-stac/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "CoRE Stack Spatio Temporal Asset Catalog",
+    "description": "Tehsil-level land and water resource data layers for India from the CoRE Stack project.",
+    "href": "https://spatio-temporal-asset-catalog.s3.ap-south-1.amazonaws.com/CorestackCatalogs_merged_collection/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Extremadura SDI (CICTEX)",
+    "description": "Geospatial datasets for the Extremadura region of Spain, converted to cloud-native formats (GeoParquet, PMTiles).",
+    "href": "https://storage.googleapis.com/carto-portolan-ide-extremadura/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "California Forest Observatory",
+    "description": "Forest and wildfire-risk data for California, including vegetation fuels, weather, and topography.",
+    "href": "https://storage.googleapis.com/cfo-public/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "CoCliCo STAC Catalog",
+    "description": "Coastal classification and exposure datasets from sea-level-rise research (TU Delft/Deltares).",
+    "href": "https://coclico.blob.core.windows.net/stac/v1/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "EcoDataCube.eu",
+    "description": "European-wide environmental layers (Landsat/Sentinel-2 mosaics, land cover, soil predictions) from OpenGeoHub.",
+    "href": "https://s3.eu-central-1.wasabisys.com/stac/odse/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Google Earth Engine",
+    "description": "Index of all raster and vector datasets in the Google Earth Engine public data catalog.",
+    "href": "https://storage.googleapis.com/earthengine-stac/catalog/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Cassini VIMS-IR STAC catalog",
+    "description": "Infrared spectral imaging data from the Cassini spacecraft's VIMS instrument, hosted by the University of Nantes.",
+    "href": "https://vims.univ-nantes.fr/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Cubes and Clouds - Snow Cover",
+    "description": "Snow-cover mapping submissions from participants of the Cubes and Clouds Earth-observation MOOC.",
+    "href": "https://esa.pages.eox.at/cubes-and-clouds-catalog/MOOC_Cubes_and_clouds/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "IDE Facultad de Ciencia y Tecnología UADER",
+    "description": "Raster and vector geospatial datasets from Argentina's UADER Faculty of Science and Technology.",
+    "href": "https://rawcdn.githack.com/IDE-FCyT/IDE-FCyT/main/docs/catalog/stac_catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Hong Kong CSDI Trial",
+    "description": "Trial STAC catalog created under Hong Kong's Common Spatial Data Infrastructure (CSDI) platform.",
+    "href": "https://raw.githubusercontent.com/Anna-leungtn/STAC_CSDI/refs/heads/main/ib1000_stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Geoportal des Kantons Bern",
+    "description": "Downloadable geospatial data products from the Geoportal of the Canton of Bern, Switzerland.",
+    "href": "https://geofiles.be.ch/geoportal/pub/stac/de/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "HDX HAPI Cloud-Native",
+    "description": "Cloud-native Parquet exports of UN OCHA's Humanitarian API, covering affected populations, food security, funding, and conflict indicators.",
+    "href": "https://data.source.coop/hdx/hapi/collection.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Agroforestry Tree Detection — India",
+    "description": "Machine-learning tree-detection labels and imagery over agroforestry land in India.",
+    "href": "https://data.source.coop/planet/agroforestry-individual-tree-detection-india/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Distributed Renewable Energy (DRE) Atlas",
+    "description": "Settlement-level data for renewable-energy planning across 1.9 million settlements in 58 countries.",
+    "href": "https://data.source.coop/vida/dre-atlas/collection.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "FMI ARD Finland",
+    "description": "Analysis-ready Sentinel-1/2 mosaics and forestry inventory data over Finland from the Finnish Meteorological Institute.",
+    "href": "https://pta.data.lit.fmi.fi/stac/root.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Argentina National Geographic Institute (IGN) Reference Layers",
+    "description": "Official reference vector layers (hydrography, transport, boundaries, settlements) from Argentina's National Geographic Institute.",
+    "href": "https://data.source.coop/nlebovits/ign-argentina/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "MideaFind Germany DIY Store Locations",
+    "description": "Locations of German DIY (home-improvement) stores from an OpenStreetMap snapshot.",
+    "href": "https://mideafind.com/data/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Maxar ARD Sample Data",
+    "description": "Sample Analysis Ready Data from Maxar, for evaluation use.",
+    "href": "https://ard.maxar.com/samples/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "GHSL Population Grids (GHS-POP R2023A)",
+    "description": "Global population grids (1975-2030, 100m resolution) from the EC Joint Research Centre's GHS-POP model.",
+    "href": "https://data.source.coop/nlebovits/ghsl/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Microsoft ML Road Detections",
+    "description": "Road centerlines detected by Microsoft's machine-learning model from Bing Maps aerial imagery, worldwide.",
+    "href": "https://data.source.coop/nlebovits/microsoft-ml-road-detections/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "NAIP Aerial Imagery Mosaics",
+    "description": "Per-scene National Agriculture Imagery Program (NAIP) aerial imagery of the United States as Cloud Optimized GeoTIFFs.",
+    "href": "https://data.source.coop/portolan/portolan-pipeline/naip-mosaic/PRs/111/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "JRC GloFAS Global Flood Hazard Maps",
+    "description": "Global riverine flood-hazard and depth maps for multiple return periods from the EC Joint Research Centre's GloFAS model.",
+    "href": "https://data.source.coop/nlebovits/jrc-glofas/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "NASA ISERV",
+    "description": "Early ISS-based Earth imagery (JPEG, georeferenced) from NASA's ISERV Pathfinder instrument.",
+    "href": "https://nasa-iserv.s3-us-west-2.amazonaws.com/catalog/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Monthly Mosaic of Sentinel 2 Images for Catalonia",
+    "description": "Monthly low-cloud Sentinel-2 mosaics over Catalonia, Spain, since 2015.",
+    "href": "https://datacloud.icgc.cat/stac-catalog/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "OpenAerialMap Example",
+    "description": "Example STAC items for entries on OpenAerialMap, created for STAC workshops.",
+    "href": "https://raw.githubusercontent.com/m-mohr/oam-example/main/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "MapBiomas Annual Land Cover and Land Use, South America",
+    "description": "Annual land-cover and land-use maps (2019-2024) for ten South American countries.",
+    "href": "https://data.source.coop/tristangruppwri/mapbiomas/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Open Science Catalog",
+    "description": "Catalog of ESA-funded Earth observation science products, datasets, and workflows.",
+    "href": "https://esa-earthcode.github.io/open-science-catalog-metadata/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "LUCAS ML",
+    "description": "Segmented land-use survey photos and statistics from the EU's LUCAS field survey, for land-cover-change machine learning.",
+    "href": "https://data.source.coop/jrc-lucas/jrc-lucas-ml/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Pangeo Cloud Data Catalog",
+    "description": "Ocean, weather, and climate datasets stored in Zarr format on Google Cloud Storage.",
+    "href": "https://raw.githubusercontent.com/pangeo-data/pangeo-datastore-stac/master/master/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10"
+  },
+  {
+    "title": "National geospatial data of the Republic of Moldova",
+    "description": "Cadastral parcels, buildings, addresses, land cover, and geodetic layers from Moldova's national geoportal.",
+    "href": "https://data.source.coop/nlebovits/moldova-geodata/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "New Zealand Coastal Elevation",
+    "description": "New Zealand's publicly owned coastal elevation data archive.",
+    "href": "https://nz-coastal.s3.ap-southeast-2.amazonaws.com/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Planet Labs STAC Catalog",
+    "description": "Creative Commons-licensed open data from Planet Labs, including disaster imagery and SpaceNet 7 labels.",
+    "href": "https://www.planet.com/data/stac/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "New Zealand Elevation",
+    "description": "New Zealand's publicly owned elevation data archive.",
+    "href": "https://nz-elevation.s3.ap-southeast-2.amazonaws.com/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Portolan Reference Catalog",
+    "description": "Reference catalog demonstrating vector, raster, and tabular data cases in the Portolan cloud-native catalog specification.",
+    "href": "https://data.source.coop/portolan/portolan-pipeline/portolan-reference/main/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Sentinel-1 RTC CONUS",
+    "description": "Sentinel-1 radiometrically terrain-corrected SAR backscatter tiles over the contiguous United States since 2017.",
+    "href": "https://raw.githubusercontent.com/scottyhq/sentinel1-rtc-stac/main/collection.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "OpenLandMap STAC",
+    "description": "Global land layers (MODIS, PROBA-V, Landsat, land cover, soil) from OpenGeoHub.",
+    "href": "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "OpenTopography Raster DEM Data Catalog",
+    "description": "Digital elevation model (DEM) raster datasets hosted by OpenTopography.",
+    "href": "https://portal.opentopography.org/stac/raster_catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Rosetta OSIRIS Anaglyphs of Comet 67P",
+    "description": "3D anaglyph images of comet 67P/Churyumov-Gerasimenko from ESA's Rosetta mission OSIRIS camera.",
+    "href": "https://rosetta-3dcomet.cnes.fr/stac/collection.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "RapidAI4EO",
+    "description": "Spatiotemporal satellite imagery and land-use/land-cover labels for machine-learning training.",
+    "href": "https://radiantearth.blob.core.windows.net/mlhub/rapidai4eo/stac-v1.0/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Portolan NL — Cloud-Native Dutch Geodata",
+    "description": "Demonstration cloud-native catalog of open Dutch government geodata, inspired by PDOK.",
+    "href": "https://data.source.coop/cholmes/portolan-nl/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "SPOT Orthoimages of Canada (2005-2010)",
+    "description": "Orthorectified 5-band SPOT-4/5 satellite imagery covering Canada, 2005-2010.",
+    "href": "https://canada-spot-ortho.s3.amazonaws.com/canada_spot_orthoimages/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "The Wildland Almanac - CONUS",
+    "description": "30m Landsat-derived wildland ecosystem property data cube over the contiguous US at decadal snapshots (1990-2024).",
+    "href": "https://data.source.coop/wildland-almanac/conus/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "UK NCEO Analysis Ready Data (ARD)",
+    "description": "Sentinel-2 atmospherically corrected surface reflectance over the UK, 2017-2019.",
+    "href": "https://gws-access.jasmin.ac.uk/public/nceo_ard/NCEO_ARD_STAC/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10"
+  },
+  {
+    "title": "TriMet Geospatial Data",
+    "description": "Transit routes, stops, and rail lines for the Portland, Oregon metro area, mirrored from TriMet.",
+    "href": "https://data.source.coop/cholmes/trimet/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "The Wildland Almanac - Treatment Scenarios",
+    "description": "30m Landsat-derived wildland ecosystem data cube for 24 forest-management treatment scenarios in the western US.",
+    "href": "https://data.source.coop/wildland-almanac/treatment-scenarios/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "The Wildland Almanac - California",
+    "description": "30m Landsat-derived wildland ecosystem property data cube over California, water years 1985-2025.",
+    "href": "https://data.source.coop/wildland-almanac/california/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Umbra Open SAR Data",
+    "description": "SAR (synthetic aperture radar) satellite imagery from Umbra, via the AWS Open Data program.",
+    "href": "https://s3.us-west-2.amazonaws.com/umbra-open-data-catalog/stac/catalog.json?.language=en",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "EuroSAT: Land Use and Land Cover Classification",
+    "description": "Labeled Sentinel-2 imagery (13 bands, 27,000 images, 10 classes) for land-use/land-cover classification benchmarking.",
+    "href": "https://data.source.coop/nlebovits/eurosat-ms/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Soft Commodity Infrastructure (Brazil)",
+    "description": "Locations of Brazilian grain silos, slaughterhouses, dairy plants, and sugar/ethanol mills, from government registries.",
+    "href": "https://data.source.coop/tristangruppwri/soft-commodity-infrastructure/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "South American Rural Cadastral Boundaries",
+    "description": "Cadastral parcel boundaries for South American rural land use and supply-chain analysis.",
+    "href": "https://data.source.coop/tristangruppwri/cadastral/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Philadelphia Housing and Land Use",
+    "description": "Property, zoning, vacancy, and affordable-housing datasets for Philadelphia, mirrored from city ArcGIS services.",
+    "href": "https://data.source.coop/nlebovits/phl-housing-demo/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Trazo Field Boundaries of South America",
+    "description": "Agricultural field boundaries across South America (2023-2024 season) delineated from Sentinel-2 imagery via machine learning.",
+    "href": "https://data.source.coop/wri-data-lab/trazofields/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "US GeoPlatform",
+    "description": "Official list of United States National STAC data sources from GeoPlatform.gov.",
+    "href": "https://stac.geoplatform.gov/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "USGS 3DEP LiDAR Point Clouds",
+    "description": "LiDAR point-cloud elevation data over the conterminous US, Hawaii, and US territories, hosted on AWS.",
+    "href": "https://s3-us-west-2.amazonaws.com/usgs-lidar-stac/ept/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "World Bank - Light Every Night",
+    "description": "Nightly visible radiance (nighttime lights) data from VIIRS DNB NPP, April 2012 through December 2020.",
+    "href": "https://globalnightlight.s3.amazonaws.com/VIIRS_npp_catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Wyvern Open Data",
+    "description": "Hyperspectral satellite imagery from Wyvern's Open Data Program, processed to surface reflectance.",
+    "href": "https://wyvern-odp.com/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Disaster Data Releases from Planet Labs",
+    "description": "Pre- and post-event high-resolution satellite imagery for major disasters (earthquakes, floods, storms, wildfires).",
+    "href": "https://data.source.coop/planet/disasterdata/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "S2 for Ghana",
+    "description": "Sentinel-2 surface reflectance data over Ghana for 2020.",
+    "href": "https://gws-access.jasmin.ac.uk/public/odanceo/S2_L2/collection.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Pergamino SDI: Spatial Data Infrastructure",
+    "description": "Geospatial infrastructure data for the Municipality of Pergamino, Buenos Aires Province, Argentina.",
+    "href": "https://data.source.coop/nlebovits/pergamino-ide/catalog.json",
+    "kind": "static",
+    "addedOn": "2026-09-10",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Astraea Earth OnDemand",
+    "description": "Earth OnDemand — imagery query and analysis over commercial and public satellite archives.",
+    "href": "https://eod-catalog-svc-prod.astraea.earth/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Boettiger Lab Geospatial Datasets",
+    "description": "Biodiversity, conservation, census, and environmental datasets from UC Berkeley, on National Research Platform storage.",
+    "href": "https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "BON in a Box STAC",
+    "description": "Layers used by GEO BON's biodiversity-monitoring workflow tool.",
+    "href": "https://stac.geobon.org/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Canadian Geospatial Data Collections",
+    "description": "Canada's federal geospatial datacube, served via stac-fastapi.",
+    "href": "https://datacube.services.geo.ca/stac/api/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "CBERS and Amazonia-1 on AWS",
+    "description": "CBERS 4/4A and Amazonia-1 satellite imagery over Brazil, on AWS Open Data.",
+    "href": "https://stac.scitekno.com.br/v100/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Copernicus Data Space Ecosystem",
+    "description": "Asset-level catalogue of Copernicus Sentinel and other Earth-observation missions, actively maintained by ESA.",
+    "href": "https://stac.dataspace.copernicus.eu/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "CyVerse STAC API",
+    "description": "Geospatial data discovery API from the CyVerse research-computing platform.",
+    "href": "https://stac.cyverse.org/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "data.geo.admin.ch",
+    "description": "The Swiss Federal Spatial Data Infrastructure's own data catalog.",
+    "href": "https://data.geo.admin.ch/api/stac/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Destination Earth Data Lake (DEDL) API",
+    "description": "The EU's Destination Earth Harmonized Data Access STAC API.",
+    "href": "https://hda.data.destination-earth.eu/stac/v2",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Digital Earth Africa",
+    "description": "Continent-scale Earth-observation datasets for Africa (cropland, water, coastlines, and more).",
+    "href": "https://explorer.digitalearth.africa/stac/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Digitale Orthophotos Niedersachsen",
+    "description": "Aerial orthophotos (DOP RGBI) of Lower Saxony, Germany.",
+    "href": "https://dop.stac.lgln.niedersachsen.de",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Earth Genome: Sentinel-2 L2A Temporal Mosaics",
+    "description": "A public-good STAC instance of Sentinel-2 L2A temporal mosaics from Earth Genome.",
+    "href": "https://stac.earthgenome.org/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "EasierData",
+    "description": "A stac-fastapi deployment for the EasierData open geospatial data project.",
+    "href": "https://stac.easierdata.info",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "EOC EO Products Service",
+    "description": "DLR's Earth Observation Center — metadata and access for its EO collections and products.",
+    "href": "https://geoservice.dlr.de/eoc/ogc/stac/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "ERS open data",
+    "description": "Roscosmos's open Earth-observation datasets — Arktika-M, Elektro-L, and Meteor-M mosaics.",
+    "href": "https://s3.gptl.ru/stac-web-free/catalog.json",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "GEP Supersites CSK and CSG data",
+    "description": "COSMO-SkyMed and CSG SAR data over geohazard supersites, on a stac-fastapi deployment.",
+    "href": "https://gep-supersites-stac.terradue.com/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Google Earth Engine (openEO)",
+    "description": "Google Earth Engine's openEO backend — 1000+ real datasets, browsable through its own Collections listing rather than a STAC search endpoint.",
+    "href": "https://earthengine.openeo.org/v1.0/",
+    "kind": "static",
+    "addedOn": "2026-09-11"
+  },
+  {
+    "title": "HUB Ocean's Ocean Data Platform Catalog",
+    "description": "Public ocean and marine datasets from HUB Ocean.",
+    "href": "https://api.hubocean.earth/api/stac",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Impact Observatory STAC API",
+    "description": "Land-use/land-cover and other AI-derived geospatial datasets from Impact Observatory.",
+    "href": "https://api.impactobservatory.com/stac-aws/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "INPE STAC Server",
+    "description": "Brazil's National Institute for Space Research (INPE) — Earth-observation collections from its Data Cube Brazil program.",
+    "href": "https://data.inpe.br/bdc/stac/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Kentucky From Above SpatioTemporal Asset Catalog",
+    "description": "Aerial imagery and LiDAR elevation data for the Commonwealth of Kentucky since 2010.",
+    "href": "https://spved5ihrl.execute-api.us-west-2.amazonaws.com/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "MISTEO STAC SERVER",
+    "description": "A stac-server deployment for MISTEO Earth-observation data.",
+    "href": "https://stac-server.dev2prod.co/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "MTD STAC API",
+    "description": "Scientific productions from France's UMR TETIS and UMR Espace-Dev remote-sensing research units.",
+    "href": "https://api.stac.teledetection.fr",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "NASA CMR CLOUDSTAC Proxy",
+    "description": "NASA's Common Metadata Repository, cloud-hosted-holdings variant — each linked provider exposes its own STAC endpoint.",
+    "href": "https://cmr.earthdata.nasa.gov/cloudstac/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "NASA CMR STAC",
+    "description": "NASA's Common Metadata Repository as a STAC API — each linked provider exposes its own STAC endpoint.",
+    "href": "https://cmr.earthdata.nasa.gov/stac/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "OpenAerialMap",
+    "description": "Openly licensed aerial and drone imagery, contributed by the humanitarian mapping community.",
+    "href": "https://api.imagery.hotosm.org/stac",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Paituli STAC (Finland)",
+    "description": "Finnish geospatial datasets from the Paituli data service, via a GeoServer OGC API - STAC endpoint.",
+    "href": "https://paituli.csc.fi/geoserver/ogc/stac/v1",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Panoramax",
+    "description": "Geolocated street-level and 360° pictures from a Panoramax instance.",
+    "href": "https://api.panoramax.xyz/api/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "PGC Data Catalog",
+    "description": "The Polar Geospatial Center's own digital elevation models, via a live STAC API (a static PGC DEM catalog is already above).",
+    "href": "https://stac.pgc.umn.edu/api/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Super-Resolved Sentinel-2 2.5m STAC API",
+    "description": "A live STAC API over the Copernicus Sentinel-2 L2A catalogue, serving super-resolved 2.5m imagery.",
+    "href": "https://console.semablu.com/py/stac",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "Thünen Earth Observation (ThEO)",
+    "description": "Germany's Thünen Institute — satellite-derived land cover, crop type, and grassland dynamics.",
+    "href": "https://eodata.thuenen.de/stac/api/v1/",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  },
+  {
+    "title": "USGS Landsat Collection 2 API",
+    "description": "USGS Landsat Collection 2 imagery, via LandsatLook.",
+    "href": "https://landsatlook.usgs.gov/stac-server/",
+    "kind": "api",
+    "addedOn": "2026-09-11"
+  },
+  {
+    "title": "WorldPop STAC API",
+    "description": "Global population distribution and covariate datasets from WorldPop.",
+    "href": "https://api.stac.worldpop.org",
+    "kind": "api",
+    "addedOn": "2026-09-11",
+    "verifiedOn": "2026-09-17"
+  }
+]

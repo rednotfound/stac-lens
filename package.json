@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "test:e2e": "node tests/smoke.mjs",
     "preview": "vite preview",
-    "verify:fixtures": "tsx scripts/verify-fixtures.ts"
+    "verify:fixtures": "tsx scripts/verify-fixtures.ts",
+    "verify:catalogs": "tsx scripts/verify-catalogs.ts"
   },
   "dependencies": {
     "d3-drag": "^3.0.0",

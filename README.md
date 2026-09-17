@@ -26,7 +26,7 @@ STAC Lens is a client-side lens on [STAC](https://stacspec.org/) (SpatioTemporal
 
 ### Who it's for
 
-- **People choosing a data source** — see how a catalog is organized, what it covers in time and space, and whether its API behaves, before writing a line of code against it. The landing page's 102 catalogs are each verified to be live, real STAC, and reachable from a browser.
+- **People choosing a data source** — see how a catalog is organized, what it covers in time and space, and whether its API behaves, before writing a line of code against it. The landing page's 100+ catalogs are each verified to be live, real STAC, and reachable from a browser.
 - **Publishers checking their own catalog** — a picture of the structure you shipped, with the problems marked: two disjoint spatial extents, a `rel:collection` that disagrees with `rel:parent`, deprecated license values, a root with 400 collections and no hierarchy, an API that returns the wrong page for a filtered query. Schema validators check the JSON; this checks what the JSON *does*.
 - **People learning STAC** — the Catalog → Collection → Item model, extents, links, and API capabilities as one visual language rather than a set of documents.
 - **The STAC community** — an empirical view of conformance in the wild. Everything the app has learned about real servers is written down in [`docs/DESIGN.md`](docs/DESIGN.md), with the requests that established it.
@@ -63,10 +63,10 @@ Both share a **List / Time & Space** switcher: the same page of Items as a scrol
 
 **Shareable URLs** — the address bar always encodes what you're looking at: `#<absolute STAC href>`, plus an applied API search as `?datetime=…&bbox=…&sortby=…` using STAC's own parameter names. Paste the link anywhere and it reopens the same catalog, selection, and search. Browser Back/Forward move between catalogs and the landing page, not out of the app.
 
-**Landing page** — one field that does two jobs: paste any STAC URL to open it, or filter 102 verified public catalogs and APIs (sourced from [STAC Index](https://stacindex.org), each checked for CORS and real STAC content).
+**Landing page** — one field that does two jobs: paste any STAC URL to open it, or filter 100+ verified public catalogs and APIs (sourced from [STAC Index](https://stacindex.org), each checked for CORS and real STAC content).
 
 <p align="center">
-  <img src="docs/images/screenshot-landing.png" alt="The landing page: one search field over a grid of 102 verified public STAC catalogs and APIs" width="1000">
+  <img src="docs/images/screenshot-landing.png" alt="The landing page: one search field over a grid of 100+ verified public STAC catalogs and APIs" width="1000">
 </p>
 
 ## STAC support

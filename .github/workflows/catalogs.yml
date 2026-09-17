@@ -1,0 +1,37 @@
+# Weekly re-verification of the landing page's known-catalog list against
+# the live servers (docs/CATALOGS.md). Separate from CI on purpose: it
+# depends on a hundred external hosts, so it must never block a push. A red
+# run means "someone should look", not "something in this repo broke"; the
+# script only reports, it never edits the list.
+name: Verify known catalogs
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Verify every entry
+        run: npm run verify:catalogs -- --report catalog-report.md
+        continue-on-error: true
+        id: verify
+      - name: Publish the report
+        if: always()
+        run: cat catalog-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: catalog-report
+          path: catalog-report.md
+      - name: Fail the run if any entry failed
+        if: steps.verify.outcome == 'failure'
+        run: exit 1

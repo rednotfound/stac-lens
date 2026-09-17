@@ -5831,3 +5831,97 @@ Prettier, nvm and Docker, one provider file, and the usual `src/`,
 `public/`, `tests/`, `scripts/`, `docs/`, `.github/`. The only reduction
 available was folding `.prettierrc` into `package.json`; not worth a
 change. Reorganizing further would be tidying for its own sake.
+
+## 99. The known-catalog list becomes maintained data — and Overture comes back
+
+**Date:** 2026-09-17. Prompted by the owner noticing that Overture Maps
+had disappeared from the landing page and asking why the list keeps
+changing and how it should be maintained "instead of guessing".
+
+### What had happened
+
+Overture was added on 2026-09-07 (§19), removed on 2026-09-10 (§19's third
+update) on a one-line note — "collections list raw Parquet part files in
+a `registry.manifest` array, not STAC Items" — and nobody could see that
+from the app. The list lived as a 600-line array inside
+`LandingPage.tsx`; the only record of a removal was a sentence in this
+5,000-line log.
+
+Re-checked today: every one of the 15 Collections in release
+`2026-08-19.0` is `type: Collection`, STAC 1.1.0, table extension, with
+real `rel:item` links (987 in total, 512 under `building`); no
+`registry.manifest` anywhere; the previous release looks the same; CORS
+`*`; the app opens it down to an Item without error. The Wayback snapshot
+of 2026-09-09 has the root and theme levels (identical to today) but not
+the collection files, so whether the note was ever right cannot be
+established. That is the real finding: **the removal was not
+reproducible**, so a week later it could neither be defended nor refuted.
+
+### What changed
+
+- **The list is data.** `src/data/catalogs.json` (103 records), typed by
+  `src/data/knownCatalogs.ts`; `LandingPage.tsx` shrank from 883 to 275
+  lines. Each record carries `kind` (`static`/`api`, replacing `isApi`),
+  `addedOn` (first commit listing the href, from `git log -S`) and
+  `verifiedOn`.
+- **The rules are written down** in `docs/CATALOGS.md`: six inclusion
+  criteria, how to add (run the verifier on your entry, paste its line in
+  the PR), how to remove (a log row with a reproducible reason, never on a
+  single failed run), and the log itself — starting with MSC GeoMet and
+  Overture's removal, Overture's restoration, the entries excluded at add
+  time, and today's two flagged failures.
+- **A verifier, `npm run verify:catalogs`** (`scripts/verify-catalogs.ts`),
+  checks every entry the way a browser would: reachable, CORS header
+  present, `stac_version`, declared kind vs the app's own
+  `detectSourceKind`, and *shape* — for static catalogs a breadth-first
+  walk (depth 3, 16 documents, 4 children per node) that must reach Items
+  or at least a Collection; for APIs, `rel:child` links or a working
+  `/collections`, in the order the app tries them. `--stamp` writes
+  `verifiedOn`; `--report` writes Markdown. **It never adds or removes an
+  entry.** `.github/workflows/catalogs.yml` runs it every Monday and posts
+  the report to the job summary — separate from CI, because a hundred
+  external hosts must not block a push.
+
+### What the first full run taught
+
+Three of the script's first ten "failures" were the script's, not the
+catalogs' — worth recording because each would have produced a false
+removal under the old habits:
+
+1. **Node's Happy Eyeballs.** Two static catalogs (Nantes' Cassini VIMS,
+   EOX's Cubes and Clouds) failed with `ETIMEDOUT` after 283 ms while
+   curl, `https.get` and Chromium all opened them in under a second.
+   Node's `fetch` gives each address-family attempt 250 ms; these hosts
+   need ~300 ms for the TCP handshake. Fixed with
+   `setDefaultAutoSelectFamilyAttemptTimeout(2000)`.
+2. **API roots with `rel:child` links.** NASA CMR STAC, CBERS, Boettiger
+   Lab, ERS and Digital Earth Africa all "failed" `/collections`, but the
+   app never calls `/collections` when a root has `child` links — and
+   these do. The check now follows the app's order.
+3. **"Item-shaped" was the wrong question.** With a first-child-only
+   walk, 22 static catalogs warned. Probing eight of them: fiboa and
+   TriMet are Collections with collection-level GeoParquet assets and no
+   Items — a legitimate STAC shape the app renders fine (extent, assets);
+   Umbra and RapidAI4EO have Items three levels down; Google Earth
+   Engine's 132 root children exhausted a naive budget. The criterion is
+   now "reaches Items *or a Collection*", breadth-first, capped per node.
+   Overture's supposed problem — collections whose data is neither Items
+   nor assets — would still trip it.
+
+Final run: **99 ok, 2 warn, 2 fail** in 47 s. The warnings are honest
+(Pangeo's documents carry no STAC `type`; the openEO GEE root lists
+nothing the walk can follow). The two failures are real and confirmed in
+Chromium: **USGS Landsat** echoes its own origin in
+`Access-Control-Allow-Origin` (it passed on 2026-09-11, so the server
+changed), and **UK NCEO** sends the header twice (`*, *`), which browsers
+reject. Both stay in the list, flagged in the log, per the rule that a
+removal follows persistence, not one Monday — the owner may decide
+otherwise.
+
+### Decisions
+
+- Catalog-list changes are data diffs plus a log row. Code review of the
+  list means reading `catalogs.json` and `CATALOGS.md`, nothing else.
+- The verifier reports; people decide. A scheduled job that edited the
+  list would recreate the original problem with better handwriting.
+- README says "100+" catalogs, not a number that goes stale.
