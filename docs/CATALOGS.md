@@ -18,6 +18,9 @@ is that, and most entries here were taken from it.
   "description": "Overture Maps Foundation releases — ... one Collection per layer per release (table extension).",
   "href": "https://stac.overturemaps.org/catalog.json",
   "kind": "static",
+  "topics": ["vector-basemap"],
+  "regions": ["global"],
+  "publisher": "community",
   "addedOn": "2026-09-07",
   "verifiedOn": "2026-09-17"
 }
@@ -29,6 +32,9 @@ is that, and most entries here were taken from it.
 | `description` | One sentence on what is inside, written for someone deciding whether to open it. |
 | `href` | The root Catalog or API landing page. Never a URL with a key or token in it. |
 | `kind` | `api` when the root advertises Item Search (a GET `rel:search` link), `static` otherwise — the same rule the app applies at runtime. |
+| `topics` | One or more values from the topic vocabulary below: what the data is about. |
+| `regions` | Zero or more values from the region vocabulary: where it covers. Empty means the coverage could not be established from the catalog itself — say so rather than guess. |
+| `publisher` | Exactly one value: what kind of organization is behind the catalog. |
 | `addedOn` | Date of the first commit that listed this href. |
 | `verifiedOn` | Last date the verifier found the entry passing every check. |
 
@@ -62,10 +68,68 @@ assumed from a directory listing:
    token, and no plain `http://` URL (a mixed-content failure once opened
    from an HTTPS page).
 
+## Tags
+
+Neither STAC nor STAC Index classifies catalogs, so the landing page's
+facet filters rest on an editorial vocabulary of our own, defined in
+`src/data/catalogTags.ts` and here. It is **closed**: a record may only use
+the values below (a unit test and the verifier reject anything else), and
+adding a value means adding it in both places with a definition. Every
+assignment is a judgment made from the catalog's own title, description
+and a look at its contents; a wrong one is fixed by a pull request that
+changes the record, the same as any other data fix.
+
+Filtering is a union within a facet and an intersection across facets:
+"Elevation or Imagery, in Oceania, from a government".
+
+### Topic (`topics`, one or more)
+
+| Value | Meaning |
+|---|---|
+| `eo-imagery` | Imagery: satellite, aerial, drone or street-level pictures, at any processing level. |
+| `climate-weather` | Climate and weather: reanalyses, forecasts, hazard scenarios, snow and ice. |
+| `elevation` | Elevation and terrain: DEMs, LiDAR point clouds, bathymetry. |
+| `land-cover` | Land cover and land use maps and their derivatives. |
+| `vector-basemap` | Vector and basemap data: buildings, roads, addresses, boundaries, cadastre, points of interest. |
+| `ocean-hydrology` | Ocean, coasts and inland water: sea level, coastal classification, flood depth, water resources. |
+| `disaster` | Disasters and hazards: event imagery, hazard maps, wildfire risk, geohazard monitoring. |
+| `agriculture` | Agriculture and forestry: field boundaries, crop type, forest inventory, commodity infrastructure. |
+| `urban` | Urban and infrastructure: housing, zoning, transit, energy planning. |
+| `population` | Population and humanitarian: population grids, settlements, nighttime lights, humanitarian indicators. |
+| `ecology` | Ecology and biodiversity: habitats, conservation, ecosystem properties. |
+| `planetary` | Planetary science: anything not about Earth. |
+| `ml-training` | Labeled data published for training machine-learning models. |
+| `reference` | Reference and sample catalogs: spec examples, workshop material, evaluation samples. |
+| `multi-domain` | An archive spanning many of the above (Planetary Computer, NASA CMR, national data cubes). |
+
+### Region (`regions`, zero or more)
+
+`global`, `africa`, `antarctica`, `arctic`, `asia`, `europe`,
+`north-america`, `oceania`, `south-america`, `beyond-earth`. Continents,
+not countries, by decision: a hundred records are manageable by hand at
+this grain and the chip row stays short. `global` is for catalogs whose
+coverage is worldwide or spans several continents; a national catalog gets
+its continent.
+
+### Publisher (`publisher`, exactly one)
+
+| Value | Meaning |
+|---|---|
+| `space-agency` | NASA, ESA, CNES, DLR, INPE, Roscosmos and their direct programs. |
+| `government` | National, regional or municipal agencies other than space agencies. |
+| `intergovernmental` | UN bodies, the EU and its Joint Research Centre, the World Bank, pan-continental programs. |
+| `research` | Universities, research institutes, research infrastructures. |
+| `commercial` | Companies, including their open-data programs. |
+| `community` | Foundations, non-profits, open-source and volunteer projects. |
+
+Where the catalog and the data come from different organizations (a
+community mirror of government data), the value describes whoever runs
+the catalog you open.
+
 ## Adding an entry
 
 1. Add the record to `src/data/catalogs.json` with `addedOn` = today, no
-   `verifiedOn`.
+   `verifiedOn`, and tags from the vocabularies above.
 2. Run the verifier on just that entry and paste its line into the pull
    request:
 

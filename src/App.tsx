@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
+import { useLandingPrefsStore } from './store/landingPrefs'
 import { useSelectionStore } from './store/selection'
 import { useItemSetStore } from './store/itemSet'
 import { useElementSize } from './hooks/useElementSize'
@@ -204,6 +205,15 @@ function App() {
       cancelled = true
     }
   }, [rootHref])
+
+  // Remember every root that was actually opened, under the name it
+  // resolved to, for the landing page's "Recently opened" list. Waits for
+  // the root node so a mistyped or unreachable URL never lands in history.
+  const recordOpen = useLandingPrefsStore((s) => s.recordOpen)
+  useEffect(() => {
+    if (!rootHref || !rootNode) return
+    recordOpen(rootHref, rootNode.title ?? rootNode.id)
+  }, [rootHref, rootNode, recordOpen])
 
   if (booting) {
     return (

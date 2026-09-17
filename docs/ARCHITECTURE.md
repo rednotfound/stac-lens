@@ -64,7 +64,7 @@ Two zustand stores, deliberately small:
 
 ## Components — `src/components/`
 
-**`src/data/catalogs.json`** — the landing page's known-catalog list, typed by `src/data/knownCatalogs.ts`. Data, not code: inclusion criteria, the removal log and the verifier (`npm run verify:catalogs`) are in `docs/CATALOGS.md`.
+**`src/data/catalogs.json`** — the landing page's known-catalog list, typed by `src/data/knownCatalogs.ts`. Data, not code: inclusion criteria, the removal log and the verifier (`npm run verify:catalogs`) are in `docs/CATALOGS.md`. `catalogTags.ts` holds the closed facet vocabularies (topic, region, publisher), `catalogFilters.ts` the pure filter and facet-count functions the landing page uses, both unit-tested. `store/landingPrefs.ts` is a zustand store persisted to `localStorage` for favorites and recently opened roots — per browser, no backend. `hooks/useStickySidebar.ts` keeps the landing sidebar in view with a single page scroll (bottom edge pins while scrolling down, top edge while scrolling up) instead of a nested scroll region.
 
 **`App.tsx`** composes everything: the landing page until a root is chosen; then a header (mark, catalog title, source link), `StructureTree` on the left, `DetailPanel` on the right, and a draggable divider between them (drag to resize, snap to collapse, double-click to toggle). It also owns the URL wiring: computes the query string for the current selection and hands restored queries to the store.
 

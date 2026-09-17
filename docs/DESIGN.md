@@ -5925,3 +5925,326 @@ otherwise.
 - The verifier reports; people decide. A scheduled job that edited the
   list would recreate the original problem with better handwriting.
 - README says "100+" catalogs, not a number that goes stale.
+
+## 100. Finding something in a hundred catalogs — favorites, recents, and a tag vocabulary of our own
+
+**Date:** 2026-09-17. The owner's observation: the landing page now lists a
+hundred-odd sources, which mostly *looks* like a lot of data. A visitor
+cannot remember which one they opened last, cannot tell what most of them
+are, and cannot ask "show me disaster imagery over South America". Two
+steps were asked for: favorites like STAC Browser's, then a way to tag and
+filter.
+
+### What was checked first
+
+- STAC Browser's `showFavorites` (default on) lets users star Catalogs,
+  Collections and Items; they are stored only in the browser and shown on a
+  separate page reached from the header.
+- STAC Index's directory (148 entries) carries `access`, `isApi` and
+  `isPrivate` — nothing thematic or geographic. Whatever we filter by, we
+  have to make ourselves.
+
+### Decisions (asked, not assumed)
+
+- **Favorites only for entries of the known list**, starred on the landing
+  card — narrower than STAC Browser's three object kinds, by the owner's
+  choice. The title is stored with the href so a favorite keeps its name if
+  the list entry is later removed.
+- **Recently opened, alongside favorites**: the last ten roots actually
+  opened (recorded once the root node resolves, so a bad URL never enters
+  history), with a relative time and a Clear button. This is the direct
+  answer to "I can't remember which one I looked at".
+- **Facets with closed vocabularies, not a free tag bag**: topic (15
+  values), region (global + continents + beyond-earth), publisher type (6),
+  plus the existing `kind`. Union within a facet, intersection across.
+- **Continent granularity**, not countries.
+
+### How it is built
+
+- `src/data/catalogTags.ts` — the vocabularies, ids and labels;
+  `docs/CATALOGS.md` defines every value. A unit test and the verifier
+  reject a record using anything else, so the vocabulary cannot drift by
+  accident.
+- All 103 records tagged in one editorial pass from their descriptions and
+  contents. Distribution: Imagery 40, Multi-domain 17, Vector 16, Land
+  cover 14 …; Global 47, Europe 19, North America 13 …; Research 26,
+  Commercial 24, Government 21. Two records have no region (MISTEO, the
+  TETIS research API) because their coverage is not stated — an empty list
+  means "not established", never a guess.
+- `src/data/catalogFilters.ts` — pure functions: text match, facet match,
+  and faceted counts where a facet's own selection does not shrink its own
+  counts (standard faceted-search behavior, so the user sees what else
+  they could add). Nine unit tests.
+- `src/store/landingPrefs.ts` — zustand + `persist`, key
+  `stac-lens.landing-prefs`, version 1. The storage getter *throws* when
+  `localStorage` is unavailable; `createJSONStorage` treats that as "no
+  storage" and the store runs in memory for the session, which is the
+  behavior wanted in a private window.
+- Landing page: Favorites and Recently opened sections appear only when
+  non-empty and hide while a filter is active (a filter is a question about
+  the whole list; the answer should be one grid). Chips per facet with
+  counts; zero-count chips stay visible but dimmed so the vocabulary itself
+  can be read. The card became a `<div role="button">` because the star is
+  a real `<button>` and a button may not contain one; the star's click is
+  excluded by DOM containment (`closest('[data-favorite-toggle]')`), never
+  `stopPropagation()`.
+
+### Verified in Chromium
+
+Elevation → 7 of 103; Elevation + Oceania → the two New Zealand elevation
+catalogs; 23 chips correctly dimmed at zero; "sentinel" + STAC API → 5;
+starring Overture does not open it and survives a reload
+(`localStorage` holds the record); opening the spec example and returning
+shows it under Recently opened; unstar and Clear remove the sections. No
+page errors. 63 unit tests, smoke suite and build green.
+
+### Redesigned the same day — the chip wall was wrong
+
+The owner's reaction to the first version, verbatim in spirit: more
+information, less usable; it looked "really dumb". A round of research
+before redesigning, with the sources named so the reasoning can be
+checked:
+
+- **Baymard** (horizontal filtering vs sidebar): horizontal toolbars stop
+  working past 6–8 filter *types*, hide the option overview, usually omit
+  match counts, and their "more filters" affordances get overlooked in
+  testing; sidebar filtering is "a proven and familiar implementation".
+  The first version exposed 33 values in four horizontal rows *above* the
+  content — the exact anti-pattern.
+- **Hugging Face Datasets**: left sidebar of collapsible facet groups
+  (Tasks, Libraries, Languages, Licenses …), compact result rows, a sort
+  dropdown ("Trending" default), no counts.
+- **Earth Engine Data Catalog** and the **AWS Registry of Open Data**:
+  every entry carries its own tag chips; the vocabulary is learned from
+  the items, and a tag on an item is the way into the filter. The first
+  version's cards carried no tags at all — the facet system and the list
+  were two unrelated things on one page.
+- **NN/g** (filters vs facets): faceted navigation adds interaction cost;
+  it earns its place only when the collection genuinely has several
+  independent dimensions — which 103 catalogs across topic, region and
+  publisher do.
+
+Decisions, asked and answered: **A. sidebar facets + compact rows** over
+B. topic sections with category navigation (Earth Engine / Planetary
+Computer style); **compact rows** over a reduced card grid.
+
+What changed:
+
+- Header: identity left, the one input right; no splash hero. This page
+  is a catalog to browse.
+- Sidebar (220 px, sticky): a **Yours** group that switches the list's
+  population — All catalogs / Favorites / Recently opened, with counts —
+  then one collapsible group per facet: checkbox lists ordered by count,
+  eight values shown with "Show all N", Topic and Region open by
+  default, Publisher and Access collapsed. Zero-count values dimmed, not
+  hidden. A group header shows how many of its values are selected even
+  when collapsed.
+- Main column: a toolbar with the result count, the **applied filters as
+  removable chips** (the one place every active value is visible
+  regardless of what is collapsed), "Clear all", and a sort (Name,
+  Recently added, Recently verified). Then rows: star (visible on hover
+  or when set), title, API badge, host name right-aligned in mono (the
+  full URL is the row's tooltip), one-line description, and the row's own
+  **tags as buttons** that apply that value.
+- Favorites and Recently opened are no longer separate grids; they are
+  views of the same list. A favorite or recent root that is not a list
+  entry renders as a thin row from its stored title, without tags.
+- Rows are `<div role="button">` with keyboard handling because the
+  star and the tags inside are real buttons; their clicks are excluded
+  from "open" by `closest('[data-row-control]')`, never
+  `stopPropagation()`.
+
+Verified in Chromium, same script shape as before: Elevation → 7 of 103;
++ Oceania → the two NZ elevation catalogs; removing the Oceania chip → 7;
+clicking a row's "Planetary science" tag → Cassini and Rosetta; Show all
+→ 23 checkboxes visible; sort by Recently added puts the 2026-09-11 API
+batch first; starring Overture keeps the page and survives a reload,
+Favorites view lists it; opening the spec example and returning shows it
+under Recently opened with "just now"; "sentinel" → 13. Light and dark
+screenshots reviewed. The offline smoke assertion moved from the old
+uppercase heading to the new count line.
+
+### Third pass, same day — the hero gets its job back, cards return, the sidebar scrolls
+
+The owner's review of the sidebar version: the structure is right and the
+sidebar is "a very, very good navigation bar", but three things are wrong.
+
+1. **The URL field had lost its primacy.** It had become a small box in a
+   header corner, and it is the product's real entrance — pasting *your*
+   catalog is the point; the known list is how to try without one. Root
+   cause: the "one box, two jobs" decision from the known-catalog work
+   (open a URL, or filter the list). Once the list had a facet sidebar,
+   the shared box read as the list's filter and was styled like one. Fix,
+   asked and chosen: **separate jobs, separate fields**. A centered hero
+   with one large field that only opens a URL (an `Open` button, enabled
+   only for `https://…`), a line saying nothing leaves the browser, and
+   "or pick one of the 103 verified catalogs below". The list's own name
+   filter moved into its toolbar next to Sort, where a list filter
+   belongs.
+2. **Cards, not rows.** The owner prefers cards for the main area: the
+   sidebar carries the structure, so the main area can afford to look
+   full — "busy, as if the data really is plentiful". Three-column cards
+   (`minmax(300px, 1fr)`), two-line clamped description, and the card's
+   own clickable tags pinned to the bottom with the host name.
+3. **A real bug**: the sidebar was `position: sticky` with no height
+   limit, so once Publisher was expanded its bottom was unreachable — the
+   page scrolled, the sidebar did not. A sticky element must also be its
+   own scroll container: `max-height: calc(100vh - 32px)` plus
+   `overflow-y: auto`. Verified: with every group open and every "Show
+   all" expanded the aside is 1051 px tall in an 868 px viewport, scrolls
+   to its end, and the last checkbox is visible.
+
+Verified in Chromium again: Open disabled until a URL is pasted, then
+opens the spec example; Elevation + Oceania → the two NZ catalogs; a card
+tag → Cassini and Rosetta; "sentinel" in the toolbar filter → 13; star →
+Favorites view; Recently opened lists the opened root; no page errors.
+Light and dark screenshots reviewed.
+
+The principle the owner stated, kept here because it is the brief for
+this page from now on: **simple and plentiful at once** — simple is the
+one field at the top, plentiful is the field of cards below, and the
+sidebar is what keeps plentiful from becoming noise.
+
+### Fourth pass — one scroll, not two
+
+The owner, after the third pass: the frame is right, but the scrolling
+"feels very strange, I can't say where" — the sidebar scrolls, the page
+scrolls, and the two don't agree. Researched before changing anything:
+
+- **Baymard, "Avoid Inline Scroll Areas"**: 26% of major sites put filter
+  lists in a scroll region inside the page; test subjects hit nested-
+  scrolling confusion, wheel "hijacking" when the cursor lands on the
+  inner area mid-scroll, hidden inactive scrollbars (macOS, mobile) that
+  make cropped options look absent, and over-sensitive short scrollbars.
+  Recommendation: truncation with "show more" and progressive disclosure
+  beat inline scrolling. Our sidebar had become exactly such an area —
+  and one that only appeared when a group was expanded, so its behavior
+  was not even stable.
+- **Baymard on filter sidebars**: on desktop a persistent left sidebar is
+  the standard, because selected filters stay in view while scrolling
+  results; the applied-filters overview must stay visible.
+- **CSS `position: sticky`** cannot show the bottom of an element taller
+  than the viewport (a standing CSS Working Group issue). The two known
+  ways out: cap the height and scroll inside (the pattern above), or the
+  "smart sticky" behavior of the sticky-sidebar libraries — the sidebar
+  travels with the page, pins its *bottom* edge while scrolling down and
+  its *top* edge while scrolling up, and on a direction change stays put
+  until an edge is reached. One scroll context throughout.
+- **NN/g on sticky elements**: sticky only what is needed throughout the
+  session, and keep the chrome minimal.
+
+Options put to the owner: A. smart-sticky sidebar, single page scroll;
+B. non-sticky sidebar with only a thin applied-filters toolbar sticky
+(Earth Engine / AWS style, but changing a filter means scrolling back
+up); C. app-style fixed panes with independent scrolling (coherent, but
+the hero would shrink to a header). **A chosen.**
+
+Built as `src/hooks/useStickySidebar.ts`. The first cut translated the
+sidebar on every scroll frame; it worked geometrically but the owner saw
+two things at once: the sidebar "shakes badly" while scrolling, and its
+header sits half cut off. Both real. Scroll events fire *after* the
+browser has painted the frame, so anything positioned from them trails
+the page by a frame — the shaking. And a sidebar taller than the viewport
+has its top off-screen while its bottom is pinned; on a laptop the
+default sidebar (Topic and Region open, eight values each) already
+exceeded the visible page, so that state was the norm, not the exception.
+
+The second cut keeps native `position: sticky`, so the compositor does
+the pinning, and JavaScript acts only when the scroll *direction*
+changes: it freezes the sidebar where it is and switches which sticky
+offset is in force — `top: viewport − 16 − height` (negative) pins the
+bottom edge while scrolling down, `bottom: viewport − 16 − height` pins
+the top edge while scrolling up. At the moment of a switch the sidebar
+already satisfies the new constraint, so nothing jumps; the page carries
+it to the edge and the edge holds. Between direction changes no style is
+written at all — verified with a MutationObserver: 2 writes at a
+direction change, 0 during 1,600 px of steady scrolling either way.
+
+One CSS lesson cost an iteration: freezing with `margin-top` broke the
+top-pin entirely. Sticky keeps the element's *margin box* inside its
+containing block, so a large frozen margin means the browser may never
+push the element back up. The freeze is now an empty spacer element
+before the sidebar inside a wrapper stretched to the row's full height:
+it moves the natural position without shrinking the room to move in.
+
+And the default is made to fit: six values per open group instead of
+eight brings the sidebar to 598 px, under a laptop's visible page, so in
+its normal state it pins at the top like any sticky element and its
+header is never cut. Verified in Chromium: short sidebar pins at 16;
+fully expanded (1,051 px in a 900 px viewport) it pins the bottom at
+viewport − 16 scrolling down, follows the page on reversal, pins the top
+at 16 (±1 px rounding) scrolling up, follows again on the next reversal,
+sits flush with its row at the page top (no gap) and at the page end, and
+never has an inner scrollbar.
+
+### Fifth pass — one field after all, for the right reason
+
+The third pass split the field in two: a URL-only hero and a small
+name filter in the toolbar. The owner reversed it with an argument about
+who actually arrives: far more people come to *look at* data than to
+bring their own — the makers of catalogs are a small minority of the
+visitors. A prominent field gets keywords typed into it whatever its
+placeholder says, so it has to answer them. Decision: **one field, two
+jobs**, but made legible this time:
+
+- Typing filters the list live, and a hint line under the field says so
+  with the number ("23 of 103 catalogs match — listed below"), because the
+  list may be below the fold. Typing from the hero also switches the view
+  back to All catalogs — a search from the top is a search of everything.
+- Pasting a URL arms Open, and the hint says to press it. A URL never
+  filters the list: that would show zero results and look broken.
+- Text search now also matches tag labels (`matchesText`), so "elevation",
+  "Europe" or "commercial" find what they mean, not only what titles say.
+- The toolbar's name filter is gone; the toolbar keeps count, applied
+  chips and sort.
+
+Also removed from the tagline: "Not another STAC Browser". The owner's
+point: the hero should say what the product *is*; what it is not belongs
+in the README's comparison section, where it already is.
+
+### Not done, on purpose
+
+- Filter state is not in the URL yet. The hash is the catalog's href; a
+  landing-page query string would need clearing when a catalog opens. A
+  small follow-up once someone wants to share a filtered view.
+- No favorites for Collections or Items, per the decision above; the
+  store's shape (`href` + `title`) would take them without change.
+
+## 101. Neutrals move onto the brand's hue; the Open button wears the brand
+
+**Date:** 2026-09-17. The owner: the grays are a warm gray — is that right
+for the logo's colors? And the hero's Open button should be the brand
+color.
+
+### What the design systems say
+
+Radix Colors' palette guide has an explicit rule, "natural pairing":
+choose the gray scale saturated with the hue closest to the accent. Its
+mapping: **sage** with teal and jade; **slate** with cyan, blue, sky and
+indigo; **sand** with yellow, amber, orange and brown. Our accents are the
+logo's teal (#0EB4AE, hue ≈178°) and blues (#144E63, #C4E2EF, ≈195°). Our
+neutrals were a sand: `#faf9f7` / `#e7e3dd` / `#2b2822` in the light
+theme, `#1c1a17` / `#24221e` in the dark — the family Radix pairs with
+amber. Warm gray under teal is the mismatched pairing; the teal reads
+slightly "off", and the deep blue text loses its kinship with the mark.
+
+### What changed
+
+- All six neutral tokens per theme now sit at hue ≈192°, between the teal
+  and the blues, with low saturation (bg 25%, border 18%, text 30%,
+  muted 12%, faint 14%; the light surface stays pure white). Each was
+  derived by **holding the old token's relative luminance fixed and
+  rotating the hue**, so every contrast ratio in the app is unchanged to
+  two decimals: text 13.9:1 and muted 3.5:1 on the light background,
+  14.2:1 and 6.4:1 on the dark; the hierarchy colors keep their measured
+  ratios (light Catalog 4.8:1, dark Item 6.9:1).
+- New tokens `--color-brand` / `--color-on-brand`. Light: the teal
+  darkened along its own hue to `#0A7B77`, where white text passes AA at
+  5.1:1 — the exact `#0EB4AE` under white text is 2.6:1 and fails. Dark:
+  the exact `#0EB4AE` with a deep blue-black label at 5.9:1. The same
+  hue-kept, luminance-per-theme rule the hierarchy colors already follow.
+- The Open button uses them. `--color-selection` (the blue of selected
+  nodes, chips and the API badge) is untouched: "blue = interaction with
+  the current selection" stays one language, and the brand color is
+  reserved for the product's own entrance. Moving the selection blue onto
+  the brand too is a separate decision, not taken here.

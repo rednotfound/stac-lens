@@ -12,6 +12,8 @@
 // Exit code is 1 if any entry fails, so the scheduled workflow turns red.
 //
 // Per entry, in order:
+//   0. tags         — every topic/region/publisher/kind value is in the
+//                     vocabularies of src/data/catalogTags.ts (offline)
 //   1. reachable    — GET the root with an Origin header, 2xx within the timeout
 //   2. cors         — Access-Control-Allow-Origin present (`*` or the origin);
 //                     without it no browser-side app can open the catalog
@@ -33,12 +35,16 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net'
 import { detectSourceKind, type RawStacObject } from '../src/stac/graph'
+import { KINDS, PUBLISHERS, REGIONS, TOPICS } from '../src/data/catalogTags'
 
 interface Entry {
   title: string
   description: string
   href: string
   kind: 'static' | 'api'
+  topics: string[]
+  regions: string[]
+  publisher: string
   addedOn: string
   verifiedOn?: string
 }
@@ -171,6 +177,20 @@ async function verify(entry: Entry): Promise<Result> {
   let level: Level = 'ok'
   const bump = (l: Level) => {
     if (l === 'fail' || (l === 'warn' && level === 'ok')) level = l
+  }
+
+  // 0. tags — offline; a value outside the vocabularies in catalogTags.ts
+  //    makes the record unfilterable, so it is a failure, not a warning.
+  const badTags = [
+    ...(entry.topics ?? []).filter((t) => !(t in TOPICS)).map((t) => `topic ${t}`),
+    ...(entry.regions ?? []).filter((r) => !(r in REGIONS)).map((r) => `region ${r}`),
+    ...(entry.publisher in PUBLISHERS ? [] : [`publisher ${entry.publisher}`]),
+    ...(entry.kind in KINDS ? [] : [`kind ${entry.kind}`]),
+    ...((entry.topics ?? []).length === 0 ? ['no topic'] : []),
+  ]
+  if (badTags.length > 0) {
+    bump('fail')
+    notes.push(`unknown tags: ${badTags.join(', ')}`)
   }
 
   const root = await fetchStac(entry.href)

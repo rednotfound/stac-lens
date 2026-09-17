@@ -70,7 +70,7 @@ const treeLabels = () =>
 // 1. Landing page
 await page.goto(`${BASE_URL}/`)
 await page.waitForSelector('footer')
-check('landing page lists the known catalogs', /KNOWN CATALOGS \(\d+ OF \d+\)/.test(await text()))
+check('landing page lists the known catalogs', /^\d+ catalogs$/m.test(await text()) && /^TOPIC$/m.test(await text()))
 check(
   'landing footer names the version and license',
   /STAC Lens v\d+\.\d+\.\d+[\s·]+Apache-2\.0 license/.test(await text()),

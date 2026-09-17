@@ -63,7 +63,7 @@ Both share a **List / Time & Space** switcher: the same page of Items as a scrol
 
 **Shareable URLs** — the address bar always encodes what you're looking at: `#<absolute STAC href>`, plus an applied API search as `?datetime=…&bbox=…&sortby=…` using STAC's own parameter names. Paste the link anywhere and it reopens the same catalog, selection, and search. Browser Back/Forward move between catalogs and the landing page, not out of the app.
 
-**Landing page** — one field that does two jobs: paste any STAC URL to open it, or filter 100+ verified public catalogs and APIs (sourced from [STAC Index](https://stacindex.org), each checked for CORS and real STAC content).
+**Landing page** — one large field, two jobs: type a name, topic or place to filter the list live, or paste any STAC Catalog, Collection or API URL and open it. Below it, a faceted browser over 100+ verified public catalogs and APIs — sidebar facets (topic, region, publisher, static/API) over an editorial tag vocabulary of our own, since neither STAC nor STAC Index classifies catalogs — with each card carrying its tags; favorites and recently opened catalogs are remembered in your browser.
 
 <p align="center">
   <img src="docs/images/screenshot-landing.png" alt="The landing page: one search field over a grid of 100+ verified public STAC catalogs and APIs" width="1000">

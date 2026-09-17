@@ -2,12 +2,33 @@
  * a small palette + spacing scale we control directly, so the tree/timeline
  * visuals stay custom rather than inheriting a generic dashboard look. */
 :root {
-  --color-bg: #faf9f7;
+  /* Tells the browser which palette its own form controls (checkboxes,
+   * selects, scrollbars) should use, so they match the surface they sit on
+   * instead of rendering white in the dark theme. */
+  color-scheme: light;
+  /* Neutrals are tinted toward the brand's own hue (≈192°, between the
+   * logo's teal #0EB4AE and its blues #144E63/#C4E2EF) — Radix Colors'
+   * "natural pairing" rule: use the gray saturated with the hue closest
+   * to the accent (sage for teal, slate for blue/cyan). The previous
+   * neutrals were a warm, sand-like gray, the family Radix pairs with
+   * amber and orange, not teal. Each value was derived by holding the
+   * old token's relative luminance fixed and rotating the hue, so every
+   * contrast ratio in the app is unchanged to two decimals (text 13.9:1,
+   * muted 3.5:1 on the light bg; 14.2:1 and 6.4:1 on the dark). */
+  --color-bg: #f7f9fa;
   --color-surface: #ffffff;
-  --color-border: #e7e3dd;
-  --color-text: #2b2822;
-  --color-text-muted: #8a8478;
-  --color-text-faint: #b7b1a4;
+  --color-border: #dce5e7;
+  --color-text: #1a2b2f;
+  --color-text-muted: #70898f;
+  --color-text-faint: #a2b4b9;
+
+  /* The brand accent as a control color: the logo's teal, darkened in the
+   * light theme until white text passes WCAG AA (5.1:1 — the exact
+   * #0EB4AE is 2.6:1 under white text); exact in the dark theme, where a
+   * deep blue-black label passes at 5.9:1. Same hue-kept, luminance-per-
+   * theme rule as the hierarchy colors below. */
+  --color-brand: #0a7b77;
+  --color-on-brand: #ffffff;
 
   /* The three hierarchy colors are the STAC logo's own three squares — the
    * user's mark (`src/assets/stac-lens-logo.svg`) keeps them verbatim:
@@ -25,10 +46,9 @@
   --color-node-collection: #0eb4ae;
   --color-node-item: #144e63;
   /* Not a tree-node type (Assets are never tree nodes) — a fourth hue for
-   * Inspector's own type iconography only, alongside the three above,
-   * requested directly: "把这个三个层级...Collection,Catalog,Item,和Asset,
-   * 都用一些...简单的icon去代替" (give these levels — Collection, Catalog,
-   * Item, and Asset — simple icons each). Muted plum — kept when the three
+   * Inspector's own type iconography only, alongside the three above —
+   * an explicit request that each level (Collection, Catalog, Item, Asset)
+   * get a simple icon of its own. Muted plum — kept when the three
    * levels moved to the brand's blue-teal family precisely because it
    * belongs to none of them: the brand defines three levels, and Asset is
    * not one (confirmed with the user over a neutral grey). Also outside
@@ -43,13 +63,12 @@
   --color-badge-unknown-bg: #fbe7e2;
   --color-badge-unknown-text: #a3411f;
 
-  /* Static (link-walked) vs. API-searched (§22) — a real, distinct data-
-   * access model, not just a metadata detail, so it needs its own visible
-   * tag rather than small gray subtext: "得有一个标签也好,highlight也好什么
-   * 东西,因为你看这个Stack Browser里面,它就是有一个tag在" (it needs a tag or
-   * highlight of some kind — STAC Browser has a tag for this). Aliased to
-   * the same blue already used for every other API-querying affordance
-   * (Draw area/Select range/Search — see docs/DESIGN.md §29) rather than a
+  /* Static (link-walked) vs. API-searched (docs/DESIGN.md, "STAC API
+   * sources") — a real, distinct data-access model, not just a metadata
+   * detail, so it needs its own visible tag rather than small gray
+   * subtext; an explicit request, with STAC Browser's own API tag as the
+   * reference. Aliased to the same blue already used for every other
+   * API-querying affordance (Draw area/Select range/Search) rather than a
    * new hue, so "blue = live API interaction" reads as one consistent
    * language across the whole app, not a one-off color choice. */
   --color-badge-api-bg: var(--color-selection-bg);
@@ -70,12 +89,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #1c1a17;
-    --color-surface: #24221e;
-    --color-border: #3a372f;
-    --color-text: #ece8e0;
-    --color-text-muted: #a39c8c;
-    --color-text-faint: #6b6558;
+    color-scheme: dark;
+    --color-bg: #121b1e;
+    --color-surface: #1a2426;
+    --color-border: #2b393d;
+    --color-text: #deeaed;
+    --color-text-muted: #8ca0a5;
+    --color-text-faint: #546a6f;
+    --color-brand: #0eb4ae;
+    --color-on-brand: #0b2a33;
 
     /* Brand values where they read on the dark surface (Catalog, Collection),
      * a same-hue tint for Item — see the light-theme note above. */
@@ -105,11 +127,10 @@ body {
  * through an Item Set, and Inspector/Time/Space all waiting on the same
  * node can each take a real, sometimes multi-second fetch, and previously
  * had nothing but static "loading…" text (or, for the root catalog fetch,
- * no visible indicator at all) to show for it: "当打开一份数据的时候,常常需要
- * 加载很久,所以加载的时候需要有加载的UI,动画等等!这个原则应该贯穿到整个产品的
- * 所有需要加载的地方" (opening a dataset often takes a long time — loading
- * needs a real UI, an animation, and this should apply everywhere the app
- * loads something). One keyframe, reused everywhere, rather than a
+ * no visible indicator at all) to show for it. A stated principle for the
+ * whole product: opening a dataset often takes a long time, so loading
+ * needs a real UI with motion, everywhere the app loads something. One
+ * keyframe, reused everywhere, rather than a
  * bespoke animation per component. */
 @keyframes stac-lens-spin {
   to {
