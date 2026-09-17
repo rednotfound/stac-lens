@@ -14,17 +14,19 @@ interface SelectionState {
    *  `parentHref` every time.
    *
    *  This exists because an Item's canonical `rel:collection` can genuinely
-   *  disagree with the Collection you actually found it through (§15) —
+   *  disagree with the Collection you actually found it through
+   *  (docs/DESIGN.md, "An Item's parent is singular") —
    *  Capella cross-lists the same Item under both a product-type facet
    *  (e.g. "SLC") and a use-case facet (e.g. "Environmental"), and only one
-   *  is the spec-authoritative `collection`. Before this existed, selecting
-   *  such an Item from "SLC"'s Item Set silently re-targeted Structure
+   *  is the spec-authoritative `collection`. Without this pin, selecting
+   *  such an Item from "SLC"'s Item Set would silently re-target Structure
    *  Tree/Time/Space Lens to "Environmental" instead — technically correct
    *  per STAC's single-parent philosophy, but disorienting in practice:
    *  the box you were just browsing vanishes, Time/Space Lens both show
    *  "0 items" (a Collection you hadn't browsed yet), and the tree jumps to
-   *  a part of the hierarchy you weren't looking at — reported directly as
-   *  "我就lost掉了" (I got lost). See docs/DESIGN.md §21. */
+   *  a part of the hierarchy you weren't looking at — a reported problem,
+   *  not a guess: the user lost their place. See docs/DESIGN.md, "Items
+   *  removed from Structure Lens entirely". */
   browsingHref: string | null
   select: (href: string | null) => void
 }

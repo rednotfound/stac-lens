@@ -68,12 +68,16 @@ Two zustand stores, deliberately small:
 
 **`LandingPage.tsx`** — one field that opens a pasted URL or filters the verified catalog list (each entry was checked for CORS and real STAC content when added); footer via `ProjectLinks.tsx`.
 
-**`StructureTree.tsx`** — Structure Lens. d3-hierarchy lays out the tree; d3-zoom pans and zooms the canvas; d3-drag moves individual nodes and the boxes. The two gesture systems are composed with `zoom.filter()`: any element marked `data-block-pan` (a node's hit target, a box and everything inside it) is excluded from canvas panning, so a drag or a scroll inside a box never also moves the canvas. Inside the file (the split into separate files is planned):
+**`StructureTree.tsx`** — Structure Lens. d3-hierarchy lays out the tree; d3-zoom pans and zooms the canvas; d3-drag moves individual nodes and the boxes. The two gesture systems are composed with `zoom.filter()`: any element marked `data-block-pan` (a node's hit target, a box and everything inside it) is excluded from canvas panning, so a drag or a scroll inside a box never also moves the canvas. The file is the canvas only — layout, zoom/pan, node drag offsets, per-node box geometry state, auto-pan to a selection that is off-screen (leaving room for its box), and the `boxLayer`: a last-rendered `<g>` that every open box is portaled into so it always paints above other nodes. Everything else lives in `src/components/tree/`:
 
-- `StructureTree` — layout, zoom/pan, node drag offsets, box geometry state per node, auto-pan to a selection that is off-screen (leaving room for its box), the Legend, and the `boxLayer`: a last-rendered `<g>` that every open box is portaled into so it always paints above other nodes.
-- `TreeNodeView` — one node: circle, label (the drag handle), badges, hover tooltip (`NodeTooltip`, portaled to `document.body` because a `position: fixed` element inside a transformed SVG ancestor is not fixed to the viewport), and the node's boxes.
-- `renderBox` — one box: a connector path drawn with the same link generator as the tree, and a `<foreignObject>` holding a window-style panel: title bar (the drag handle), body, corner resize grip. Static catalogs get one box (`LinksItemSetBrowser`); API Collections get two independent boxes, Search and Results, connected by a line.
-- `useBoxDragHandles` — d3-drag wiring for a box's move and resize handles.
+- `TreeNodeView.tsx` — one node: circle, label (the drag handle), badges, hover handling, and the node's box(es), portaled into the `boxLayer`.
+- `ItemSetBox.tsx` — `renderBox`, one box: a connector path drawn with the same link generator as the tree, and a `<foreignObject>` holding a window-style panel: title bar (the drag handle), body, corner resize grip. Static catalogs get one box (`LinksItemSetBrowser`); API Collections get two independent boxes, Search and Results, connected by a line.
+- `boxGeometry.ts` — box default sizes, minimums, gaps and connector inset, the `BoxGeometry` shape, and `makeBoxGeometry`, which builds one box's drag/resize callbacks over a per-node offset/size Map pair.
+- `treeGeometry.ts` — row and level spacing, label truncation and width estimate, the shared `linkGenerator`, the `data-block-pan` attribute name, and the hover/tooltip types.
+- `NodeTooltip.tsx` — the hover card, viewport-clamped; rendered at the top level because a `position: fixed` element inside a transformed SVG ancestor is not fixed to the viewport.
+- `Legend.tsx` — the bottom-left key, open state remembered in `localStorage`.
+
+`useBoxDragHandles` (in `src/hooks/`) is the d3-drag wiring for a box's move and resize handles.
 
 Boxes live in the tree's coordinate space; the tree never resizes or repositions a box on its own after its one-time default.
 

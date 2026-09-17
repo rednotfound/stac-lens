@@ -617,7 +617,7 @@ const KNOWN_CATALOGS = [
  *  also how this list of known catalogs can grow without fabricating
  *  URLs nobody's verified. One search box does both jobs (filter the known
  *  list, or open a pasted URL directly) rather than two overlapping ones —
- *  see docs/DESIGN.md §19. */
+ *  see docs/DESIGN.md, "Growing the known-catalog list to match STAC Browser's breadth". */
 export function LandingPage({
   onOpen,
   error,
@@ -801,11 +801,11 @@ export function LandingPage({
                   // against the buggy visual this fixes. `display: flex` +
                   // the href's own `marginTop: auto` below is what actually
                   // fixes the reported raggedness, though — a differently-
-                  // long description (1 line vs. 3) used to leave the
-                  // short URL line sitting at a different height card to
-                  // card in the same row, reading as "参差不齐...居中对齐"
-                  // (uneven, "like it's all centered") even though nothing
-                  // was ever horizontally centered — pinning the URL to
+                  // long description (1 line vs. 3) would leave the short
+                  // URL line sitting at a different height card to card in
+                  // the same row, which reads as uneven, "like it's all
+                  // centered", even though nothing is horizontally
+                  // centered — pinning the URL to
                   // each card's own bottom edge instead gives every card in
                   // a row the same true bottom line, regardless of how
                   // long its own description happens to be.
@@ -828,10 +828,9 @@ export function LandingPage({
                    * only the special case (a live query endpoint) gets a
                    * badge; the default (static) case stays plain, matching
                    * STAC Browser's own convention this was originally
-                   * copied from. Asked about directly: "比如stac browser就
-                   * 能看出是static catalog还是api等等的,我们是不是还能做更好呢"
-                   * (STAC Browser lets you tell static vs. API apart — can
-                   * we do better here too). */}
+                   * copied from. This was an explicit request: STAC Browser
+                   * lets you tell static vs. API apart, and this app should
+                   * do at least as well. */}
                   {cat.isApi && (
                     <span
                       style={{

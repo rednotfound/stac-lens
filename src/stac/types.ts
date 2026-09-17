@@ -53,11 +53,9 @@ export interface SchemaHints {
  *  entity's own location, same as any `links` entry), and real catalogs
  *  use both forms — a UI that ever shows or copies the raw, unresolved
  *  value risks handing the user a link that silently doesn't work once
- *  pasted somewhere else. Asked about directly: "很多asset,它的路径是,有的
- *  是给完整路径,有的是给相对路径...这东西其实我们都要判别一下,才能够保证用户粘贴
- *  的那个是可以直接使用的那个才行" (a lot of assets give a relative path, not
- *  a full one — we have to account for that so whatever the user pastes
- *  actually works). */
+ *  pasted somewhere else. This was a reported problem, not a guess: a lot
+ *  of assets give a relative path rather than a full one, so the app has
+ *  to account for that so whatever the user pastes actually works. */
 export interface ResolvedAsset {
   key: string
   href: string
@@ -127,7 +125,7 @@ export interface StacNode {
    *  there are no static `rel:child` links at all. Real, not hypothetical:
    *  confirmed directly against Microsoft Planetary Computer's STAC API
    *  root, which has zero `child` links (API-only from the very top —
-   *  already noted in docs/DESIGN.md §22) yet lists ~136 real Collections
+   *  already noted in docs/DESIGN.md, "STAC API sources") yet lists ~136 real Collections
    *  via this endpoint, each returned as a complete, ready-to-use
    *  Collection object in one response rather than a href to fetch
    *  separately (see `stac/apiSearch.ts`'s `fetchCollectionsPage`). Only
@@ -171,10 +169,10 @@ export interface StacNode {
   /** `description` — required on every Catalog/Collection, and (per the
    *  Common Metadata spec) a valid optional field inside an Item's own
    *  `properties` too; resolved from whichever of those two locations
-   *  actually applies to this node's type — see `buildNode`. Asked about
-   *  directly after a real Collection (Adaptation Atlas) turned out to
-   *  have several source fields Inspector never showed at all: "为什么现在
-   *  我在inspector里面也看不到它呢" (why can't I see it in Inspector either). */
+   *  actually applies to this node's type — see `buildNode`. This was a
+   *  reported problem, not a guess: a real Collection (Adaptation Atlas)
+   *  turned out to have several source fields Inspector never showed at
+   *  all, this one included. */
   description?: string
   /** Collection-only source fields (Collection spec — `license` is
    *  required, `providers`/`keywords` optional); `undefined` on Catalog/

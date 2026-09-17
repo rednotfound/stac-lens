@@ -4,13 +4,11 @@ export type StacObjectKind = 'Catalog' | 'Collection' | 'Item' | 'Asset'
  *  shows — not an icon-library import (this project deliberately has no
  *  UI component library, see `tokens.css`'s own header comment), so each
  *  is a small, deliberately simple SVG matching the rest of the app's
- *  thin-stroke, no-fill visual language. Asked for directly: "把这个三个
- *  层级...Collection,Catalog,Item,和Asset,都用一些...简单的icon去代替...用
- *  一个icon去,非常明显地就告诉大家这也是一个什么东西" (give these levels —
- *  Collection, Catalog, Item, Asset — simple icons, so an icon alone makes
- *  obvious what kind of thing you're looking at) — for a project explicitly
- *  aimed at helping people unfamiliar with STAC's own vocabulary, not just
- *  STAC experts.
+ *  thin-stroke, no-fill visual language. This was an explicit request:
+ *  give these levels — Collection, Catalog, Item, Asset — simple icons, so
+ *  an icon alone makes obvious what kind of thing you're looking at — for
+ *  a project explicitly aimed at helping people unfamiliar with STAC's own
+ *  vocabulary, not just STAC experts.
  *
  *  Deliberately distinct metaphors, not just four colored circles: a
  *  folder (Catalog — an organizing container of sub-Catalogs/Collections),

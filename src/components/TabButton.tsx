@@ -1,9 +1,8 @@
-/** The one tab-button visual language this app uses — originally
- *  Inspector's own Human/JSON switcher, now shared with Item Set's
- *  List/Temporal/Spatial switcher too rather than inventing a second tab
- *  style: asked about directly, "如果是tab切换的话，我不知道是不是应该使用我们
- *  系统中已经有的tab组件" (if it's a tab switch, shouldn't it reuse the tab
- *  component the system already has?). A caller wraps one or more of these
+/** The one tab-button visual language this app uses — Inspector's own
+ *  Human/JSON switcher and Item Set's List/Temporal/Spatial switcher share
+ *  it rather than inventing a second tab style; this was raised explicitly:
+ *  a tab switch should reuse the tab component the system already has. A
+ *  caller wraps one or more of these
  *  in its own `<div style={{ display: 'flex', borderBottom: '1px solid
  *  var(--color-border)' }}>` — the bar itself isn't part of this component
  *  since its own margin/spacing needs already differ slightly between the

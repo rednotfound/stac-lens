@@ -162,8 +162,8 @@ function buildPostBody(limit: number, filter?: SearchFilter, collections?: strin
  *  reconstructed — the spec deliberately leaves the shape of a `rel:next`
  *  link's own parameters up to the implementation (`page`, `next`,
  *  `token`, or anything else), so a client must never assume it knows how
- *  to build the next page's URL itself (see docs/DESIGN.md §18's earlier
- *  finding on this for the same reason, applied here to a different
+ *  to build the next page's URL itself (docs/DESIGN.md, "Shareable URLs"
+ *  reaches the same finding for the same reason, applied here to a different
  *  endpoint) — and that includes the link's `method`/`headers`/`body`/
  *  `merge`, not only its `href` (`NextLink`, `followNext`).
  *
@@ -172,13 +172,15 @@ function buildPostBody(limit: number, filter?: SearchFilter, collections?: strin
  *  Planetary Computer returns neither `context` nor `numberMatched` —
  *  `hasMore` must be judged solely from the presence of a `rel:next` link,
  *  never from comparing a running total against an assumed-present count
- *  (confirmed directly against both — see docs/DESIGN.md §22).
+ *  (confirmed directly against both — see docs/DESIGN.md, "STAC API sources").
  *
  *  A fresh query (no `nextHref` yet) is filtered by `opts.filter` when
  *  given (see `SearchFilter` above) — a real, locally-scoped query module
- *  now lives in the Item Set panel itself (docs/DESIGN.md §68), distinct
- *  from the Inspector-wide interactive draw-a-bbox/select-a-range tool
- *  dropped entirely in §39 (and its now-deleted global `store/query.ts`).
+ *  lives in the Item Set panel itself (docs/DESIGN.md, "Item Set's
+ *  static-catalog and API-backed UI/UX split into two genuinely different
+ *  panels"); there is deliberately no Inspector-wide interactive
+ *  draw-a-bbox/select-a-range tool and no global query store
+ *  (docs/DESIGN.md, "Past tabs entirely").
  *  `opts.filter`/`opts.collections` shape the *fresh* request's URL; for a
  *  followed `rel:next` link they are never re-appended to its href (the
  *  link already encodes whatever produced it server-side, in a shape the

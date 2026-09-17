@@ -7,19 +7,18 @@ import type { StacNode, TemporalShape } from '../stac/types'
 const ROW_HEIGHT = 20
 const AXIS_HEIGHT = 28
 const STATED_ROW_HEIGHT = 24
-// Was a fixed 220px-wide *reserved* gutter for a permanent per-row name
-// label, regardless of whether that row currently had one — on the
-// default ~640px-wide Item Set box this was routinely a third or more of
-// the whole width sitting unused, worse once the box could be resized
-// wider still: "timeline需要一直显示name么？导致左侧的2/5都是没用的被浪费的
-// 空间" (does the timeline need to always show the name? — the left 2/5
-// ends up as wasted, unused space). Removed entirely — a name is exactly
-// one hover away (the tooltip below already showed the full, untruncated
-// name; there's no information loss, only a naming *convenience* traded
-// for real width), the same "hover for identity, no permanent on-canvas
-// label" convention `ItemsMap`'s own footprints already use — now that
-// both live together in one Time & Space tab, this also makes the two
-// halves consistent with each other where they weren't before. What's
+// No reserved gutter for a permanent per-row name label: a fixed label
+// column (regardless of whether a row currently has a name) eats a third
+// or more of the default ~640px-wide Item Set box while sitting mostly
+// unused, and more once the box is resized wider. This was an explicit
+// request, not a guess: the timeline does not need to always show the
+// name, and a permanent label column turns the left 2/5 into wasted,
+// unused space. A name is instead exactly one hover away (the tooltip
+// below shows the full, untruncated name; there's no information loss,
+// only a naming *convenience* traded for real width), the same "hover for
+// identity, no permanent on-canvas label" convention `ItemsMap`'s own
+// footprints already use — with both living together in one Time & Space
+// tab, this also keeps the two halves consistent with each other. What's
 // left is just a small left inset so a mark flush against t=domain-start
 // isn't drawn right on the edge.
 const LEFT_PAD = 12
@@ -130,12 +129,12 @@ function clamp(value: number, min: number, max: number): number {
 /** Applies a `{k, x}` zoom/pan transform to a base time scale, replicating
  *  d3-zoom's own `ZoomTransform.rescaleX` algorithm (a new scale whose
  *  domain is adjusted so the *same range* now reads the zoomed/panned
- *  view) without depending on d3-zoom itself — see the real, hands-on
- *  investigation in docs/DESIGN.md §61's update for why this hand-rolled
- *  version replaced a d3-zoom-based one that turned out not to fire at
- *  all once nested this deep inside Structure Lens's own zoom-bound
- *  canvas, despite being wired identically to that already-working
- *  pattern. */
+ *  view) without depending on d3-zoom itself — d3-zoom's own listener does
+ *  not fire at all once nested this deep inside Structure Lens's own
+ *  zoom-bound canvas, even when wired identically to that already-working
+ *  pattern; the hands-on investigation is in docs/DESIGN.md, "Item Set's
+ *  Temporal and Spatial merge into one tab, and the timeline gets real
+ *  zoom" (its update). */
 function rescaleX(base: ScaleTime<number, number>, k: number, tx: number): ScaleTime<number, number> {
   return base.copy().domain(base.range().map((r) => base.invert((r - tx) / k)))
 }
@@ -161,12 +160,12 @@ const IDENTITY_TRANSFORM = { k: 1, x: 0 }
 /** The pure "given some Items, draw their temporal shape" visualization —
  *  extracted out of `TimeLens.tsx` so it can be shared between Inspector's
  *  own single-object-scoped Temporal field (still driven by
- *  `useSelectedItems()`) and Item Set's own multi-item batch view (§59):
- *  "因为不管是时间还是空间都是看待同一批数据的另一种方式而已" (time and space
- *  are both just another way of looking at the same batch of data). No
- *  selection-scoping logic lives here at all — a caller decides what
- *  `items`/`highlightHref` mean in its own context; this component only
- *  ever plots exactly what it's given. */
+ *  `useSelectedItems()`) and Item Set's own multi-item batch view
+ *  (docs/DESIGN.md, "…tabs reuse the app's own tab style, and the box is
+ *  now resizable"): time and space are both just another way of looking
+ *  at the same batch of data. No selection-scoping logic lives here at
+ *  all — a caller decides what `items`/`highlightHref` mean in its own
+ *  context; this component only ever plots exactly what it's given. */
 export function ItemsTimeline({
   items,
   dimmedItems,
@@ -183,10 +182,9 @@ export function ItemsTimeline({
   /** Marks from pages/batches already fetched but not currently the
    *  "active" set — plotted on the same shared axis/lanes as `items` (so
    *  nothing overlaps), but muted and unclickable. Same feature as
-   *  `ItemsMap`'s own `dimmedItems` prop, asked for together: "已经加载过的
-   *  page的数据就留在...timeline和地图都一样，比如说灰色的之类的，但是需要能够被
-   *  看见" (already-loaded pages' data should stay on both the timeline
-   *  and the map — grayed out, but visible). Omit when there's no such
+   *  `ItemsMap`'s own `dimmedItems` prop, and the same explicit request:
+   *  already-loaded pages' data should stay on both the timeline and the
+   *  map — grayed out, but still visible. Omit when there's no such
    *  secondary set. */
   dimmedItems?: StacNode[]
   highlightHref?: string
@@ -213,13 +211,14 @@ export function ItemsTimeline({
   focusOnSelection?: boolean
   /** Lets the axis itself be zoomed/panned (wheel to zoom, drag to pan) —
    *  the same direct-manipulation language Structure Lens's own canvas and
-   *  Space Lens's map already use elsewhere in this app, not a slider:
-   *  "如果items很多话，我觉得timeline完全可以zoom in zoom out，就像很多ui做到
-   *  的那样的" (when there are many items, the timeline should support zoom
-   *  in/out, the way plenty of UIs already do). Off by default — Inspector's
-   *  own single-object embedded widget wasn't asked for this and already
-   *  has `focusOnSelection` doing similar work; only Item Set's own
-   *  multi-item batch view (§62) turns it on. */
+   *  Space Lens's map already use elsewhere in this app, not a slider. This
+   *  is an explicit request: when there are many items, the timeline should
+   *  support zoom in/out, the way plenty of UIs already do. Off by default —
+   *  Inspector's own single-object embedded widget wasn't asked for this and
+   *  already has `focusOnSelection` doing similar work; only Item Set's own
+   *  multi-item batch view (docs/DESIGN.md, "The timeline's label column
+   *  goes away entirely, and a hover-bubbling bug it exposed") turns it
+   *  on. */
   zoomable?: boolean
   /** Auto-scroll the selected row into view on selection — right for Item
    *  Set's own multi-item batch view, where only a handful of rows are
@@ -313,15 +312,15 @@ export function ItemsTimeline({
   // Wheel-to-zoom, drag-to-pan on the time axis — hand-rolled with plain
   // React event handlers + native window listeners, the exact same
   // mousedown/mousemove/mouseup composition App.tsx's own Inspector-width
-  // divider already uses. This replaced a first attempt built on d3-zoom
-  // (the same library/pattern Structure Lens's own canvas already uses
-  // successfully) after real, hands-on investigation found it silently
-  // never fired once nested this deep inside Structure Lens's own
-  // zoom-bound outer `<svg>` — see `rescaleX`'s own comment above and
-  // docs/DESIGN.md §61's update for the full account, including how a
-  // plain React `onMouseDown`/`onWheel` was confirmed (via direct testing)
-  // to fire reliably in the exact same spot d3-zoom's own directly-attached
-  // native listener mysteriously did not.
+  // divider already uses. Not d3-zoom (the same library/pattern Structure
+  // Lens's own canvas already uses successfully): hands-on investigation
+  // found its directly-attached native listener silently never fires once
+  // nested this deep inside Structure Lens's own zoom-bound outer `<svg>`,
+  // while a plain React `onMouseDown`/`onWheel` fires reliably in the
+  // exact same spot (confirmed via direct testing) — see `rescaleX`'s own
+  // comment above and docs/DESIGN.md, "Item Set's Temporal and Spatial
+  // merge into one tab, and the timeline gets real zoom" (its update) for
+  // the full account.
   const svgRef = useRef<SVGSVGElement | null>(null)
   const [transform, setTransform] = useState(IDENTITY_TRANSFORM)
   const transformRef = useRef(transform)
@@ -350,11 +349,13 @@ export function ItemsTimeline({
   }, [])
 
   // Callback ref, not a plain ref + fixed-deps effect — the same class of
-  // timing bug already documented in this codebase (§44's `useElementSize`)
-  // for a ref target that might not exist yet at a fixed-deps effect's own
-  // first run; a callback ref instead fires exactly on attach/detach
-  // regardless of timing, and is what correctly (re)attaches this native
-  // listener whenever the underlying DOM node changes.
+  // timing bug already documented in this codebase (`useElementSize`; see
+  // docs/DESIGN.md, "Type icons for a general audience, and a
+  // draggable/collapsible Inspector") for a ref target that might not
+  // exist yet at a fixed-deps effect's own first run; a callback ref
+  // instead fires exactly on attach/detach regardless of timing, and is
+  // what correctly (re)attaches this native listener whenever the
+  // underlying DOM node changes.
   const svgCallbackRef = useCallback(
     (el: SVGSVGElement | null) => {
       svgRef.current?.removeEventListener('wheel', handleWheel)

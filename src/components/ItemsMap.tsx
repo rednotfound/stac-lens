@@ -43,10 +43,11 @@ function bboxToBounds(bbox: number[]): L.LatLngBoundsLiteral {
  *  visualization — extracted out of `SpaceLens.tsx` so it can be shared
  *  between Inspector's own single-object-scoped Spatial field (still
  *  driven by `useSelectedItems()`) and Item Set's own multi-item batch
- *  view (§59): "因为不管是时间还是空间都是看待同一批数据的另一种方式而已" (time
- *  and space are both just another way of looking at the same batch of
- *  data). No selection-scoping logic lives here — a caller decides what
- *  `items`/`highlightHref` mean in its own context. */
+ *  view (docs/DESIGN.md, "…tabs reuse the app's own tab style, and the
+ *  box is now resizable"): time and space are both just another way of
+ *  looking at the same batch of data. No selection-scoping logic lives
+ *  here — a caller decides what `items`/`highlightHref` mean in its own
+ *  context. */
 export function ItemsMap({
   items,
   dimmedItems,
@@ -61,12 +62,12 @@ export function ItemsMap({
   items: StacNode[]
   /** Footprints from pages/batches already fetched but not currently the
    *  "active" set — drawn faint and non-clickable, behind `items`'s own
-   *  full-color, interactive footprints. Asked for directly: "已经加载过的
-   *  page的数据就留在地图上...灰色的之类的，但是需要能够被看见" (already-loaded
-   *  pages' data should stay on the map, grayed out, but visible). Omit
-   *  (or pass `[]`) when there's no such secondary set — e.g. an
-   *  API-backed Collection's own infinite-scroll accumulation already puts
-   *  everything ever loaded into `items` itself, so it never needs this. */
+   *  full-color, interactive footprints. This is an explicit request, not
+   *  a guess: already-loaded pages' data should stay on the map, grayed
+   *  out, but still visible. Omit (or pass `[]`) when there's no such
+   *  secondary set — e.g. an API-backed Collection's own infinite-scroll
+   *  accumulation already puts everything ever loaded into `items` itself,
+   *  so it never needs this. */
   dimmedItems?: StacNode[]
   highlightHref?: string
   /** A reference footprint to draw as a dashed rectangle (e.g. a
@@ -134,10 +135,10 @@ export function ItemsMap({
       // (plain refs, unaffected by that cleanup/remount cycle) still
       // remember "already fitted" from the map that's now gone — so the fit
       // effect below silently no-ops on the real, final map, permanently
-      // stuck at the default whole-world view. Confirmed directly: a fresh
-      // Collection with a real declared bbox (Planetary Computer's
-      // `3dep-lidar-returns`) never flew to it at all, reported directly —
-      // "Inspector的Spatial的地图并没有fly to bbox...我移动过去才看到的". Only
+      // stuck at the default whole-world view. This was a reported problem,
+      // not a guess: a fresh Collection with a real declared bbox (Planetary
+      // Computer's `3dep-lidar-returns`) never flew to it at all — the map
+      // stayed put until the user panned over to the footprint by hand. Only
       // reproduces in dev (StrictMode's double-invoke is a dev-only
       // behavior — production never re-runs a mount effect without a real
       // unmount), but a testing environment silently showing broken
@@ -216,11 +217,11 @@ export function ItemsMap({
     }
   }, [itemsWithBbox, dimmedItemsWithBbox, statedBbox, highlightHref, palette, onSelectItem])
 
-  // Draw-a-bbox mode — the hand-rolled mousedown/mousemove/mouseup pattern
-  // (with `map.dragging.disable()` for the duration) that the now-deleted
-  // interactive query tool (docs/DESIGN.md §39) originally used, adapted
-  // from that tool's global store to a plain prop/callback pair scoped to
-  // whichever panel turns this on. This is the only mechanism found that
+  // Draw-a-bbox mode — a hand-rolled mousedown/mousemove/mouseup pattern
+  // (with `map.dragging.disable()` for the duration), driven by a plain
+  // prop/callback pair scoped to whichever panel turns this on, not a
+  // global store (docs/DESIGN.md, "Past tabs entirely" covers the query
+  // tool this pattern comes from). This is the only mechanism found that
   // actually lets a drag-to-draw gesture coexist with Leaflet's own
   // drag-to-pan on the same map.
   useEffect(() => {
@@ -330,8 +331,9 @@ export function ItemsMap({
   // box opens, well before its Items have actually finished loading —
   // real user report: opening any Collection's box left the map stuck at
   // the default whole-world view no matter how long you waited, making a
-  // handful-of-km footprint invisible as a sub-pixel speck ("常常范围是小的
-  // ...导致用户其实不知道地图上有没有显示，在哪里"). Root cause was marking
+  // handful-of-km footprint invisible as a sub-pixel speck — footprints are
+  // often small, so the user can't tell whether the map is showing anything
+  // at all, let alone where. Root cause was marking
   // `lastFitTargetRef` done *before* checking whether there was anything
   // to fit yet: the effect's very first run (items still empty) set the
   // guard and returned, so every later re-run once items actually arrived
@@ -378,7 +380,8 @@ export function ItemsMap({
     // decorative — it's what actually creates a new stacking context here;
     // without one, Leaflet's own internal panes/controls (z-index up to
     // 1000) aren't contained by their own map element and can stack above
-    // sibling UI outside it (see docs/DESIGN.md §23).
+    // sibling UI outside it (see docs/DESIGN.md, "Layout: Time Lens and
+    // Space Lens no longer share one fixed-height row").
     <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 0 }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
     </div>

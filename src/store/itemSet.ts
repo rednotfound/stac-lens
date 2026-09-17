@@ -12,23 +12,18 @@ interface ItemSetStoreState {
   setVisible: (forHref: string, hrefs: string[]) => void
   /** Whether the currently-visible items are also being shown on Time/Space
    *  Lens — a plain feature toggle, *not* a "selection" of Item Set as its
-   *  own object. That framing (an earlier `aggregateSelected` field, plus a
-   *  whole discussion of giving Item Set its own synthetic selectable href)
-   *  was deliberately retired: "既然整个STAC的技术架构里面...就三个东西,一个是
-   *  Item,一个是Catalog,一个是Collection...我们就应该为这三个对象设计这个
-   *  对象所专有的Inspector...那在这个程度上,其实我们又似乎都不需要这个
-   *  Item Set这个概念了" (STAC's own architecture only has three real
-   *  objects — Item, Catalog, Collection — so we should design each its own
-   *  dedicated Inspector; at that point we don't really need "Item Set" as
-   *  its own concept anymore).
+   *  own object (deliberately no `aggregateSelected` field and no synthetic
+   *  selectable href for Item Set). The reason: STAC's own architecture
+   *  only has three real objects — Item, Catalog, Collection — so each gets
+   *  its own dedicated Inspector, and at that point "Item Set" is not
+   *  needed as a concept of its own.
    *
-   *  Its own UI briefly lived as a button inside the Collection Inspector's
-   *  "Provided by this app" section, then got removed along with the rest
-   *  of that section once it turned out redundant with the always-on
-   *  Temporal/Spatial widgets it fed — "按钮和Browse this Collection's
-   *  items其实也都可以不要了,我会放在其他的部分" (the button can go too —
-   *  I'll put it somewhere else). There is currently no UI anywhere that
-   *  sets this to `true` — see docs/DESIGN.md §41.
+   *  There is currently no UI anywhere that sets this to `true`. A toggle
+   *  button in the Collection Inspector would be redundant with the
+   *  always-on Temporal/Spatial widgets it would feed, and the Inspector
+   *  has no "Provided by this app" section for it to live in
+   *  (docs/DESIGN.md, "Retiring 'Provided by this app' as its own
+   *  section"); the button is meant to land somewhere else instead.
    *
    *  Reset to `false` whenever the tree-embedded browse panel (rendered
    *  inline in Structure Lens — `LinksItemSetBrowser` for a static

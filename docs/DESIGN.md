@@ -5436,9 +5436,10 @@ server omits — both loosened to match what matters, not the accident.
 
 ## 96. What's deliberately deferred (not forgotten)
 
-- **In progress (agreed 2026-09-16; steps 1–3 done 2026-09-17, see §95;
-  4–6 next): making the codebase contributor-ready before the repo goes
-  public.** Measured
+- **Done (agreed 2026-09-16; steps 1–3 and 4 on 2026-09-17, see §95;
+  steps 5–6 the same day, see §97): making the codebase contributor-ready
+  before the repo goes public.** Kept here as the record of what was
+  measured and planned. Measured
   state: 9,300 source lines, 30% comments — all "why", but written for
   the two of us (Chinese quotes in 23 files, `§NN` pointers into this
   5,500-line chronological log); `StructureTree.tsx` at 2,034 lines;
@@ -5477,6 +5478,12 @@ server omits — both loosened to match what matters, not the accident.
   discovery belongs somewhere other than the structure view; and, tied
   to it, whether an API root should carry an Item Search box (Planetary
   Computer rejects cross-collection search outright).
+- **Open question surfaced by §97's before/after comparison: should a
+  click on the root label collapse the tree?** On `main` the root toggles
+  like any expandable node, so clicking it folds everything (the
+  "Collapse to top level" button deliberately never folds the root). The
+  parked branch made the root select-only because selecting it is how
+  its boxes would open. Undecided; not changed during the refactor.
 - **Decided against, not deferred: inventing a grouping layer over a
   flat API root.** Copernicus Data Space lists 422 Collections with no
   `child` Catalogs at all (220 CLMS products split by variable ×
@@ -5671,3 +5678,86 @@ server omits — both loosened to match what matters, not the accident.
 - CQL2 arbitrary-property filtering on an API search, and per-field sort
   beyond `properties.datetime` (§68, reaffirmed in §84's own research
   pass) — still genuinely out of scope, not just unmentioned.
+
+## 97. Making the code contributor-ready, part 2 — the tree split into modules, and the comments switched to English
+
+**Date:** 2026-09-17. Steps 5 and 6 of the plan in §96's first bullet.
+
+### The split
+
+`StructureTree.tsx` was 2,034 lines: canvas, node view, box renderer,
+drag hook, tooltip, legend and every geometry constant in one file. It is
+now the canvas only (425 lines), and the rest lives beside it:
+
+| File | Holds |
+|---|---|
+| `src/components/StructureTree.tsx` | layout, zoom/pan, node drag offsets, per-node box geometry state, auto-pan, the `boxLayer` |
+| `src/components/tree/TreeNodeView.tsx` | one node — circle, label drag, badges, hover, its portaled box(es) |
+| `src/components/tree/ItemSetBox.tsx` | `renderBox` and the title-bar glyphs |
+| `src/components/tree/boxGeometry.ts` | box sizes/minimums/gaps/inset, `BoxGeometry`, `makeBoxGeometry` |
+| `src/components/tree/treeGeometry.ts` | row/level spacing, label helpers, `linkGenerator`, `BLOCK_PAN_ATTR`, hover types |
+| `src/components/tree/NodeTooltip.tsx` | the viewport-clamped hover card |
+| `src/components/tree/Legend.tsx` | the bottom-left key |
+| `src/hooks/useBoxDragHandles.ts` | d3-drag wiring for a box's move and resize handles |
+
+Pure moves, with one exception: the literal `14` that dropped every box
+below its node's baseline appeared six times and is now
+`BOX_TOP_OFFSET`. `makeBoxGeometry` left the component body — it never
+closed over component scope, its setters were already parameters. The
+`App.tsx` import path is unchanged, so nothing outside the tree noticed.
+
+### How "pure" was checked, and what the check caught
+
+Before and after: `tsc -b`, lint, Prettier, the 54 unit tests, the
+12-check offline smoke suite, and a live Playwright script against two
+real catalogs — the stac-spec `examples/catalog.json` (static; hover
+tooltip, root click, Items box, title-bar drag, corner resize, label
+drag, legend toggle) and Planetary Computer's `3dep-lidar-returns`
+(Search + Results boxes with their API pills). The same script was then
+run against the pre-split code (`git stash` of the source paths, the dev
+server hot-reloading in between) and the two outputs compared line by
+line.
+
+The comparison caught one thing the green checks did not: in the split
+I had transcribed `handleSelectAndToggle` as select-only for the root
+(`if (canExpand && !isRoot)`) — the parked Collection Search branch's
+version, which my memory had merged with main's. On main the root
+toggles like every other expandable node, so a root click collapses the
+tree. Restored to the committed behavior. Whether the root *should*
+collapse on click is a real question (the parked branch answered no,
+because selecting the root is how its boxes would open) — but it is a
+behavior decision, not part of a refactor, and is listed in §96.
+
+Two script-side lessons for the next live check, so they are not
+re-learned: an Item Set box's resize grip sits at the box's far corner,
+which at the default size lands *under the Inspector* on a 1600-px
+viewport — drag the box left first, or the mouse hits the Inspector; and
+Playwright's `innerText` throws on an SVG `<foreignObject>` (not an
+`HTMLElement`) — read the inner `div`.
+
+### The comment pass
+
+Measured before: Chinese quotations in 23 source files (107 lines) and
+43 `§NN` pointers into this document in 17 files. Rules applied, file by
+file, with the tree modules done by hand during the move and the rest in
+four parallel passes:
+
+- A quoted request becomes the reason stated in English, present tense;
+  the fact that it was a *reported* problem rather than a guess stays
+  when it carries weight ("a reported problem, not a guess: …"). The
+  Chinese originals remain in this document.
+- `§NN` becomes `docs/DESIGN.md, "Section title"` — section numbers have
+  shifted twice; titles are stable enough to search for.
+- History narration ("used to", "was retired") in a touched sentence
+  becomes the current rule and why.
+
+Only comments changed. The same tool chain (type check, lint, Prettier,
+unit tests, smoke suite) is the proof: a comment-only diff that breaks
+none of them changed no code. Decided in §96 and standing: the code
+speaks English to contributors; this document stays bilingual.
+
+### Where this leaves the plan
+
+All six steps of the contributor-readiness plan are done. What remains
+before flipping the repo public is the owner's call, not code: making
+the repository public and, if wanted, a first release tag.

@@ -155,12 +155,15 @@ src/
     useApiConformance.ts       reactive root-conformance resolution for gating UI
     useElementSize.ts          ResizeObserver -> real container size
     useShareableUrl.ts         URL hash <-> catalog / selection / applied search, both directions
+    useBoxDragHandles.ts       d3-drag wiring for an Item Set box's move and resize handles
   store/
     selection.ts     the shared selection (selected vs. browsed node)
     itemSet.ts       what Item Set has loaded/visible and its applied query
   components/
     LandingPage.tsx          URL input + verified catalog grid
-    StructureTree.tsx        Structure Lens: SVG tree, pan/zoom, legend, tooltip, the embedded boxes
+    StructureTree.tsx        Structure Lens canvas: d3 layout, pan/zoom, node/box offsets, auto-pan
+    tree/                    the tree's parts: TreeNodeView, ItemSetBox (renderBox), NodeTooltip,
+                             Legend, boxGeometry (sizes, makeBoxGeometry), treeGeometry (spacing, links)
     DetailPanel.tsx          Inspector (Human/JSON), embeds TimeLens/SpaceLens
     TimeLens.tsx / SpaceLens.tsx      Inspector's inline temporal / spatial widgets
     ItemsTimeline.tsx / ItemsMap.tsx  the pure timeline and map renderers, shared everywhere

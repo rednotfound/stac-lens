@@ -15,7 +15,7 @@ export function describeTemporal(t: TemporalShape): string {
  *  longitude's own span shrinks by `cos(latitude)` moving away from the
  *  equator. Good enough for a UI summary ("≈45,231 km²" next to a drawn
  *  search box) — genuinely more informative than a bare "bbox set" label
- *  ("你有没有可能给一些更多的信息呢" — could you give some more information?),
+ *  (an explicit request for more information than that label gives),
  *  not a precision geodesy calculation (no ellipsoidal correction, no
  *  antimeridian handling — a box drawn by dragging on a map, via
  *  `BboxPickerModal`, never produces one by construction). */

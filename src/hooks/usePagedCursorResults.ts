@@ -129,10 +129,9 @@ export function usePagedCursorResults(
   // silently defeated both of those, forcing a full rebuild of every
   // Leaflet layer (and Item Set potentially holds thousands of Items once
   // a few pages have loaded) on every single pan/zoom frame, with nothing
-  // about the actual displayed batch having changed at all — confirmed
-  // directly as a real, reported perf problem: "加载了一段时间以后呢,我会
-  // 发现我整个页面里面拖拽啊,什么东西都比较卡" (after loading for a while,
-  // dragging anything on the whole page feels janky), and measured
+  // about the actual displayed batch having changed at all. This was a
+  // real, reported perf problem, not a guess (after loading for a while,
+  // dragging anything on the whole page feels janky), and it was measured
   // directly before this fix — one ordinary canvas-pan gesture (~20 mouse-
   // move events) triggered 42 full Leaflet layer rebuilds against a
   // ~4,000-Item buffer, none of which had anything to do with the map.

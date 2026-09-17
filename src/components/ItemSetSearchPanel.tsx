@@ -26,10 +26,9 @@ const rowLabelStyle: React.CSSProperties = {
  *  consistently use — Notion/Linear's own filter rows, and dedicated EO
  *  data search tools like Copernicus Browser/NASA Earthdata Search, which
  *  list Temporal/Spatial/etc. as their own separate, clearly-labeled
- *  sections rather than one undifferentiated control strip), replacing an
- *  earlier version that crammed every control into a single wrapping row
- *  with no visual grouping at all — reported directly as "太粗糙,我实在是
- *  有点受不了" (way too crude, I really can't stand it). */
+ *  sections rather than one undifferentiated control strip). Cramming
+ *  every control into a single wrapping row with no visual grouping reads
+ *  as far too crude — a reported problem, not a guess. */
 function ConditionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24 }}>
@@ -71,7 +70,8 @@ export interface ItemSetSearchPanelProps {
  *  hang off Inspector's own Space/Time Lens (a global store) was pulled out
  *  entirely in a past pass — this is a deliberately different, later
  *  addition: a query module scoped locally to *this* panel's own state
- *  (docs/DESIGN.md §68), not a revival of that global tool. No id/title
+ *  (docs/DESIGN.md, "Item Set's static-catalog and API-backed UI/UX split
+ *  into two genuinely different panels"), not a revival of that global tool. No id/title
  *  text search either — replaced entirely by this real query instead. */
 export function ItemSetSearchPanel({
   draft,
@@ -127,11 +127,10 @@ export function ItemSetSearchPanel({
 
       <ConditionRow label="Area">
         {draft.bbox ? (
-          // The area's own real value, not a bare "bbox set" label —
-          // asked for directly: "那那个search范围就是在我们的UI里面仅仅是一个
-          // filter的Bbox and set,对吧?你有没有可能给一些更多的信息呢" (that
-          // search area is just a bare "bbox set" filter in our UI, right?
-          // could you show more information?). Faceted-search UI practice
+          // The area's own real value, not a bare "bbox set" label — an
+          // explicit request, not a guess: a search area shown only as a
+          // bare "bbox set" filter tells the user nothing about it, so
+          // show more information. Faceted-search UI practice
           // agrees: an active filter should show its own applied *value*
           // ("Price: $50–$200"), not just which filter is on. An approximate
           // ground area plus the four edge coordinates (each labeled with

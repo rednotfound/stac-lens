@@ -13,23 +13,26 @@ const EMPTY_ITEMS: StacNode[] = []
  *  in Structure Lens — never global, since a collection can hold tens of
  *  thousands of items. The actual timeline drawing (grouping, lane
  *  packing, axis, marks, tooltip) lives in `ItemsTimeline.tsx`, shared with
- *  Item Set's own multi-item batch view (§59) — this component's only job
- *  is resolving *what* to plot for a single selected object and handling
- *  the empty/loading states around it.
+ *  Item Set's own multi-item batch view (docs/DESIGN.md, "…tabs reuse the
+ *  app's own tab style, and the box is now resizable") — this component's
+ *  only job is resolving *what* to plot for a single selected object and
+ *  handling the empty/loading states around it.
  *
  *  The container div here must always render (only its *contents* are
  *  conditional on data being ready) — the size-measuring effect below binds
  *  once on mount, and if the ref were only attached inside a conditional
  *  branch it could bind to a still-null ref on first render and never
  *  retry. Same class of bug as the Structure Lens pan/zoom fix; see
- *  docs/DESIGN.md §5.
+ *  docs/DESIGN.md, "Structure Lens — why a curved node-link tree, not a
+ *  file-explorer list".
  *
  *  Deliberately `height: 'auto'`, not `100%` — this component hugs
  *  whatever height its own content (an EmptyState message, or the SVG's
  *  own data-driven height) actually needs; App.tsx's wrapper caps that at
  *  a max height with scroll, rather than this component stretching to
  *  fill a fixed-size slot sized for Space Lens's map instead (see
- *  docs/DESIGN.md §23). */
+ *  docs/DESIGN.md, "Layout: Time Lens and Space Lens no longer share one
+ *  fixed-height row"). */
 export function TimeLens() {
   const [containerRef, { width: measuredWidth }] = useElementSize<HTMLDivElement>()
   const viewWidth = measuredWidth > 0 ? measuredWidth : FALLBACK_VIEW_WIDTH
@@ -80,7 +83,8 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
     // Reachable only once loading is done: no stated extent on the
     // Collection itself, and nothing yet visible in Item Set (Detail Panel)
     // to derive a range from either — not a timing artifact, an honest
-    // "nothing to plot yet" (see docs/DESIGN.md §21).
+    // "nothing to plot yet" (see docs/DESIGN.md, "Items removed from
+    // Structure Lens entirely").
     return (
       <EmptyState>
         No stated temporal extent, and no items visible yet — open Detail Panel to browse this collection's items.
@@ -89,13 +93,14 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
   }
 
   // Names whichever object Temporal is actually describing — the selected
-  // Item itself if there is one, otherwise the Collection. Used to also
-  // print an item count ("showing 1 of 4 items") and a "scoped to just this
-  // Item, not its neighbors" qualifier — both stale leftovers from before
-  // Item Set's own aggregate multi-item display was retired (§21/§41/§57):
-  // with that gone, exactly one Item (itself) or zero Items ever populate
-  // this view, so "of N" and "not its neighbors" were never describing a
-  // real alternative any more, just noise.
+  // Item itself if there is one, otherwise the Collection. No item count
+  // ("showing 1 of 4 items") and no "scoped to just this Item, not its
+  // neighbors" qualifier: Item Set has no aggregate multi-item display here
+  // (docs/DESIGN.md, "Items removed from Structure Lens entirely",
+  // "Retiring 'Provided by this app' as its own section" and "Temporal's
+  // header was still describing a retired feature"), so exactly one Item
+  // (itself) or zero Items ever populate this view, and "of N" or "not its
+  // neighbors" would never describe a real alternative, just noise.
   return (
     <>
       <div style={{ padding: '6px 16px 0', fontSize: 12, color: 'var(--color-text-muted)' }}>

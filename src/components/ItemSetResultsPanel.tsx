@@ -220,13 +220,11 @@ export function ItemSetResultsPanel({
         />
       )}
       {/* No "load all remaining" affordance — deliberately removed, not
-       * just guarded harder. A confirmation dialog (an earlier version of
-       * this fix) still left a real, reported danger intact: "这个 load
-       * all remains 这个按钮还在,我也觉得好像不应该在,因为太危险。比如说我这份
-       * 数据就还有一千四百个item,我点一下,我们的系统就瞬间爆" (that "load all
-       * remaining" button is still there — I don't think it should be —
-       * it's too dangerous; say there are 1,400 items remaining, one click
-       * and the whole system instantly blows up). The actual cost isn't
+       * just guarded harder. A confirmation dialog would still leave a
+       * real, reported danger intact (this was a reported problem, not a
+       * guess): the button is too dangerous to exist at all — with, say,
+       * 1,400 items remaining, one click instantly blows up the whole
+       * system. The actual cost isn't
        * the fetch itself (already capped) — it's that every loaded Item,
        * not just the current page, gets plotted on the Time & Space map/
        * timeline at once (`dimmedItems`), and a plain confirm dialog can't

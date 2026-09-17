@@ -11,12 +11,11 @@ const NOOP_SELECT = () => {}
 /** A generous, centered map for drawing a bbox filter — opened from the
  *  Search panel's own "Draw area on map" button instead of the earlier
  *  behavior (jump to the Results panel's own Time & Space tab and enter
- *  draw mode there, borrowing that map). Asked for directly, as one of two
+ *  draw mode there, borrowing that map). An explicit request, one of two
  *  approvingly-floated ideas about surfacing spatial selection consistently
- *  across the app: "每个点了以后出了一个modal,出了一个模态对话框,然后在里面
- *  选择。对我来说这也是非常好的一个交互" (clicking something opens a modal — a
- *  dialog box — and you make your selection inside it; that's a very good
- *  interaction for me). Reuses `ItemsMap` (the same shared map component
+ *  across the app: clicking something opens a modal dialog and the
+ *  selection is made inside it — a good interaction in its own right.
+ *  Reuses `ItemsMap` (the same shared map component
  *  Inspector's own per-item Spatial field and Item Set's own Results map
  *  already use) in `drawMode`, rather than a second, separate map
  *  implementation — the "one map component, used everywhere a spatial
@@ -47,11 +46,10 @@ export function BboxPickerModal({
   // Two explicit modes, not permanent draw mode. `ItemsMap`'s draw mode
   // has to take the drag gesture away from Leaflet's own drag-to-pan (the
   // only way the two can coexist on one map), so a modal that opened
-  // *already* in draw mode had no way to pan at all — reported directly:
-  // "我也失去了拖拽地图的能力...那这样子我要如何先找到一个地方去...zoom in,找到一个
-  // 地方,移动,找到一个地方,再绘制这个area呢" (I also lose the ability to drag
-  // the map — then how am I supposed to first get somewhere, zoom in,
-  // find a place, move, and *then* draw the area?). Every dedicated draw
+  // *already* in draw mode has no way to pan at all. This was a reported
+  // problem, not a guess: losing map drag means there is no way to first
+  // get somewhere, zoom in, find a place, move, and *then* draw the area.
+  // Every dedicated draw
   // tool does this the same way — Leaflet.draw, Copernicus Browser's and
   // NASA Earthdata Search's area tools: the map pans/zooms normally, an
   // explicit tool button arms drawing, and drawing one shape disarms it

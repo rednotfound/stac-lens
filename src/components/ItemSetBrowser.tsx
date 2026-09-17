@@ -10,10 +10,10 @@ import { ItemsMap } from './ItemsMap'
 import { TabButton } from './TabButton'
 import type { StacNode } from '../stac/types'
 
-// Temporal and Spatial started as two separate tabs (§58) but were folded
-// into one — asked about directly: "在tree view的items panel的Temporal和
-// Spatial其实可以组成成一个tab" (Temporal and Spatial in the tree view's
-// item panel could actually be combined into one tab). They're both just
+// Temporal and Spatial are one combined view, not the two separate tabs
+// of docs/DESIGN.md, "Item Set becomes a real multi-view panel: List,
+// Temporal, Spatial" — combining them was an explicit request, not a
+// guess. They're both just
 // another way of looking at the same batch of items (the same reasoning
 // that put them in this panel in the first place), so seeing them
 // together — timeline above, map below, matching the same top-to-bottom
@@ -29,7 +29,8 @@ export type ItemSetView = 'list' | 'time-space'
 const TIMELINE_MAX_HEIGHT = 220
 
 // Static catalogs and STAC APIs are different design philosophies, not
-// just different data sources (docs/DESIGN.md §68) — a static catalog's
+// just different data sources (docs/DESIGN.md, "Item Set's static-catalog
+// and API-backed UI/UX split into two genuinely different panels") — a static catalog's
 // full item list is known up front and can't respond to a query at all, so
 // it gets real page-based browsing (`LinksItemSetBrowser`, its own file);
 // an API-backed Collection can't ever support a numbered "page N" (only an
@@ -75,11 +76,9 @@ export function ItemRow({
         {/* Catalog/Collection already read as distinct types via the
          * tree's own dot color; a list row has no such dot to reuse, so
          * Item gets the same small icon+color treatment Inspector's own
-         * Asset rows already use — asked about directly: "既然catalog还有
-         * collection已经用颜色区分了，那么item难道不也应该表现一下么？即使是在
-         * 一个列表的panel里面" (Catalog/Collection are already
-         * color-distinguished — shouldn't Item show something too, even in
-         * a list panel?). */}
+         * Asset rows already use. This was an explicit request, not a
+         * guess: Catalog/Collection are already color-distinguished, so
+         * Item should show something too, even in a list panel. */}
         <TypeIcon type="Item" size={12} color={selected ? 'var(--color-bg)' : 'var(--color-node-item)'} />
         {item.title ?? item.id}
       </div>
@@ -294,14 +293,13 @@ export function pageNumberButtonStyle(selected: boolean): React.CSSProperties {
 
 /** A classic "1 2 3 … 23 24 25" page list — always page 1, page `total`,
  *  and a small window around `current`, collapsing everything else behind
- *  a single ellipsis. Asked for directly, in preference to a jump-to-page
- *  number input (a first attempt): "我更喜欢那种就是有1、2、3。。。23、24、25这种
- *  感觉的pagination" (I prefer the kind of pagination that feels like
- *  1, 2, 3 ... 23, 24, 25). The number-input version had its own real bug
- *  anyway — a native `<input type="number">`'s spin-button arrows fire
- *  `input`/`change`, not the `blur`/Enter events the old commit handler
- *  waited for, so clicking them changed the displayed digit without ever
- *  navigating: "我点了数字后面的上下按钮，数字有变化，但是没有加载". Numbered
+ *  a single ellipsis. An explicit request, preferred over a jump-to-page
+ *  number input: pagination that feels like 1, 2, 3 ... 23, 24, 25. A
+ *  number input also has a real, reported failure mode — a native
+ *  `<input type="number">`'s spin-button arrows fire `input`/`change`, not
+ *  the `blur`/Enter events a commit handler waits for, so clicking them
+ *  changes the displayed digit without ever navigating (the up/down arrows
+ *  changed the number but loaded nothing). Numbered
  *  buttons have no such native-widget gap — every page is one direct
  *  click, no intermediate typed/committed state at all. */
 export function buildPageList(current: number, total: number): (number | 'ellipsis')[] {
@@ -334,8 +332,9 @@ function range(start: number, end: number): number[] {
  *  regardless of this app's theme) plus `colorScheme` so the browser's own
  *  chrome around them (a date input's calendar-icon/popup, a select's
  *  dropdown arrow) also renders dark in dark mode instead of looking like
- *  a light-mode control glued onto a dark page — reported directly:
- *  "dropdown的按钮底是白色，难道不应该是深色主题么". */
+ *  a light-mode control glued onto a dark page. This was a reported
+ *  problem, not a guess: the dropdown's button background stayed white
+ *  in the dark theme. */
 export const formControlStyle: React.CSSProperties = {
   fontSize: 11,
   padding: '2px 4px',

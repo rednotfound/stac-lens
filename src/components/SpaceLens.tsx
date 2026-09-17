@@ -9,14 +9,16 @@ const EMPTY_ITEMS: StacNode[] = []
 /** A real interactive map (Leaflet + the standard OSM tile server), scoped
  *  to whatever's selected in Structure Lens. The actual map/footprint
  *  drawing (tiles, rectangles, fit-bounds, fly-to-selected) lives in
- *  `ItemsMap.tsx`, shared with Item Set's own multi-item batch view (§59)
- *  — this component's only job is resolving *what* to plot for a single
- *  selected object and rendering the status overlay around it.
+ *  `ItemsMap.tsx`, shared with Item Set's own multi-item batch view
+ *  (docs/DESIGN.md, "…tabs reuse the app's own tab style, and the box is
+ *  now resizable") — this component's only job is resolving *what* to plot
+ *  for a single selected object and rendering the status overlay around it.
  *
  *  The map container always renders regardless of loading/empty status —
- *  same rule as every other lens in this app (see docs/DESIGN.md §5): the
- *  mount effect binds to the ref once, and a container that only appears
- *  in some render branches risks binding to a still-null ref. */
+ *  same rule as every other lens in this app (see docs/DESIGN.md,
+ *  "Structure Lens — why a curved node-link tree, not a file-explorer
+ *  list"): the mount effect binds to the ref once, and a container that
+ *  only appears in some render branches risks binding to a still-null ref. */
 export function SpaceLens() {
   const select = useSelectionStore((s) => s.select)
   const target = useSelectedItems()

@@ -57,9 +57,9 @@ function isEmptyQuery(q: CursorQuery): boolean {
 }
 
 /** API-backed Collections get two genuinely independent boxes — a real
- *  node-editor-style pair, not two `<div>`s sharing one `foreignObject`:
- *  "我指的是有纯粹的两个独立的foreignObject,一个是Search,一个是result" (I mean
- *  two literally separate foreignObjects — one Search, one Result).
+ *  node-editor-style pair, not two `<div>`s sharing one `foreignObject`.
+ *  This was an explicit request: two literally separate foreignObjects,
+ *  one Search, one Result.
  *  `StructureTree.tsx` renders those two `foreignObject`s (each with its
  *  own independent drag/resize handles and a connecting line between them)
  *  and gives this component two plain target `<div>`s, one inside each —
@@ -89,11 +89,10 @@ export function CursorItemSetPanels({
   const sortAvailable = supportsSort(conformsTo)
 
   const [draft, setDraft] = useState<QueryDraft>(() => queryToDraft(initialQuery ?? {}))
-  // Drawing a bbox now happens in a dedicated modal (`BboxPickerModal`),
-  // not by switching Results over to its own Time & Space tab and drawing
-  // there — asked for directly: "每个点了以后出了一个modal...对我来说这也是
-  // 非常好的一个交互" (clicking something opens a modal — that's a very good
-  // interaction for me). The Results box's own map keeps showing
+  // Drawing a bbox happens in a dedicated modal (`BboxPickerModal`), not
+  // by switching Results over to its own Time & Space tab and drawing
+  // there. This was an explicit request: clicking something and getting a
+  // modal to work in is a good interaction. The Results box's own map keeps showing
   // `draft.bbox` as a reference overlay (below), it just isn't itself
   // interactively drawable anymore.
   const [bboxModalOpen, setBboxModalOpen] = useState(false)
@@ -193,10 +192,9 @@ export function CursorItemSetPanels({
             appliedFilterActive ? 'no items match this query' : 'no matching data in the loaded items'
           }
           // The *draft* bbox, not `appliedQuery.bbox` — shown immediately
-          // once drawn, before "Search" is ever clicked. Reported directly:
-          // "我绘制search范围的时候，看不见我绘制的区域，当然确实看到了bbox set"
-          // (when I drew the search area, I couldn't see the area I drew,
-          // though I did see "bbox set") — the temporary drawing preview is
+          // once drawn, before "Search" is ever clicked. This was a reported
+          // problem, not a guess: after drawing a search area, the drawn area
+          // was invisible even though "bbox set" appeared — the temporary drawing preview is
           // removed the instant the gesture ends (by design, it's only a
           // live preview), and nothing else stood in for it until a search
           // actually ran, leaving a multi-second gap with zero visual

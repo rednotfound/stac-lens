@@ -76,7 +76,8 @@ async function loadAllFromListEndpoint(
  *  Set's search) and a real, confirmed bug: selecting an Item via Item Set
  *  re-triggered the ancestor-auto-expand effect below, silently re-opening
  *  a Collection the user had just manually collapsed. Structure Lens is now
- *  purely a Catalog/Collection navigator — see docs/DESIGN.md §21. */
+ *  purely a Catalog/Collection navigator — see docs/DESIGN.md, "Items
+ *  removed from Structure Lens entirely". */
 export function useStructureTree(rootHref: string) {
   const [uiState, setUiState] = useState<Map<string, NodeUiState>>(new Map())
   const selectedHref = useSelectionStore((s) => s.selectedHref)
@@ -189,13 +190,13 @@ export function useStructureTree(rootHref: string) {
 
   // Root starts pre-expanded — the user shouldn't have to click the root
   // node just to see the first level of a catalog they already navigated to.
-  // Deliberately *only* the root, one level: this used to cascade
-  // recursively through every nested Catalog automatically, which for a
-  // deep, unfamiliar structure (Capella's by-datetime facet nests
-  // Catalog→year→month→day) fetched far more than the user asked to see
-  // before they'd even gotten oriented — "我也不知道结构...会一下子加载太多
-  // 东西" (I don't know the structure yet, and it loads too much all at
-  // once). Deeper levels are now always a deliberate click, one at a time,
+  // Deliberately *only* the root, one level: cascading recursively through
+  // every nested Catalog automatically would, for a deep, unfamiliar
+  // structure (Capella's by-datetime facet nests Catalog→year→month→day),
+  // fetch far more than the user asked to see before they'd even gotten
+  // oriented — a reported problem, not a guess: someone who does not know
+  // the structure yet is hit with far too much content loading all at
+  // once. Deeper levels are always a deliberate click, one at a time,
   // or one `expandAllCatalogs()` call away if the user wants the whole
   // curated hierarchy at once.
   useEffect(() => {
@@ -215,9 +216,11 @@ export function useStructureTree(rootHref: string) {
   // "contains the current selection" instead.
   //
   // Targets `browsingHref` (the Collection actually being browsed), not an
-  // Item's own resolved `parentHref` — those can genuinely disagree (§15),
-  // and navigating off of it on every Item selection is what caused "我就
-  // lost掉了" (§21): the tree would jump to wherever the clicked Item's
+  // Item's own resolved `parentHref` — those can genuinely disagree
+  // (docs/DESIGN.md, "An Item's parent is singular"), and navigating off of
+  // it on every Item selection is a reported problem, not a guess — the user
+  // lost their place (docs/DESIGN.md, "Items removed from Structure Lens
+  // entirely"): the tree would jump to wherever the clicked Item's
   // `rel:collection` happened to point, away from the Collection whose
   // Item Set the user was actually browsing.
   //
@@ -243,7 +246,8 @@ export function useStructureTree(rootHref: string) {
       // Walking via `loader.get` alone (cache peek, no fetch) is enough
       // once the user has been browsing — Time/Space/Item Set selections
       // arise from an already-loaded Collection, so every ancestor up to
-      // root is already cached. A deep-linked node (§18's hash URL) breaks
+      // root is already cached. A deep-linked node (the hash URL of
+      // docs/DESIGN.md, "Shareable URLs") breaks
       // that assumption: it's fetched in isolation, with *nothing* else
       // loaded, so the chain has to be fetched on the way up, not just
       // peeked — same as `StacLoader.resolveRoot`, and bounded the same way

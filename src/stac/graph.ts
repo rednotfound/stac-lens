@@ -141,7 +141,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   // Fallback child-discovery for a node with no static `rel:child` links at
   // all — an OGC API - Features "Collections" endpoint (`rel:data`), real
   // and not hypothetical: Microsoft Planetary Computer's own root has zero
-  // `child` links (confirmed directly, §22) but a `rel:data` link to
+  // `child` links (confirmed directly; see docs/DESIGN.md, "STAC API sources") but a `rel:data` link to
   // `/collections`, which returns ~136 real Collections in one response.
   // Only consulted when `childHrefs` is empty — a node with a genuine
   // static tree never needs it.
@@ -158,11 +158,11 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   // Three ways a node's own direct items can be enumerated, tried in this
   // order: flat `rel:item` links (a real, enumerable array — static
   // catalogs, confirmed to reach into the thousands with no pagination of
-  // their own, see docs/DESIGN.md §19's third update); a `rel:items` link
+  // their own, see the third update under docs/DESIGN.md, "Growing the known-catalog list"); a `rel:items` link
   // (the OGC API - Features query endpoint STAC APIs put on individual
   // Collections instead — confirmed directly on Earth Search and Microsoft
   // Planetary Computer, neither of which has a single `rel:item` link
-  // anywhere, only `rel:items`, see §22); or, only for a node that is
+  // anywhere, only `rel:items`, see docs/DESIGN.md, "STAC API sources"); or, only for a node that is
   // itself an API root (`conformsTo`/`rel:search` on its own landing
   // page), its own cross-collection `/search` endpoint — a Catalog-typed
   // landing page has no items of its own to flatly list, but the spec's

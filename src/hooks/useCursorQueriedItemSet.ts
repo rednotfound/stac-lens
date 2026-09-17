@@ -6,9 +6,10 @@ import type { StacNode } from '../stac/types'
 
 // A cursor-mode page costs one network round-trip regardless of how many
 // Items it returns — the response already embeds full Item JSON for each
-// one — so a much larger page size than links-mode is nearly free. Kept
-// identical to the old shared hook's value (raised there after a real
-// complaint about a felt "40 item" cap — see docs/DESIGN.md §22).
+// one — so a much larger page size than links-mode is nearly free. A small
+// page also reads as a hard limit (a real complaint about a felt "40 item"
+// cap — see docs/DESIGN.md, "STAC API sources — a real STAC dataset has two
+// faces, not one").
 const CURSOR_PAGE_SIZE = 250
 
 export type CursorQuery = SearchFilter
@@ -20,9 +21,9 @@ export type CursorItemSetState =
   | {
       /** `idle`: no search has ever been run yet (and none was restored
        *  from a shareable URL) — deliberately not the same as `loading`.
-       *  API mode is search-first: "在API没有search之前,没有结果" (before an
-       *  API search runs, there's no result at all) — no request is made
-       *  until `applyQuery` is actually called at least once. */
+       *  API mode is search-first, by explicit request: before an API
+       *  search runs, there's no result at all — no request is made until
+       *  `applyQuery` is actually called at least once. */
       status: 'idle' | 'loading' | 'ready' | 'error'
       /** Set while `status === 'error'`: the last request for the current
        *  query failed — shown as such, never as an empty result. A server

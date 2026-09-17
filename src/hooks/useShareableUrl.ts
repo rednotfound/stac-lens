@@ -106,9 +106,9 @@ export function useDeepLinkBootstrap(): BootstrapState {
  *  `useShareableUrlSync`'s own push-vs-replace change below, this is what
  *  makes pressing Back, once, from inside an open catalog return to this
  *  app's own landing page instead of leaving the app outright on the very
- *  first press: "浏览器的返回按钮按下之后就回到了浏览器的默认页...这个真的没有
- *  办法么" (pressing the browser's back button goes straight to the
- *  browser's own default page — is there really no way around this?). A
+ *  first press — a reported problem, not a guess: pressing the browser's
+ *  Back button went straight to the browser's own default page, with no
+ *  apparent way around it. A
  *  hash that can no longer resolve (a dead link, now that we've navigated
  *  back to it) degrades to the landing page rather than a silent failure
  *  — the same safe fallback an invalid hash already gets on a fresh load. */
@@ -155,9 +155,9 @@ export function usePopStateSync(
  *  individual Item selections. But it also meant there was only ever one
  *  history entry for the entire app session, so the browser's Back button
  *  left the app outright on the very first press regardless of how much
- *  had been explored — reported directly, and confirmed as the actual
- *  cause here (not assumed): "这个太容易让人误操作了" (this makes it far too
- *  easy to trigger by accident). Pushing only at the root-catalog boundary
+ *  had been explored — a reported problem, and confirmed as the actual
+ *  cause here (not assumed): it made leaving the app far too easy to
+ *  trigger by accident. Pushing only at the root-catalog boundary
  *  keeps both properties: exploring one catalog stays a single entry, and
  *  Back still means something a user would actually want ("the catalog/
  *  page I was on before this one"). */

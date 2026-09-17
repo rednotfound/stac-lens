@@ -14,12 +14,12 @@ import { loader } from './stac/loaderInstance'
 import type { StacNode } from './stac/types'
 
 // Inspector's width is a plain pixel number, not a boolean — 0 means fully
-// collapsed. Direct-manipulation (drag the divider, same "drag not
-// sliders/buttons" language the tree's own pan/zoom already uses) replaced
-// a header show/hide button entirely: "我觉得完全没有必要...我希望我能够用我
-// 的鼠标去拖拽那个分界线...拖到边缘的地方,它就自己就吸附消失" (I don't think we
-// need [the button] at all — I want to drag the dividing line itself with
-// my mouse, and dragging it to the edge should snap it away on its own).
+// collapsed. Direct manipulation (drag the divider, the same "drag, not
+// sliders/buttons" language the tree's own pan/zoom already uses) is the
+// only control — there is no header show/hide button. This was an explicit
+// request: a button is unnecessary when the dividing line itself can be
+// dragged with the mouse, and dragging it to the edge should snap it away
+// on its own.
 const DEFAULT_INSPECTOR_WIDTH = 460
 // Below this, a drag snaps straight to fully collapsed instead of leaving
 // a barely-usable sliver.
@@ -42,18 +42,16 @@ function App() {
   const setPendingInitialQuery = useItemSetStore((s) => s.setPendingInitialQuery)
   const queryStringForSelection =
     itemSetForHref && itemSetForHref === browsingHref ? encodeSearchQuery(itemSetAppliedQuery ?? {}) : ''
-  // Time/Space used to be their own always-visible panels stacked below
-  // Detail's facts, each with its own on/off toggle here, then briefly a
-  // pair of Inspector tabs — now folded directly into the Human tab's own
-  // field flow instead (DetailPanel.tsx: an inline timeline right where
+  // Time/Space are not their own toggleable panels stacked below Detail's
+  // facts, nor a pair of Inspector tabs — they live directly in the Human
+  // tab's own field flow (DetailPanel.tsx: an inline timeline right where
   // "Temporal" is, an inline map right where "Spatial" is), so there is
-  // only ever one panel to show/hide here: "为什么我们不能把这个...human
-  // readable的那一个页面做成一个很长的东西,然后不同的属性...用不同的viewer...去把
-  // 那个数据给渲染出来" (why can't the human-readable page just be one long
-  // scroll, with each property rendered by whatever viewer fits it). The
-  // interactive bbox/datetime query tool that used to live alongside
-  // Time/Space Lens was dropped entirely in the same pass, not folded in
-  // here either — see DetailPanel.tsx/ItemSetBrowser.tsx.
+  // only ever one panel to show/hide here. This was an explicit request:
+  // the human-readable page should be one long scroll, with each property
+  // rendered by whatever viewer fits it. The interactive bbox/datetime
+  // query tool that used to live alongside Time/Space Lens was dropped
+  // entirely in the same pass, not folded in here either — see
+  // DetailPanel.tsx/ItemSetBrowser.tsx.
   const [containerRef, { width: containerWidth }] = useElementSize<HTMLDivElement>()
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH)
   // Remembers the last non-zero width so double-clicking the handle while
@@ -127,9 +125,9 @@ function App() {
   // scrolled into, say, an Item's asset list left the next Item's Inspector
   // rendered mid-scroll instead of from the top, which reads as the old
   // content silently mutating in place rather than a new object being
-  // shown: "选择了一个新的对象之后...看到图片在闪变并且留在原位置" (after
-  // selecting a new object... you see the image flash-change while staying
-  // in the same scroll position).
+  // shown. This was a reported problem, not a guess: after selecting a new
+  // object, the image flash-changed while staying in the same scroll
+  // position.
   const inspectorScrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     inspectorScrollRef.current?.scrollTo({ top: 0 })
@@ -141,7 +139,8 @@ function App() {
   // can fetch one in isolation, so the URL only needs to name the leaf —
   // its catalog root and ancestor chain are found live, the same way
   // Structure Lens already reveals a selection that arrived from Time/Space
-  // Lens (§10/§15's parentHref chain).
+  // Lens (the parentHref chain: docs/DESIGN.md, "UX uplift pass" and "An
+  // Item's parent is singular").
   const { booting, error: bootError, target } = useDeepLinkBootstrap()
   useEffect(() => {
     if (!target) return
@@ -159,14 +158,14 @@ function App() {
     if (target.selectedHref) select(target.selectedHref)
   }, [target, select, setPendingInitialQuery])
   useShareableUrlSync(rootHref, selectedHref, booting, queryStringForSelection)
-  // The browser's own Back/Forward — previously did nothing at all (the
-  // address bar changed, but nothing on screen did), which combined with
-  // `useShareableUrlSync` only ever having one history entry per app
-  // session meant a single Back press left the app outright, however much
-  // had been explored: "浏览器的返回按钮按下之后就回到了浏览器的默认页...这个
-  // 真的没有办法么" (pressing the browser's back button goes straight to
-  // the browser's own default page — is there really no way around
-  // this?). See both hooks' own docs for the full mechanism.
+  // The browser's own Back/Forward must work here. Without this hook they
+  // did nothing at all (the address bar changed, but nothing on screen
+  // did), which combined with `useShareableUrlSync` only ever having one
+  // history entry per app session meant a single Back press left the app
+  // outright, however much had been explored — a reported problem, not a
+  // guess: pressing the browser's Back button went straight to the
+  // browser's own default page. See both hooks' own docs for the full
+  // mechanism.
   usePopStateSync(setRootHref, select, setPendingInitialQuery)
 
   function openCatalog(href: string) {
@@ -174,10 +173,10 @@ function App() {
     setRootHref(href)
   }
 
-  // The header used to show only the raw href — real, but not what a
-  // person actually orients by: "现在我只在header看到了数据链接，所以作用也不大"
-  // (right now the header only shows the data's link, which isn't very
-  // useful). Same cache-then-fetch shape `useSelectedItems` already uses:
+  // The header shows the catalog's name, not only the raw href — the href
+  // is real, but not what a person actually orients by; per direct
+  // feedback, a header that only shows the data's link isn't very useful.
+  // Same cache-then-fetch shape `useSelectedItems` already uses:
   // Structure Lens's own root-expand effect fetches this exact node, so
   // this rarely does its own network request in practice — it's here so
   // the header has *something* to show the moment the href itself resolves,
@@ -245,12 +244,12 @@ function App() {
     // comfortable click target, so it overflows ~7px past the divider on
     // each side by design — bleeds all the way out to `body`/`html`
     // (neither clips by default), which then grow a real page-level
-    // scrollbar in both directions to accommodate it: "当我点了那个按钮以后...
-    // 导致我在Chrome里面右侧和底部都出现了滚动条" (after I clicked that button,
-    // scrollbars showed up on the right and bottom in Chrome) — confirmed
-    // in Firefox too, since neither browser clips overflow that nothing in
-    // the ancestor chain ever asked it to clip. This boundary is the right
-    // place to guarantee that never happens, regardless of what a future
+    // scrollbar in both directions to accommodate it. This was a reported
+    // problem, not a guess: after clicking that button, scrollbars showed
+    // up on the right and bottom in Chrome — confirmed in Firefox too,
+    // since neither browser clips overflow that nothing in the ancestor
+    // chain ever asked it to clip. This boundary is the right place to
+    // guarantee that never happens, regardless of what a future
     // deliberately-larger-than-its-box affordance like this one does deep
     // inside either column.
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -264,15 +263,14 @@ function App() {
           background: 'var(--color-surface)',
         }}
       >
-        {/* Replaced a separate "← Catalogs" button — the title itself is
-         * the back-to-landing-page control now, the same convention
-         * countless real websites already use (their own logo/site name
-         * in the header is always a link home): "我觉得我们似乎不需要返回
-         * 按钮,因为我觉得按下网站标题STAC Lens就可以回到初始页" (I don't think
-         * we need a back button — clicking the "STAC Lens" title itself
-         * should return to the initial page). No border/background of its
-         * own, so it doesn't read as a second, competing button next to
-         * the title it *is*. */}
+        {/* No separate "← Catalogs" button — the title itself is the
+         * back-to-landing-page control, the same convention countless real
+         * websites already use (their own logo/site name in the header is
+         * always a link home). This was an explicit request: a back button
+         * is unnecessary when clicking the "STAC Lens" title itself returns
+         * to the initial page. No border/background of its own, so it
+         * doesn't read as a second, competing button next to the title it
+         * *is*. */}
         <button
           onClick={() => {
             select(null)
@@ -298,8 +296,8 @@ function App() {
         </button>
         <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', flexShrink: 0 }} />
         {/* The catalog's own name, not its URL, is what actually orients
-         * someone here — the href alone "作用也不大" (isn't very useful) on
-         * its own, per direct feedback. Falls back to the raw href until
+         * someone here — per direct feedback, the href alone isn't very
+         * useful on its own. Falls back to the raw href until
          * the root node itself resolves (rarely more than an instant —
          * Structure Lens's own root-expand effect fetches the same node),
          * and again if a catalog genuinely has no `title`/`id` to show
@@ -388,12 +386,12 @@ function App() {
           <>
             {/* The divider resizes Inspector continuously while it's open
              * (drag past `MIN_INSPECTOR_WIDTH` snaps it fully away), but a
-             * drag alone was never a reliable way back once collapsed —
-             * reported directly: "我直接拖拽是不行" (dragging alone doesn't
-             * work) even after the pointer-capture fix above made the
-             * *listener* itself stop getting stuck, because a fully
-             * collapsed divider is just a bare 8px sliver at the very edge
-             * of the window with nothing to grab. Rather than keep
+             * drag alone is not a reliable way back once collapsed — a
+             * reported problem, not a guess: dragging alone didn't work,
+             * even after the pointer-capture fix above made the *listener*
+             * itself stop getting stuck, because a fully collapsed divider
+             * is just a bare 8px sliver at the very edge of the window
+             * with nothing to grab. Rather than keep
              * chasing that edge case, this is the standard resizable-panel
              * pattern instead — a small chevron button that's always
              * there and always a plain click, independent of drag

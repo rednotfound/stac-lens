@@ -2,14 +2,14 @@ import type { StacNode } from './types'
 
 /** What's actually common across a set of Items — declared extensions and
  *  observed property namespaces, via a real intersection ("what do all of
- *  them share"). This file used to also compute a combined temporal range
- *  and a spatial union bbox (the *right* aggregation for those two fields
- *  specifically — a literal intersection of timestamps or bboxes across a
- *  real Item Set is almost always empty and never what anyone wants), but
- *  both became dead computation once the Temporal/Spatial Inspector
- *  widgets started showing that same information visually instead
- *  (docs/DESIGN.md §39/§41) — removed rather than left computed for
- *  nothing. */
+ *  them share"). Deliberately no combined temporal range or spatial union
+ *  bbox here: the Temporal/Spatial Inspector widgets already show that
+ *  same information visually (docs/DESIGN.md, "Past tabs entirely" and
+ *  "Retiring 'Provided by this app' as its own section"), so computing it
+ *  again would be dead work. (A union, not an intersection, is the *right*
+ *  aggregation for those two fields specifically — a literal intersection
+ *  of timestamps or bboxes across a real Item Set is almost always empty
+ *  and never what anyone wants.) */
 export interface ItemSetSummary {
   /** Present in every single member — empty when the set has zero common
    *  extensions, which is a real, honest possible outcome, not an error. */

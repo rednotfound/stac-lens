@@ -27,11 +27,11 @@ export type LinksPagedItemSetState =
       /** Every already-fetched Item from every OTHER page still held in the
        *  local page cache — i.e. everything a prior page turn has already
        *  paid the network cost for, excluding whatever `pageItems` is
-       *  showing right now. Asked for directly: "已经加载过的page的数据就留在
-       *  地图上...但是需要能够被看见" (already-loaded pages' data should stay
-       *  visible on the map/timeline, dimmed, not gone) — this is exactly
-       *  that set, left for the caller to render de-emphasized alongside
-       *  the current page's own full-color items. */
+       *  showing right now. This is an explicit request, not a guess:
+       *  already-loaded pages' data should stay visible on the map/timeline,
+       *  dimmed, not gone — this is exactly that set, left for the caller to
+       *  render de-emphasized alongside the current page's own full-color
+       *  items. */
       otherLoadedItems: StacNode[]
       goToPage: (index0Based: number) => void
       setPageSize: (n: number) => void

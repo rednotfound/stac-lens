@@ -15,7 +15,7 @@ export type SelectedItemsState =
       items: StacNode[]
       /** Undefined, not zero, when the Collection is API-searched and no
        *  query has run yet to learn a real count (or the API never reports
-       *  one at all — see docs/DESIGN.md §22). */
+       *  one at all — see docs/DESIGN.md, "STAC API sources"). */
       totalItemCount?: number
       /** Set when the original selection was an Item — that item should be
        *  highlighted among its siblings in whichever lens consumes this. */
@@ -29,18 +29,21 @@ export type SelectedItemsState =
  *  shows only its own stated temporal/spatial extent; individual item marks
  *  and footprints come entirely from `useItemSetStore`, kept in sync by
  *  `ItemSetBrowser`. This is the fix for "selecting an object should stay
- *  scoped to that object" — see docs/DESIGN.md §21: this hook used to load
- *  up to 100 Items itself on every Collection selection, which is exactly
- *  the silent over-fetching this app already fixed once for Structure
- *  Lens's auto-cascade.
+ *  scoped to that object" — see docs/DESIGN.md, "Items removed from
+ *  Structure Lens entirely": loading up to 100 Items here on every
+ *  Collection selection would be exactly the silent over-fetching this app
+ *  already fixed once for Structure Lens's auto-cascade.
  *
  *  Targets `browsingHref` (the Collection you're actually browsing), not
  *  an Item's own resolved `parentHref` — those can genuinely disagree
- *  (§15), and re-targeting on every Item selection is what caused "我就
- *  lost掉了" (§21): picking an Item from one Collection's Item Set whose
- *  `rel:collection` happens to point elsewhere silently swapped Time/Space
- *  Lens to a Collection you hadn't browsed yet (0 items, unfamiliar
- *  extent) instead of staying put with that Item highlighted in context. */
+ *  (docs/DESIGN.md, "An Item's parent is singular"), and re-targeting on
+ *  every Item selection is a reported problem, not a guess — the user lost
+ *  their place (docs/DESIGN.md, "Items removed from Structure Lens
+ *  entirely"): picking an Item from one Collection's Item Set whose
+ *  `rel:collection` happens to point elsewhere would silently swap
+ *  Time/Space Lens to a Collection you hadn't browsed yet (0 items,
+ *  unfamiliar extent) instead of staying put with that Item highlighted in
+ *  context. */
 export function useSelectedItems(): SelectedItemsState {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
@@ -88,12 +91,13 @@ export function useSelectedItems(): SelectedItemsState {
     // in context is the Collection Inspector's own browse section's job
     // (browsing the Collection, or a search-filtered subset of it); once
     // you've drilled down to one Item, "selecting an object stays scoped to
-    // that object" applies here too — asked directly: "既然我选中了一个item,
-    // 为什么还要显示所有item的时间和范围呢?" (having selected one Item, why
-    // still show every Item's time and extent?). Using the Item itself
+    // that object" applies here too — an explicit request, not a guess:
+    // having selected one Item, there is no reason to still show every
+    // Item's time and extent. Using the Item itself
     // rather than filtering it out of `visibleHrefs` also sidesteps needing
     // it to actually be a member of whatever's currently browsed (it may
-    // not be — see §21's `rel:collection`/`rel:parent` mismatch case).
+    // not be — see the `rel:collection`/`rel:parent` mismatch case under
+    // docs/DESIGN.md, "Items removed from Structure Lens entirely").
     if (selectedNode?.type === 'Item') return [selectedNode]
     // Merely selecting/browsing a Collection must never show its Items'
     // aggregate on its own — only its own stated extent (`node.temporal`/
@@ -103,7 +107,8 @@ export function useSelectedItems(): SelectedItemsState {
     // (that framing was retired — see docs/DESIGN.md's three-object-
     // architecture update: Item, Catalog, Collection, nothing else). Its
     // own UI was removed from the Collection Inspector along with the rest
-    // of "Provided by this app" (docs/DESIGN.md §41) and has not been
+    // of "Provided by this app" (docs/DESIGN.md, "Retiring 'Provided by
+    // this app' as its own section") and has not been
     // placed anywhere yet — `showOnLenses` currently defaults to `false`
     // with no way to flip it, so this branch is presently unreachable in
     // practice until that UI lands somewhere new.

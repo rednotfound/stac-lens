@@ -25,19 +25,14 @@ const INLINE_TIME_MAX_HEIGHT = 240
 const INLINE_SPACE_HEIGHT = 320
 
 /** Two tabs: "Human" (derived, readable facts) and "JSON" (the untouched
- *  source) — Time and Space briefly lived as two more tabs alongside these,
- *  then got folded a level deeper still, directly into Human's own field
- *  flow, right where "Temporal"/"Spatial" already were. Asked for
- *  directly, rejecting the tab model itself: "为什么我们不能把这个...human
- *  readable的那一个页面做成一个很长的东西,然后不同的属性进来呢,我就可以用不同的
- *  viewer...去把那个数据给渲染出来。比如说Time...就排在Description下边的
- *  Temporal的下边,就做成一个Time的UI...那我就不需要用Tag去切换Time和Space了。
- *  那么从结构和语义上面来说,那就是给人类读的。那另外一个JSON是给...机器读" (why
- *  can't the human-readable page just be one long scroll, where each
+ *  source) — Time and Space are not two more tabs alongside these; they sit
+ *  directly in Human's own field flow, right where "Temporal"/"Spatial"
+ *  already are. This was an explicit request that rejected the tab model
+ *  itself: the human-readable page should be one long scroll, where each
  *  property gets rendered by whatever viewer fits it — Time right where
- *  Temporal already is, made into an actual Time UI; then I wouldn't need
- *  a tab to switch between Time and Space at all. Structurally: one page
- *  for humans, JSON for machines). `TimeLens`/`SpaceLens` needed no
+ *  Temporal already is, made into an actual Time UI — so no tab is needed
+ *  to switch between Time and Space at all. Structurally: one page for
+ *  humans, JSON for machines. `TimeLens`/`SpaceLens` needed no
  *  changes to work here beyond dropping their own interactive query tool
  *  (see their own files) — both were already self-contained, reading
  *  everything from `useSelectedItems()`/global stores rather than props.
@@ -75,9 +70,9 @@ export function DetailPanel() {
   const previewAsset = node.assets.find(isInlinePreviewAsset)
   // STAC only really has three kinds of object — Item, Catalog, Collection
   // — so each gets its own recognizable identity here rather than one
-  // undifferentiated panel: "我们就应该为这三个对象设计这个对象所专有的
-  // Inspector...可以做得彼此之间有识别度" (each of these three objects should
-  // get its own dedicated Inspector — make them mutually recognizable).
+  // undifferentiated panel. This was an explicit request: each of these
+  // three objects should get its own dedicated Inspector, made mutually
+  // recognizable.
   // Reuses the exact colors Structure Lens's own tree nodes already use for
   // the same types, so the association is immediate, not a new color to
   // learn.
@@ -91,10 +86,9 @@ export function DetailPanel() {
   // loaded/filtered for this exact Collection — used below only to
   // annotate the Declared-extensions/Property-namespaces fields with what's
   // common across the browsed set, not to render a browse UI of its own
-  // here (that, and the "show on Time/Space Lens" toggle, moved out of
-  // Inspector entirely — "按钮和Browse this Collection's items其实也都可以不
-  // 要了,我会放在其他的部分" (the button and "Browse this Collection's
-  // items" can go too — I'll put them somewhere else)).
+  // here (that, and the "show on Time/Space Lens" toggle, live outside
+  // Inspector entirely — an explicit request: the button and "Browse this
+  // Collection's items" don't belong here and go somewhere else).
   const browsedItems =
     node.type === 'Collection' && forHref === node.href
       ? visibleHrefs.map((h) => loader.get(h)).filter((n): n is StacNode => !!n)
@@ -194,11 +188,11 @@ export function DetailPanel() {
 
           {/* The Temporal/Spatial source facts render as an actual Time/
            * Space UI right here, not a number or a bbox array — the whole
-           * point of pulling Time/Space Lens in this deep: "我就可以用不同的
-           * viewer...去把那个数据给渲染出来" (I can use a different viewer to
-           * render that data). Each still degrades to an honest empty
-           * state (no items, no selection) via its own existing handling —
-           * nothing new needed for a Catalog or an items-less Collection. */}
+           * point of pulling Time/Space Lens in this deep is that each
+           * kind of data gets rendered by the viewer that fits it. Each
+           * still degrades to an honest empty state (no items, no
+           * selection) via its own existing handling — nothing new needed
+           * for a Catalog or an items-less Collection. */}
           <Field label="Temporal">
             <div
               style={{
@@ -410,9 +404,9 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
  *  "give me a link I can trust and copy," not re-displaying every field
  *  already visible in the JSON tab. `href` is always the already-resolved
  *  absolute URL (`ResolvedAsset` — see stac/graph.ts's `buildAssets`), never
- *  the raw, possibly-relative JSON value: "这东西其实我们都要判别一下,才能够
- *  保证用户粘贴的那个是可以直接使用的那个才行" (we have to account for that so
- *  whatever the user pastes actually works). */
+ *  the raw, possibly-relative JSON value — an explicit requirement: the
+ *  relative case has to be handled so that whatever the user pastes
+ *  actually works. */
 function AssetList({ assets }: { assets: ResolvedAsset[] }) {
   const [copyState, setCopyState] = useState<{ key: string; ok: boolean } | null>(null)
 
@@ -506,10 +500,10 @@ function AssetList({ assets }: { assets: ResolvedAsset[] }) {
            * execCommand fallback failed (see `copyToClipboard` below) — a
            * real, focused-and-selected, read-only input the user can copy
            * from with a plain Ctrl/Cmd+C, not just a promise that a button
-           * "did something." Reported directly: "点了Copy link按钮好像也没
-           * 反应,也不知道有没有复制成功" (clicking Copy link seemed to do
-           * nothing, no idea whether it actually copied) — the previous
-           * version's empty `catch {}` gave no feedback either way. */}
+           * "did something." This was a reported problem, not a guess:
+           * clicking Copy link seemed to do nothing, with no way to tell
+           * whether it actually copied — an empty `catch {}` gives no
+           * feedback either way. */}
           {copyState?.key === asset.key && !copyState.ok && (
             <input
               readOnly

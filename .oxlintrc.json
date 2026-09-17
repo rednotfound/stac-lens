@@ -7,7 +7,11 @@
   },
   "overrides": [
     {
-      "files": ["src/components/ItemSetBrowser.tsx", "src/components/ItemSetResultsPanel.tsx"],
+      "files": [
+        "src/components/ItemSetBrowser.tsx",
+        "src/components/ItemSetResultsPanel.tsx",
+        "src/components/tree/ItemSetBox.tsx"
+      ],
       "rules": {
         "react/only-export-components": "off"
       }
