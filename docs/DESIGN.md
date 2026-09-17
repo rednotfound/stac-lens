@@ -5484,6 +5484,18 @@ server omits — both loosened to match what matters, not the accident.
   "Collapse to top level" button deliberately never folds the root). The
   parked branch made the root select-only because selecting it is how
   its boxes would open. Undecided; not changed during the refactor.
+- **Landing page follow-ups (§100–§101).** Filter and view state are not
+  in the URL yet (a shared "disaster imagery over South America" link
+  would need a landing-page query string cleared when a catalog opens).
+  Whether `--color-selection`'s blue should move onto the brand teal, now
+  that `--color-brand` exists, is undecided — "blue = interaction with
+  the selection" is a working language and the change is app-wide.
+  Favorites for Collections and Items were declined for now; the store's
+  shape (`href` + `title`) would take them without change.
+- **Two known-catalog entries currently fail in a browser (§99):** USGS
+  Landsat Collection 2 (CORS header echoes its own origin) and UK NCEO
+  ARD (duplicated `*, *` header). Kept and flagged in `docs/CATALOGS.md`
+  pending the weekly re-checks; removal is a decision, not an automation.
 - **Decided against, not deferred: inventing a grouping layer over a
   flat API root.** Copernicus Data Space lists 422 Collections with no
   `child` Catalogs at all (220 CLMS products split by variable ×

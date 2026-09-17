@@ -68,7 +68,7 @@ Two zustand stores, deliberately small:
 
 **`App.tsx`** composes everything: the landing page until a root is chosen; then a header (mark, catalog title, source link), `StructureTree` on the left, `DetailPanel` on the right, and a draggable divider between them (drag to resize, snap to collapse, double-click to toggle). It also owns the URL wiring: computes the query string for the current selection and hands restored queries to the store.
 
-**`LandingPage.tsx`** — one field that opens a pasted URL or filters the verified catalog list (each entry was checked for CORS and real STAC content when added); footer via `ProjectLinks.tsx`.
+**`LandingPage.tsx`** — the entrance. One field with two jobs (typing filters the catalog list live, a pasted URL arms Open); below it a faceted catalog browser: a sidebar of collapsible facet groups with counts (`data/catalogTags.ts`, `data/catalogFilters.ts`), a "Yours" view switch for favorites and recently opened roots (`store/landingPrefs.ts`), and cards that carry their own clickable tags. The sidebar stays in view through `hooks/useStickySidebar.ts` — native `position: sticky` whose offset is switched only on a scroll-direction change, so there is one page scroll and no nested scroll region. Footer via `ProjectLinks.tsx`.
 
 **`StructureTree.tsx`** — Structure Lens. d3-hierarchy lays out the tree; d3-zoom pans and zooms the canvas; d3-drag moves individual nodes and the boxes. The two gesture systems are composed with `zoom.filter()`: any element marked `data-block-pan` (a node's hit target, a box and everything inside it) is excluded from canvas panning, so a drag or a scroll inside a box never also moves the canvas. The file is the canvas only — layout, zoom/pan, node drag offsets, per-node box geometry state, auto-pan to a selection that is off-screen (leaving room for its box), and the `boxLayer`: a last-rendered `<g>` that every open box is portaled into so it always paints above other nodes. Everything else lives in `src/components/tree/`:
 
@@ -120,7 +120,7 @@ These are the rules the code is organized around. A change that breaks one is a 
 
 - Type-check with `npx tsc -b` (the root `tsconfig.json` is a references-only shell — `tsc -p .` checks nothing). `npm run build` runs the same check and then Vite.
 - `npm run lint` — oxlint, kept at zero findings; `npm run format:check` — Prettier over code and config.
-- `npm test` — Vitest over the pure data layer (`src/stac/__tests__/`): every spec rule and server behavior the data layer encodes has a case there.
+- `npm test` — Vitest over the pure data layer (`src/stac/__tests__/`) and the catalog-list data (`src/data/__tests__/`: vocabulary integrity, filter semantics): every spec rule and server behavior the data layer encodes has a case there.
 - `npm run test:e2e` — `tests/smoke.mjs`, an offline Playwright run against the app with every external request answered from `tests/fixtures/` (recorded real responses) or refused; CI runs it against the production build.
 - `npm run verify:fixtures` — headless data-layer checks against two live reference catalogs.
 - Anything else UI — Playwright against the dev server, driving real public catalogs at real data density; `page.route` with recorded responses where a behavior can't be triggered live.

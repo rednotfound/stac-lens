@@ -66,7 +66,7 @@ Both share a **List / Time & Space** switcher: the same page of Items as a scrol
 **Landing page** — one large field, two jobs: type a name, topic or place to filter the list live, or paste any STAC Catalog, Collection or API URL and open it. Below it, a faceted browser over 100+ verified public catalogs and APIs — sidebar facets (topic, region, publisher, static/API) over an editorial tag vocabulary of our own, since neither STAC nor STAC Index classifies catalogs — with each card carrying its tags; favorites and recently opened catalogs are remembered in your browser.
 
 <p align="center">
-  <img src="docs/images/screenshot-landing.png" alt="The landing page: one search field over a grid of 100+ verified public STAC catalogs and APIs" width="1000">
+  <img src="docs/images/screenshot-landing.png" alt="The landing page: one field to search or paste a URL, a sidebar of facets, and cards for 100+ verified public STAC catalogs and APIs" width="1000">
 </p>
 
 ## STAC support
@@ -81,7 +81,8 @@ STAC Lens reads STAC 1.0 and 1.1 static catalogs and STAC APIs, and follows the 
 | STAC API - Item Search | `GET /search` scoped with `collections=`, `bbox`, `datetime`; Sort extension when declared |
 | Pagination | `next` links followed exactly as advertised — `href`, and the spec's `method` / `headers` / `body` / `merge` (POST-paginating servers included); `context` and `numberMatched` both understood, a total count never assumed |
 | Children extension | `rel:children` → `/children`, preferred over one fetch per `child` link when a server offers it |
-| STAC 1.1 | common `bands` / `data_type` (with `raster:bands` fallback), Link `method`/`body`, deprecated `license` values and the two-bbox rule flagged in the Inspector |
+| STAC 1.1 | common `bands` / `data_type` (with `raster:bands` fallback), Link `method`/`body`, deprecated `license` values flagged in the Inspector |
+| Spatial extents | every declared `extent.spatial.bbox` drawn (not only the first); the spec's overall-extent rule checked and its two-bbox case flagged; malformed bboxes dropped |
 | Real-world behavior | verified against live servers — Earth Search, Microsoft Planetary Computer, Copernicus Data Space, NASA CMR and others — and worked around only where a server contradicts the spec (documented in `docs/DESIGN.md`) |
 
 Not yet: CQL2 filtering and free-text search, arbitrary-field sort, `overview`/`visual` asset rendering, authenticated APIs, and in-browser COG display. The current list is kept in the last section of `docs/DESIGN.md`.
@@ -106,6 +107,7 @@ npm run lint             # oxlint
 npm test                 # unit tests for the data layer
 npm run test:e2e         # offline browser smoke test (recorded responses, no live servers)
 npm run verify:fixtures  # headless data-layer check against two reference catalogs
+npm run verify:catalogs  # re-check every landing-page catalog against its live server (docs/CATALOGS.md)
 ```
 
 Requires Node 20.19+ or 22.12+ (Vite 8's own range).
@@ -132,11 +134,11 @@ src/
   stac/            framework-agnostic data layer
     types.ts         StacNode, TemporalShape, node-shape classification
     graph.ts         raw STAC JSON -> StacNode, link resolution/dedup; reads STAC 1.1 bands/data_type
-                     as well as 1.0 raster:bands, keeps a Collection's declared bbox count
+                     as well as 1.0 raster:bands, keeps every declared Collection bbox
     loader.ts        href-keyed cache + in-flight dedup, lazy child/item fetch
     loaderInstance.ts shared StacLoader singleton
     temporal.ts      instant/interval normalization, temporal bounds for layout
-    spatial.ts       bbox/geometry normalization, defensive invalid-geometry fallback
+    spatial.ts       bbox/geometry normalization, bbox validation and containment (overall-extent rule)
     namespaces.ts    known-extension-prefix registry, per-scope namespace scanning
     describe.ts      plain-text temporal rendering, approximate-area / hemisphere-labeled bbox text
     extensionFacts.ts standard-extension + Common Metadata human-readable interpreters
@@ -147,6 +149,11 @@ src/
     conformance.ts   a node's governing API root's conformsTo (sort gating); resolveSearchTarget()
                      picks the root's GET /search?collections=<id> over the Collection's rel:items
     searchQueryUrl.ts encode/decode an applied search into the URL hash's ?query suffix
+  data/
+    catalogs.json    the landing page's known-catalog list — data with rules (docs/CATALOGS.md)
+    knownCatalogs.ts typed accessor for it
+    catalogTags.ts   closed facet vocabularies: topic, region, publisher, access
+    catalogFilters.ts pure text/facet filtering and faceted counts
   hooks/
     useStructureTree.ts        lazy expand/collapse state -> tree datum for d3
     useSelectedItems.ts        current selection -> what Inspector's Temporal/Spatial widgets plot
@@ -157,11 +164,13 @@ src/
     useElementSize.ts          ResizeObserver -> real container size
     useShareableUrl.ts         URL hash <-> catalog / selection / applied search, both directions
     useBoxDragHandles.ts       d3-drag wiring for an Item Set box's move and resize handles
+    useStickySidebar.ts        a sidebar that stays in view with one page scroll, no nested scrolling
   store/
     selection.ts     the shared selection (selected vs. browsed node)
     itemSet.ts       what Item Set has loaded/visible and its applied query
+    landingPrefs.ts  favorites and recently opened catalogs, persisted per browser
   components/
-    LandingPage.tsx          URL input + verified catalog grid
+    LandingPage.tsx          hero field (search or open a URL) + faceted catalog browser
     StructureTree.tsx        Structure Lens canvas: d3 layout, pan/zoom, node/box offsets, auto-pan
     tree/                    the tree's parts: TreeNodeView, ItemSetBox (renderBox), NodeTooltip,
                              Legend, boxGeometry (sizes, makeBoxGeometry), treeGeometry (spacing, links)
@@ -180,11 +189,23 @@ src/
     tokens.css       color/spacing/type tokens, light + dark
 scripts/
   verify-fixtures.ts headless data-layer verification (no UI)
+  verify-catalogs.ts live re-verification of the known-catalog list; reports, never edits
 tests/
   smoke.mjs          offline browser smoke test; fixtures/pc holds the recorded responses
+                     (unit tests live next to their code: src/stac/__tests__, src/data/__tests__)
 docker/
   nginx.conf         the container's nginx site config (same headers as netlify.toml)
 ```
+
+## Feedback wanted
+
+This is an early, deliberately small project — a visualization over other people's catalogs, not a platform — and it is shaped by what people actually want to see. If any of the following applies, please [open an issue](https://github.com/rednotfound/stac-lens/issues):
+
+- **You have a catalog or API you want to look at.** Paste its URL into the landing page; if it fails, renders oddly, or shows something you believe is wrong, tell us the URL and what you expected. Server quirks are the most valuable reports we get — several documented behaviors in [`docs/DESIGN.md`](docs/DESIGN.md) started that way.
+- **You want a catalog added to the landing list**, or think one is mis-tagged. The list and its tags are data with written rules ([`docs/CATALOGS.md`](docs/CATALOGS.md)); a one-line issue or a pull request against `src/data/catalogs.json` is enough.
+- **You have an idea, a request, or a disagreement** — about what "health" should mean, what the tree should show, or anything else. Half-formed is fine.
+
+A word on the code: it was written largely with an AI coding assistant, directed and reviewed by a designer, and verified by driving the app in a real browser against real catalogs rather than by reading every line. It works, it is tested, and it will still contain mistakes we have not found. If something looks wrong, it probably is — say so.
 
 ## Contributing
 

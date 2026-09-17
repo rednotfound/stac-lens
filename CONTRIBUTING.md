@@ -30,6 +30,7 @@ npm run format           # prettier --write (format:check is what CI runs)
 npm test                 # vitest — unit tests for the data layer (src/stac/__tests__)
 npm run test:e2e         # offline Playwright smoke suite against a running app (tests/smoke.mjs)
 npm run verify:fixtures  # headless data-layer checks against two reference catalogs
+npm run verify:catalogs  # live re-check of the landing-page catalog list (docs/CATALOGS.md); reports, never edits
 ```
 
 CI runs `format:check`, `lint`, `test`, `build`, and then `test:e2e` against the production build.
