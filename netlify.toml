@@ -1,5 +1,8 @@
-# Netlify build settings, kept in the repo rather than the dashboard so a
-# fresh "Import from Git" needs no manual configuration.
+# Netlify build settings for the hosted instance (staclens.com), kept in
+# the repo rather than the dashboard so a fresh "Import from Git" needs no
+# manual configuration. This is one host's config; nothing else depends on
+# it. Other hosts, Docker and sub-path builds: docs/DEPLOY.md, and
+# docker/nginx.conf declares the same headers for the container.
 #
 # STAC Lens is a static site: no functions, no redirects. Routing is
 # hash-based (`#<stac href>`), so the SPA fallback rule other Vite apps

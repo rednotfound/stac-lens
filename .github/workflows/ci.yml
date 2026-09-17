@@ -2,8 +2,9 @@
 # plus lint. This exists because a type error sat unnoticed on main for a
 # day while a weaker local check (`tsc --noEmit -p .`, which type-checks
 # nothing against this repo's references-only tsconfig) kept reporting
-# clean — see docs/DESIGN.md §93. Netlify runs the same build to deploy;
-# this runs it on PRs too, before anything reaches main.
+# clean — see docs/DESIGN.md, "A logo, real icons, and the hierarchy
+# palette". Whatever hosts the site runs the same build to deploy; this
+# runs it on PRs too, before anything reaches main.
 name: CI
 
 on:
@@ -25,6 +26,10 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # The Dockerfile repeats the build inside the image; this keeps it from
+      # silently rotting (a stale base image tag, a file .dockerignore hides).
+      - name: Docker image builds
+        run: docker build -t stac-lens .
       # Offline browser smoke test against the production build: every
       # external request is answered from tests/fixtures (see tests/smoke.mjs).
       - run: npx playwright install --with-deps chromium

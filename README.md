@@ -112,13 +112,14 @@ Requires Node 20.19+ or 22.12+ (Vite 8's own range).
 
 ## Deploying
 
-STAC Lens is a static site with no backend; every request goes from the visitor's browser straight to the STAC server they're exploring. Any static host works. Routing is hash-based, so no rewrite rules are needed.
+A static site with no backend — every STAC request goes from the visitor's browser to the catalog they open. Any static host works: build with `npm run build`, publish `dist`. Routing is hash-based, so no rewrite rules are needed.
 
-- **Build command:** `npm run build` · **Publish directory:** `dist` — already declared in [`netlify.toml`](netlify.toml) (with Node pinned via [`.nvmrc`](.nvmrc)), so on Netlify "Import from Git" needs no further settings. Other hosts: the same two values.
-- Serve from a domain root (asset paths are absolute). For a sub-path, set Vite's `base`.
-- CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint and the real build on every push and pull request.
-- Serve over HTTPS; browsers block requests from an HTTPS page to `http://` catalogs.
-- A catalog that doesn't allow cross-origin requests (CORS) can't be opened from any client-side app, STAC Lens included — it is reported as such in the UI.
+- **Any static host:** the two values above. Serve over HTTPS (browsers block `http://` catalogs from an HTTPS page).
+- **Docker:** `docker build -t stac-lens . && docker run -p 8080:8080 stac-lens` — unprivileged nginx serving the build, with the same cache and content-type headers as the hosted site.
+- **Sub-path or GitHub Pages:** `VITE_BASE=/<repo>/ npm run build`.
+- **Netlify:** how [staclens.com](https://staclens.com) is deployed; [`netlify.toml`](netlify.toml) holds that one host's settings.
+
+Details, headers and a GitHub Pages workflow: [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## Stack
 
@@ -179,6 +180,10 @@ src/
     tokens.css       color/spacing/type tokens, light + dark
 scripts/
   verify-fixtures.ts headless data-layer verification (no UI)
+tests/
+  smoke.mjs          offline browser smoke test; fixtures/pc holds the recorded responses
+docker/
+  nginx.conf         the container's nginx site config (same headers as netlify.toml)
 ```
 
 ## Contributing

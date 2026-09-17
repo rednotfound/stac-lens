@@ -5761,3 +5761,73 @@ speaks English to contributors; this document stays bilingual.
 All six steps of the contributor-readiness plan are done. What remains
 before flipping the repo public is the owner's call, not code: making
 the repository public and, if wanted, a first release tag.
+
+## 98. Deployment made host-neutral — Docker, sub-path builds, and Netlify demoted to "how our instance runs"
+
+**Date:** 2026-09-17. Prompted by the owner's question: the repository
+talked about Netlify in several places, but a user of an open-source
+project may deploy anywhere — how do open-source projects usually arrange
+this, and is the root directory reasonably organized?
+
+### What the neighbors do (checked, not assumed)
+
+- **STAC Browser** ships a `Dockerfile`, `.dockerignore` and a `docker/`
+  directory; no Netlify or Vercel config at all. Its README says: build,
+  then copy `dist/` to any web host; sub-folder deployments use a
+  `pathPrefix` option; Docker details live in `docs/`.
+- **stac-manager** (Development Seed): Docker is the primary path, plus a
+  Helm chart; again no hosting-provider file.
+
+So the convention in this ecosystem is *generic build output plus a Docker
+image as the portable path*, with provider-specific files either absent or
+present only as the maintainers' own record.
+
+### What was wrong here, in order of weight
+
+1. The README's Deploying section led with `netlify.toml`, which reads as
+   a recommendation even though the text already said "any static host".
+2. There was no portable path. Self-hosters had to build their own nginx
+   config and would not know about the two headers `netlify.toml` sets.
+3. Sub-path deployment meant editing source (`base` in `vite.config.ts`),
+   which rules out GitHub Pages — the most common free host for an
+   open-source project — without a fork-local patch.
+4. A CI comment mentioned Netlify by name.
+
+### Decisions
+
+- **`netlify.toml` stays in the root.** Netlify only reads it there; it is
+  the truthful record of how staclens.com is deployed; and one provider
+  file in the root is ordinary for a Vite project. Its header comment and
+  the docs now frame it as *one host's configuration*.
+- **`VITE_BASE`** — `vite.config.ts` reads `process.env.VITE_BASE ?? '/'`.
+  Shell environment at build time, never a source edit. The manifest's
+  `start_url` and icon `src` values became relative, because Vite rewrites
+  URLs in `index.html` for the base but does not touch JSON inside
+  `public/`; verified by building with `VITE_BASE=/stac-lens/`, serving it
+  with `vite preview`, and checking in a browser that every reference in
+  `index.html` carries the prefix, the manifest resolves its first icon to
+  `/stac-lens/icon-192.png` (HTTP 200), the landing page renders and no
+  request fails.
+- **Docker**: a two-stage `Dockerfile` (`node:22-alpine` build →
+  `nginxinc/nginx-unprivileged:alpine`) with `docker/nginx.conf`
+  declaring the same two headers as `netlify.toml`, gzip, and no SPA
+  fallback (routing is hash-based, so none is needed). `ARG VITE_BASE`
+  covers a proxy that keeps its prefix. Verified locally: the container
+  runs as uid 101, `/` and the manifest answer `Cache-Control: no-cache`
+  with `application/manifest+json` on the manifest, `/assets/*` answers
+  `public, max-age=31536000, immutable` and gzips, and the 12-check smoke
+  suite passes against the container. Image size 91.6 MB. CI now runs
+  `docker build` so the image can't rot silently.
+- **`docs/DEPLOY.md`** holds the details (the two values every host
+  needs, the headers, sub-path, Docker, a GitHub Pages workflow, Netlify,
+  HTTPS and CORS caveats); the README's Deploying section is four bullets
+  and a link, with Netlify last.
+
+### The root directory: judged fine, left alone
+
+Twenty entries: three `tsconfig` files (Vite's template convention),
+`index.html` (must be in the root for Vite), one dotfile each for lint,
+Prettier, nvm and Docker, one provider file, and the usual `src/`,
+`public/`, `tests/`, `scripts/`, `docs/`, `.github/`. The only reduction
+available was folding `.prettierrc` into `package.json`; not worth a
+change. Reorganizing further would be tidying for its own sake.
