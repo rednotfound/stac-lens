@@ -266,3 +266,28 @@ describe('buildNode — Collection-only source fields', () => {
     expect(item.license).toBeUndefined()
   })
 })
+
+describe('buildNode — Solar System extension', () => {
+  it("reads ssys fields from a Collection top level and from an Item's properties", () => {
+    const coll = buildNode(COL, {
+      type: 'Collection',
+      links: [],
+      'ssys:targets': ['67P/Churyumov-Gerasimenko'],
+      'ssys:target_class': 'comet',
+    } as unknown as RawStacObject)
+    expect(coll.ssysTargets).toEqual(['67P/Churyumov-Gerasimenko'])
+    expect(coll.ssysTargetClass).toBe('comet')
+    const item = buildNode('https://x/item.json', {
+      type: 'Feature',
+      properties: { datetime: '2014-08-03T11:29:13Z', 'ssys:targets': ['Titan'] },
+      links: [],
+    } as unknown as RawStacObject)
+    expect(item.ssysTargets).toEqual(['Titan'])
+    expect(item.ssysTargetClass).toBeUndefined()
+  })
+
+  it('ignores malformed ssys values', () => {
+    const coll = buildNode(COL, { type: 'Collection', links: [], 'ssys:targets': 'Mars' } as unknown as RawStacObject)
+    expect(coll.ssysTargets).toBeUndefined()
+  })
+})

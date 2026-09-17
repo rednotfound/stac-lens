@@ -130,6 +130,23 @@ const INTERPRETERS: Record<string, { title: string; interpret: Interpreter }> = 
       return facts
     },
   },
+  ssys: {
+    title: 'Solar System',
+    interpret: (p) => {
+      const facts: ExtensionFact[] = []
+      const targets = p['ssys:targets']
+      if (Array.isArray(targets) && targets.every((t) => typeof t === 'string')) {
+        facts.push({ label: 'Target body', value: (targets as string[]).join(', ') })
+      }
+      if (typeof p['ssys:target_class'] === 'string') {
+        facts.push({ label: 'Target class', value: p['ssys:target_class'] as string })
+      }
+      if (typeof p['ssys:local_time'] === 'string') {
+        facts.push({ label: 'Local time', value: p['ssys:local_time'] as string })
+      }
+      return facts
+    },
+  },
   processing: {
     title: 'Processing',
     interpret: (p) => {

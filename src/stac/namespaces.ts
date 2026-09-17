@@ -20,6 +20,7 @@ export const KNOWN_EXTENSION_PREFIXES: Record<string, string> = {
   sat: 'Satellite',
   sar: 'SAR',
   sci: 'Scientific Citation',
+  ssys: 'Solar System',
   file: 'File Info',
   table: 'Table',
   processing: 'Processing',

@@ -6310,3 +6310,65 @@ rectangles with the two-bbox warning and the "does not contain" clause;
 noaa-c-cap draws 4 with the first lighter and the neutral note; fia draws
 13 with the not-a-union warning. Unit tests cover parsing, containment,
 3D boxes, the antimeridian case and the validator.
+
+## 103. Not everything is Earth — the Solar System extension decides whether there is a map
+
+**Date:** 2026-09-17. The owner, with a catalog of Rosetta anaglyphs of
+comet 67P in hand: almost all STAC data observes Earth, where a bbox and a
+map are essential; this one observes a comet, so it has no Earth-space at
+all. Can the app tell? Is there a way to know a dataset should not be put
+on a map?
+
+### It can, deterministically
+
+STAC has a **Solar System extension** (`ssys`, schema
+`stac-extensions.github.io/ssys/v1.1.1`) for exactly this. It allows
+three fields on Catalogs, Collections and Items: `ssys:targets` (the
+bodies, per the IVOA target-name convention — "Mars", "Titan",
+"67P/Churyumov-Gerasimenko"), `ssys:target_class` (asteroid, comet,
+planet, satellite, star, sky, …) and `ssys:local_time`. Checked against
+the two non-Earth catalogs we have:
+
+- CNES's Rosetta Collection declares `ssys:targets =
+  ["67P/Churyumov-Gerasimenko"]`, `ssys:target_class = "comet"`, and so
+  does every Item; the Items' `proj:wkt2` names a "67P/C-G Cheops"
+  coordinate system. Its extent is `[-180, -89.99, 180, 89.98]` —
+  drawn on OpenStreetMap that read as "the whole Earth", which is the
+  picture the owner rightly objected to.
+- The University of Nantes' Cassini VIMS catalog declares `["Titan"]` on
+  the **root Catalog** only; everything beneath inherits it.
+
+So the rule: walk up the parent chain to the nearest `ssys:targets`; if
+it names anything other than Earth, the coordinates are body-fixed
+lon/lat on that body, and an Earth basemap is wrong. Publishers put the
+declaration at whichever level is least repetitive, so inheritance is not
+optional. A secondary signal — a non-Earth datum in the projection
+extension (IAU authority codes, or `proj:wkt2` naming another body) — is
+recorded as a future check (S-03: a non-Earth body whose Items still
+claim an Earth datum contradict themselves).
+
+### Decision and build
+
+Options put to the owner: a graticule plot without a basemap (keeps the
+spatial dimension and the footprints' relative positions), text only, or
+record the rule and do nothing yet. **Graticule chosen.**
+
+- `StacNode.ssysTargets` / `ssysTargetClass` parsed from a
+  Catalog/Collection's top level or an Item's `properties`; `ssys` added
+  to the known-extension registry and to the Inspector's extension facts
+  (Target body, Target class, Local time).
+- `stac/body.ts`: `resolveBody(node, loader)` — nearest declaration up
+  the cached parent chain, `undefined` for Earth or none; `describeBody`
+  ("67P/Churyumov-Gerasimenko (comet)"); `bodyKey` for re-keying maps.
+- `ItemsMap` gains `body`: when set, the Leaflet map is created with
+  `CRS.EPSG4326` (a plain equirectangular frame — the honest projection
+  for body-fixed lon/lat with no basemap), no tile layer, no attribution,
+  a graticule every 30° with labels, and a corner note "Body-fixed lon/lat
+  on 67P/Churyumov-Gerasimenko (comet) — not Earth". A map's CRS is fixed
+  at creation, so every parent re-keys the component by `bodyKey`.
+- Wired into the Inspector's Space Lens (label gains "· on Titan"), the
+  Item Set's Time & Space view, and the API search's bbox picker; the
+  Inspector's Spatial field explains where the declaration came from when
+  it was inherited.
+- HEALTH-RULES gains a "Beyond Earth" section: S-01 (behavior, built),
+  S-02 (class shown), S-03 (contradicting Earth datum, not yet).

@@ -9,6 +9,8 @@ import { ItemsTimeline } from './ItemsTimeline'
 import { ItemsMap } from './ItemsMap'
 import { TabButton } from './TabButton'
 import type { StacNode } from '../stac/types'
+import { bodyKey, resolveBody } from '../stac/body'
+import { loader } from '../stac/loaderInstance'
 
 // Temporal and Spatial are one combined view, not the two separate tabs
 // of docs/DESIGN.md, "Item Set becomes a real multi-view panel: List,
@@ -127,6 +129,8 @@ export function TimeSpaceView({
   onBboxDrawn?: (bbox: [number, number, number, number]) => void
   appliedRange?: { start?: string; end?: string }
 }) {
+  // The Collection's world (Solar System extension), for the map below.
+  const body = resolveBody(loader.get(nodeHref), loader)
   const [plotContainerRef, { width: plotWidth }] = useElementSize<HTMLDivElement>()
   // Only the *items'* own temporal/spatial data justifies rendering the
   // timeline/map — the Collection's own stated extent used to be shown as
@@ -192,10 +196,12 @@ export function TimeSpaceView({
           <div style={{ padding: 8, fontSize: 12, color: 'var(--color-text-faint)' }}>{emptyMessage('spatial')}</div>
         ) : (
           <ItemsMap
+            key={bodyKey(body)}
             items={items}
             dimmedItems={dimmedItems}
             highlightHref={selectedHref ?? undefined}
             fitKey={nodeHref}
+            body={body}
             onSelectItem={onSelect}
             appliedBbox={appliedBbox}
             drawMode={drawMode}

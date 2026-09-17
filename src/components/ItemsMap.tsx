@@ -3,6 +3,7 @@ import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { StacNode } from '../stac/types'
 import { firstBboxIsUnion } from '../stac/spatial'
+import { describeBody, type CelestialBody } from '../stac/body'
 
 // The standard OSM tile server — no API key, unlike CARTO's basemap tiles
 // (tried first; they now watermark "API KEY REQUIRED" over the imagery
@@ -55,6 +56,7 @@ export function ItemsMap({
   highlightHref,
   statedBboxes,
   appliedBbox,
+  body,
   drawMode = false,
   onBboxDrawn,
   fitKey,
@@ -86,6 +88,13 @@ export function ItemsMap({
    *  active filter currently constraining what's on screen, and a
    *  Collection can genuinely have both at once. */
   appliedBbox?: [number, number, number, number]
+  /** The world the coordinates belong to when it is not Earth
+   *  (`resolveBody`). Then there is no basemap — OpenStreetMap tiles under
+   *  Titan's longitudes would be a lie — only a plain lon/lat graticule in
+   *  an equirectangular frame, and a corner note naming the body. Fixed
+   *  for the life of the map: parents re-key the component when it
+   *  changes (`bodyKey`). */
+  body?: CelestialBody
   /** While true, dragging on the map draws a rectangle instead of panning
    *  it (`map.dragging.disable()` for the duration — the same conflict
    *  resolution the deleted interactive query tool used, the only way a
@@ -111,9 +120,13 @@ export function ItemsMap({
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const map = L.map(el, { worldCopyJump: true, zoomControl: false }).setView([0, 0], 2)
+    const map = body
+      ? L.map(el, { crs: L.CRS.EPSG4326, worldCopyJump: false, zoomControl: false, attributionControl: false })
+      : L.map(el, { worldCopyJump: true, zoomControl: false })
+    map.setView([0, 0], body ? 1 : 2)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
-    L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    if (body) addGraticule(map, palette.textFaint)
+    else L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map)
     const layerGroup = L.layerGroup().addTo(map)
     mapRef.current = map
     layerGroupRef.current = layerGroup
@@ -152,6 +165,10 @@ export function ItemsMap({
       lastFitTargetRef.current = undefined
       lastFlyHrefRef.current = undefined
     }
+    // `body` and the graticule color are read once, at mount, on purpose:
+    // a Leaflet map's CRS cannot change after creation, so parents re-key
+    // this component when the body changes (`bodyKey`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Dark mode is a CSS filter on the tile pane, not a separate tile source.
@@ -394,6 +411,70 @@ export function ItemsMap({
     // Space Lens no longer share one fixed-height row").
     <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 0 }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
+      {body && <BodyNote body={body} />}
+    </div>
+  )
+}
+
+/** A plain longitude/latitude grid for a body with no basemap: meridians
+ *  and parallels every 30°, labels every 60°/30°, all in the faint text
+ *  color. Drawn once at mount into its own layer group, under the
+ *  footprints. */
+function addGraticule(map: L.Map, color: string) {
+  const group = L.layerGroup().addTo(map)
+  const style = { color, weight: 1, opacity: 0.5, interactive: false }
+  for (let lon = -180; lon <= 180; lon += 30) {
+    L.polyline(
+      [
+        [-90, lon],
+        [90, lon],
+      ],
+      { ...style, weight: lon === 0 ? 1.5 : 1 },
+    ).addTo(group)
+  }
+  for (let lat = -90; lat <= 90; lat += 30) {
+    L.polyline(
+      [
+        [lat, -180],
+        [lat, 180],
+      ],
+      { ...style, weight: lat === 0 ? 1.5 : 1 },
+    ).addTo(group)
+  }
+  const label = (text: string, at: [number, number]) =>
+    L.marker(at, {
+      interactive: false,
+      icon: L.divIcon({
+        className: 'stac-lens-graticule-label',
+        html: `<span style="font-size:10px;color:${color};font-family:var(--font-mono)">${text}</span>`,
+        iconSize: [40, 12],
+        iconAnchor: [20, 6],
+      }),
+    }).addTo(group)
+  for (let lon = -180; lon <= 180; lon += 60) label(`${lon}°`, [-4, lon])
+  for (let lat = -60; lat <= 60; lat += 30) if (lat !== 0) label(`${lat}°`, [lat, 4])
+}
+
+/** Corner note for a non-Earth map, so a viewer never mistakes the grid
+ *  for a blank Earth. */
+function BodyNote({ body }: { body: CelestialBody }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 6,
+        bottom: 6,
+        zIndex: 1001,
+        pointerEvents: 'none',
+        fontSize: 11,
+        padding: '2px 7px',
+        borderRadius: 'var(--radius-sm)',
+        background: 'var(--color-surface)',
+        color: 'var(--color-text-muted)',
+        opacity: 0.92,
+      }}
+    >
+      Body-fixed lon/lat on <strong style={{ color: 'var(--color-text)' }}>{describeBody(body)}</strong> — not Earth
     </div>
   )
 }

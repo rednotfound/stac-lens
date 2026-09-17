@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ItemsMap } from './ItemsMap'
+import type { CelestialBody } from '../stac/body'
 
 // A stable identity — this modal never shows any Items to click (`items`
 // is always `[]`), but `onSelectItem` is still a required prop and one of
@@ -27,6 +28,7 @@ const NOOP_SELECT = () => {}
 export function BboxPickerModal({
   initialBbox,
   statedBboxes,
+  body,
   onConfirm,
   onCancel,
 }: {
@@ -39,6 +41,8 @@ export function BboxPickerModal({
    *  on, so the user starts where the data actually is instead of at a
    *  whole-world view. */
   statedBboxes?: number[][]
+  /** Non-Earth body, if any — the map then draws a graticule, no tiles. */
+  body?: CelestialBody
   onConfirm: (bbox: [number, number, number, number]) => void
   onCancel: () => void
 }) {
@@ -167,6 +171,7 @@ export function BboxPickerModal({
             drawMode={drawing}
             appliedBbox={drawnBbox}
             statedBboxes={initialBbox ? undefined : statedBboxes}
+            body={body}
             fitKey="bbox-picker"
             onBboxDrawn={handleBboxDrawn}
           />

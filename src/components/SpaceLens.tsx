@@ -4,6 +4,8 @@ import { Spinner } from './Spinner'
 import { ItemsMap } from './ItemsMap'
 import type { StacNode } from '../stac/types'
 import { declaredBboxes } from '../stac/spatial'
+import { bodyKey, describeBody, resolveBody } from '../stac/body'
+import { loader } from '../stac/loaderInstance'
 
 const EMPTY_ITEMS: StacNode[] = []
 
@@ -36,6 +38,16 @@ export function SpaceLens() {
   // suppressing this whenever it's set keeps a single Item's own Inspector
   // widget scoped to exactly that Item.
   const statedBboxes = !highlightHref ? declaredBboxes(node?.spatial) : undefined
+  // Which world these coordinates are on (Solar System extension, resolved
+  // up the parent chain). Non-Earth → no basemap, a graticule instead.
+  // Resolved from the *selection*, not from `node`: `node` is only set once
+  // Items are ready, but the map container renders in every status — a
+  // Collection with sub-collections and no direct Items (Cassini's Titan)
+  // still shows the map, and it must already be Titan's grid, not Earth.
+  const browsingHref = useSelectionStore((s) => s.browsingHref)
+  const selectedHref = useSelectionStore((s) => s.selectedHref)
+  const bodyNode = node ?? loader.get(browsingHref ?? selectedHref ?? '')
+  const body = resolveBody(bodyNode, loader)
   const itemFootprintCount = items.filter((i) => !!i.spatial?.bbox).length
 
   const isLoadingTarget = target.status === 'loading'
@@ -55,9 +67,11 @@ export function SpaceLens() {
     // this component's overlay label needs the same containment.
     <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 0 }}>
       <ItemsMap
+        key={bodyKey(body)}
         items={items}
         highlightHref={highlightHref}
         statedBboxes={statedBboxes}
+        body={body}
         fitKey={node?.href}
         onSelectItem={select}
       />
@@ -84,6 +98,7 @@ export function SpaceLens() {
         {node ? (
           <>
             <strong style={{ color: 'var(--color-text)' }}>{node.title ?? node.id}</strong>
+            {body && <span>· on {describeBody(body)}</span>}
             {' · '}
             {itemFootprintCount} item footprint{itemFootprintCount === 1 ? '' : 's'}
             {statedBboxes && statedBboxes.length > 1 && ` · ${statedBboxes.length} declared bboxes`}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { loader } from '../stac/loaderInstance'
+import { describeBody, resolveBody } from '../stac/body'
 import { classifyNodeShape, type StacNode } from '../stac/types'
 import { useSelectionStore } from '../store/selection'
 import { useItemSetStore } from '../store/itemSet'
@@ -217,6 +218,19 @@ export function DetailPanel() {
             >
               <SpaceLens />
             </div>
+            {(() => {
+              const body = resolveBody(node, loader)
+              if (!body) return null
+              const inherited = body.declaredOn.href !== node.href
+              return (
+                <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Coordinates are on <strong style={{ color: 'var(--color-text)' }}>{describeBody(body)}</strong>, not
+                  Earth — declared by <code>ssys:targets</code>
+                  {inherited ? ` on ${body.declaredOn.title ?? body.declaredOn.id}` : ''}. Drawn on a plain lon/lat
+                  grid; an Earth basemap would be misleading.
+                </div>
+              )
+            })()}
             {node.spatial?.geometryInvalid && (
               <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
                 ⚠ raw `geometry` field is present but is not valid GeoJSON — falling back to bbox only.

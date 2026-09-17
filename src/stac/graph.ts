@@ -79,6 +79,13 @@ function buildSchemaHints(raw: RawStacObject): SchemaHints | undefined {
   return { summaries: raw.summaries, itemAssets: raw.item_assets }
 }
 
+function strArrayField(obj: Record<string, unknown> | undefined, key: string): string[] | undefined {
+  const v = obj?.[key]
+  if (!Array.isArray(v)) return undefined
+  const strings = v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+  return strings.length > 0 ? strings : undefined
+}
+
 function strField(obj: Record<string, unknown> | undefined, key: string): string | undefined {
   const v = obj?.[key]
   return typeof v === 'string' ? v : undefined
@@ -252,6 +259,9 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     license: type === 'Collection' ? raw.license : undefined,
     providers: type === 'Collection' ? normalizeProviders(raw.providers) : undefined,
     keywords: type === 'Collection' && Array.isArray(raw.keywords) ? raw.keywords : undefined,
+
+    ssysTargets: strArrayField(type === 'Item' ? raw.properties : (raw as Record<string, unknown>), 'ssys:targets'),
+    ssysTargetClass: strField(type === 'Item' ? raw.properties : (raw as Record<string, unknown>), 'ssys:target_class'),
 
     declaredExtensions: raw.stac_extensions ?? [],
     propertyNamespaces: mergeNamespaceScans(namespaceScans),

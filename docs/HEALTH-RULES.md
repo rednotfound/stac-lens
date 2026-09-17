@@ -152,3 +152,13 @@ These are the facts a reader needs to place a catalog, deliberately left as neut
 2. 🟡 rows are added one at a time, each with a test against a real catalog that exhibits it (the way every ⚠ so far was added).
 3. 🔵 rows form a **capability page** for an API root: declared classes (D-02) beside what a small set of probe requests actually returned (B-*). Probes are explicit and user-triggered, never silent background traffic — the app never sends requests a user didn't ask for.
 4. Anything not on this list is not a "health" finding. Adding a rule means adding a row here first, with its source.
+
+## Beyond Earth
+
+Almost every STAC dataset is about Earth, and the app draws its extents on an Earth map. The Solar System extension (`ssys`) is how a publisher says otherwise; when it does, an Earth basemap is the wrong picture and the app must not show one.
+
+| ID | Tier | Rule | Source | Status |
+|---|---|---|---|---|
+| S-01 | Behavior | `ssys:targets` names a body other than Earth (on the node or an ancestor) → its `bbox`/`geometry` are body-fixed lon/lat on that body; drawn on a plain graticule with the body named, never on Earth tiles | ssys extension v1.1 (fields allowed on Catalog, Collection, Item); observed: CNES Rosetta 67P (Collection + Items), Univ. Nantes Cassini VIMS (root Catalog → Titan) | ✅ |
+| S-02 | Observation | `ssys:target_class` present alongside `ssys:targets` (planet, satellite, comet, asteroid, …) | ssys extension | ✅ shown with the body name |
+| S-03 | Warning | a non-Earth body's Items use a projection whose datum is Earth (`proj:code` EPSG:4326 etc.) — the two declarations contradict | ssys + projection extensions | 🟡 |

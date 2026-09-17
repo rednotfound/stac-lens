@@ -105,6 +105,12 @@ export interface StacNode {
    *  `declaredCollectionHref`/`declaredParentHref` is authoritative — see
    *  `buildNode`. */
   parentHref?: string
+  /** Solar System extension: `ssys:targets` (celestial bodies the data is
+   *  about, e.g. `["Titan"]`) and `ssys:target_class` (planet, satellite,
+   *  comet, …), read from a Catalog/Collection's top level or an Item's
+   *  `properties`. Resolution up the parent chain is `stac/body.ts`. */
+  ssysTargets?: string[]
+  ssysTargetClass?: string
   /** Source fact: this node's own `rel:collection` link, if any — the
    *  spec-authoritative "which Collection do I belong to" signal, required
    *  to be present (and to agree with the `collection` field) whenever that

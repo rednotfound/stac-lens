@@ -12,6 +12,8 @@ import { BboxPickerModal } from './BboxPickerModal'
 import { useResetShowOnLenses, usePublishVisible, type ItemSetView } from './ItemSetBrowser'
 import type { StacNode } from '../stac/types'
 import { declaredBboxes } from '../stac/spatial'
+import { resolveBody } from '../stac/body'
+import { loader } from '../stac/loaderInstance'
 
 function toRfc3339Start(dateOnly: string): string {
   return `${dateOnly}T00:00:00Z`
@@ -160,6 +162,7 @@ export function CursorItemSetPanels({
         <BboxPickerModal
           initialBbox={draft.bbox}
           statedBboxes={declaredBboxes(node.spatial)}
+          body={resolveBody(node, loader)}
           onConfirm={(bbox) => {
             setDraft((d) => ({ ...d, bbox }))
             setBboxModalOpen(false)
