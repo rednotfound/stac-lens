@@ -5403,6 +5403,37 @@ resolved deep-link URL; the root's own network load) and carry a one-
 line reason each. CI now runs `format:check`, `lint`, and the real build
 on every push and pull request.
 
+**Step 4 — tests that pin the verified facts.** Two layers, both in CI.
+Vitest over the pure data layer (54 tests, `src/stac/__tests__/`): link
+resolution and deduping, `rel:collection` vs `rel:parent` kept apart,
+`/collections` and `/children` endpoint recording, how Items are reached
+(finite list vs. cursor vs. a root's own `/search`), the GET-over-POST
+search-link preference, the Collection bbox rules (first is overall;
+exactly two flagged — the 3dep case verbatim), invalid geometry kept as a
+flag, the STAC 1.1 `bands` → `data_type` → `raster:bands` precedence,
+`filterToParams`' exact parameter names and the `..` open end, fresh
+`/search` requests scoped by `collections=` as a plain GET, `next` links
+followed verbatim and POST+`merge` bodies assembled exactly as the spec
+describes, `numberMatched`/`context` both read and absence meaning
+unknown, a 422 surfacing the server's body, URL round-tripping and its
+last-`?` split, and `resolveSearchTarget` choosing the root's search over
+`rel:items`. Writing them caught one test that asserted the parked
+branch's behavior (`matched` on a `/collections` page) — the test was
+wrong, not `main`; a pinned fact has to be a fact about `main`. Then an
+offline Playwright smoke suite (`tests/smoke.mjs`, run by CI against the
+production build under `vite preview`) with every Planetary Computer
+request answered from recorded fixtures in `tests/fixtures/pc` (a real
+root, a trimmed `/collections`, the 3dep Collection, a five-Item search
+page, and the literal `collection is required` 422 body) and every other
+external request refused: the landing page and footer, an API root whose
+children come from `/collections`, a deep link into a Collection with an
+applied bbox that renders the fixture page and round-trips the URL, the
+Inspector's two-bbox and deprecated-license notes on real data, and a
+rejected root search shown as the server's words. Two of the first
+assertions were wrong in instructive ways — `innerText` separates flex
+children with newlines, and Playwright supplies a `statusText` the real
+server omits — both loosened to match what matters, not the accident.
+
 ## 96. What's deliberately deferred (not forgotten)
 
 - **In progress (agreed 2026-09-16; steps 1–3 done 2026-09-17, see §95;

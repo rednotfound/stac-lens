@@ -23,4 +23,12 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm run lint
+      - run: npm test
       - run: npm run build
+      # Offline browser smoke test against the production build: every
+      # external request is answered from tests/fixtures (see tests/smoke.mjs).
+      - run: npx playwright install --with-deps chromium
+      - run: |
+          npx vite preview --port 4173 &
+          for i in $(seq 1 40); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 0.5; done
+          BASE_URL=http://localhost:4173 npm run test:e2e

@@ -103,6 +103,8 @@ npm install
 npm run dev              # Vite dev server on http://localhost:5173 (add --host to expose on your LAN)
 npm run build            # tsc -b && vite build → dist/
 npm run lint             # oxlint
+npm test                 # unit tests for the data layer
+npm run test:e2e         # offline browser smoke test (recorded responses, no live servers)
 npm run verify:fixtures  # headless data-layer check against two reference catalogs
 ```
 

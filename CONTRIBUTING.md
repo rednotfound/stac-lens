@@ -26,8 +26,13 @@ Other scripts:
 ```bash
 npm run build            # tsc -b && vite build — the real type-check plus the production bundle
 npm run lint             # oxlint
+npm run format           # prettier --write (format:check is what CI runs)
+npm test                 # vitest — unit tests for the data layer (src/stac/__tests__)
+npm run test:e2e         # offline Playwright smoke suite against a running app (tests/smoke.mjs)
 npm run verify:fixtures  # headless data-layer checks against two reference catalogs
 ```
+
+CI runs `format:check`, `lint`, `test`, `build`, and then `test:e2e` against the production build.
 
 ## Verifying a change
 
@@ -49,7 +54,8 @@ This project has one hard rule about verification, learned the expensive way: **
    ```
 
    Read DOM state and computed styles rather than eyeballing where you can; take a screenshot where you can't. For behavior a public server won't trigger on demand (a POST pagination link, a `/children` endpoint), intercept with `page.route` and serve a recorded response.
-4. **Facts about servers come from requests, not memory.** Before writing code against how an API behaves, `curl` it. Several of this project's design decisions exist because a server did not do what its documentation or the spec said (see `DESIGN.md`).
+4. **Pin what you verified.** A fact about the data layer (a link rule, a parameter format, a server behavior you worked around) gets a Vitest case in `src/stac/__tests__/`; a user-visible path gets a check in `tests/smoke.mjs`, driven by recorded responses in `tests/fixtures/` so it runs offline. Record a fixture with `curl`, trim it, and keep it byte-for-byte otherwise — the point is that it is what a real server sent.
+5. **Facts about servers come from requests, not memory.** Before writing code against how an API behaves, `curl` it. Several of this project's design decisions exist because a server did not do what its documentation or the spec said (see `DESIGN.md`).
 
 Catalogs that exercise specific paths:
 

@@ -113,9 +113,13 @@ These are the rules the code is organized around. A change that breaks one is a 
 ## Verification
 
 - Type-check with `npx tsc -b` (the root `tsconfig.json` is a references-only shell — `tsc -p .` checks nothing). `npm run build` runs the same check and then Vite.
-- `npm run lint` — oxlint.
-- `npm run verify:fixtures` — headless data-layer checks against two reference catalogs.
-- UI behavior — Playwright against the dev server (`npm run dev`), driving real public catalogs; `page.route` with recorded responses where a behavior can't be triggered live (a POST pagination link, a `/children` endpoint). CI runs lint and the build on every push and pull request.
+- `npm run lint` — oxlint, kept at zero findings; `npm run format:check` — Prettier over code and config.
+- `npm test` — Vitest over the pure data layer (`src/stac/__tests__/`): every spec rule and server behavior the data layer encodes has a case there.
+- `npm run test:e2e` — `tests/smoke.mjs`, an offline Playwright run against the app with every external request answered from `tests/fixtures/` (recorded real responses) or refused; CI runs it against the production build.
+- `npm run verify:fixtures` — headless data-layer checks against two live reference catalogs.
+- Anything else UI — Playwright against the dev server, driving real public catalogs at real data density; `page.route` with recorded responses where a behavior can't be triggered live.
+
+CI runs all of the above except the live-catalog checks, on every push and pull request.
 
 ## Where things go
 
