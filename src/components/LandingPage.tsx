@@ -181,13 +181,14 @@ export function LandingPage({
           </button>
         </form>
         {/* Live answer to whatever is in the field, so the effect of typing
-         * is known even when the list is below the fold. */}
+         * is known even when the list is below the fold. Empty when the
+         * field is empty: an idle explanation here read as filler. */}
         <div style={{ fontSize: 13, color: 'var(--color-text-faint)', minHeight: 18 }} aria-live="polite">
           {looksLikeUrl
-            ? 'Press Open or Enter to explore this catalog. Nothing leaves your browser — STAC Lens reads it directly.'
+            ? 'Press Open or Enter to explore this catalog.'
             : query
               ? `${rows.length} of ${population.length} catalogs match — listed below.`
-              : `Nothing leaves your browser — STAC Lens reads the catalog directly. Or pick one of the ${KNOWN_CATALOGS.length} verified catalogs below.`}
+              : ''}
         </div>
         {error && (
           <div
