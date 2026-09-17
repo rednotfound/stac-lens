@@ -72,7 +72,11 @@ export function LandingFooter() {
     <footer
       style={{
         marginTop: 'auto',
-        paddingTop: 32,
+        // Symmetric breathing room: the last row sat flush against the
+        // bottom of the page (reported).
+        padding: '32px 24px 36px',
+        boxSizing: 'border-box',
+        width: '100%',
         fontSize: 12,
         color: 'var(--color-text-muted)',
         display: 'flex',
