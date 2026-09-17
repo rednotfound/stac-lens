@@ -1,0 +1,38 @@
+name: Feature request
+description: Something STAC Lens should show or check
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        STAC Lens is a lens on a catalog's **shape, health, and distance from the spec** — not a general browser (that's [STAC Browser](https://github.com/radiantearth/stac-browser)). The most useful requests say which of those three the idea serves. Health checks additionally need a source: a spec rule, a best practice, or a linter rule — see [`docs/HEALTH-RULES.md`](../../docs/HEALTH-RULES.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What can't you see or check today?
+      description: Describe the situation, ideally with a catalog URL where it shows.
+    validations:
+      required: true
+  - type: dropdown
+    id: serves
+    attributes:
+      label: Which does it serve?
+      multiple: true
+      options:
+        - Shape — how the catalog is organized
+        - Health — metadata that contradicts itself or the spec
+        - Distance from the spec — what an API declares vs. does
+        - Reading STAC — understanding the model
+        - Something else (explain below)
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source of the rule (for health checks)
+      description: The spec sentence, best-practices item, or stac-check / stac-api-validator rule this would implement.
+  - type: textarea
+    id: sketch
+    attributes:
+      label: How might it look?
+      description: Optional. Where in the UI, what it shows, what it must not pretend to know.

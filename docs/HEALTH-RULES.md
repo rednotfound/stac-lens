@@ -1,6 +1,6 @@
 # Catalog health — the rule list
 
-"Health" in STAC Lens is not a score. It is a list of findings, each traceable to a rule somebody else wrote down. This document is that list: every check the app performs or could perform, where the rule comes from, how severe the spec considers it, and whether it is built. Nothing here is invented by this project; when no rule exists, a fact is reported as an **observation**, never as a problem (see `DESIGN.md` §95 — a flat root of 422 Collections is a fact about the publisher's choices, not a defect).
+"Health" in STAC Lens is not a score. It is a list of findings, each traceable to a rule somebody else wrote down. This document is that list: every check the app performs or could perform, where the rule comes from, how severe the spec considers it, and whether it is built. Nothing here is invented by this project; when no rule exists, a fact is reported as an **observation**, never as a problem (see `DESIGN.md` §96 — a flat root of 422 Collections is a fact about the publisher's choices, not a defect).
 
 ## Sources
 
@@ -42,7 +42,7 @@
 | K-08 | Invalid | no more than one `parent` / one `root` link ("SHALL have no more than one parent entity") | spec links | 🟡 |
 | K-09 | Observation | number of direct children; whether they were discovered via `child` links, `/collections`, or `/children` | — | ✅ count + API badge; discovery path in `DESIGN.md`, not yet in UI |
 | K-10 | Observation | siblings at one level mix Catalog and Collection types | bp ("use structural elements consistently across each level") | 🟡 — observation, not a warning: the sentence is advice to publishers, not a testable rule |
-| K-11 | ❌ | "too many" children / Items under one Catalog | bp ("limit the number of Items in a Catalog") | ❌ no threshold exists; reported only as K-09's count (`DESIGN.md` §95) |
+| K-11 | ❌ | "too many" children / Items under one Catalog | bp ("limit the number of Items in a Catalog") | ❌ no threshold exists; reported only as K-09's count (`DESIGN.md` §96) |
 
 ## Collection
 
@@ -103,7 +103,7 @@
 | L-02 | Warning | a link's `title` matches the destination's own `title` | bp ("link titles should exactly reflect the title of the corresponding entity") | 🟡 for destinations already loaded |
 | L-03 | Warning | one consistent href convention — all-relative (self-contained) or all-absolute (published) | bp | 🟡 |
 | L-04 | Warning | URLs to directories end with a slash, consistently | bp | 🟡 low priority |
-| L-05 | Observation | `alternate` (`text/html`), `canonical`, `via`, `derived_from`, `license`, `preview` links present | bp | 🟡 — not yet surfaced in the Inspector (listed in `DESIGN.md` §95) |
+| L-05 | Observation | `alternate` (`text/html`), `canonical`, `via`, `derived_from`, `license`, `preview` links present | bp | 🟡 — not yet surfaced in the Inspector (listed in `DESIGN.md` §96) |
 | L-06 | Invalid | a pagination `next` link's `method` / `headers` / `body` / `merge` are honored by the client | api (Features, Item Search); spec 1.1 links | ✅ client obligation, met |
 
 ## API — declared
@@ -135,7 +135,7 @@
 
 ## Observations that will never become warnings
 
-These are the facts a reader needs to place a catalog, deliberately left as neutral statements (`DESIGN.md` §95):
+These are the facts a reader needs to place a catalog, deliberately left as neutral statements (`DESIGN.md` §96):
 
 - an API root with no `child` links at all, discovered through `/collections` (Planetary Computer) — ✅
 - a flat root: N Collections and no intermediate Catalogs (Copernicus Data Space, 422) — ✅ count; "no hierarchy" not yet stated in words

@@ -5147,7 +5147,7 @@ datetime`), free-text `q`, `ids`/`intersects`, arbitrary-field sort via
 `queryables`, CQL2 filter, `fields`; `overview`/`visual` asset roles and
 `rel=preview`; `alternate`/`via`/`license` links in Inspector; auth
 headers and a CORS proxy option; an "Open in STAC Browser" link. Listed
-in §95.
+in §96.
 
 ## 92. Collection Search — built, verified against a real server, then parked by decision; and a failed search now looks like a failure
 
@@ -5179,7 +5179,7 @@ come back when I've thought it through). The doubt is about the model,
 not the implementation: the tree is meant to show the publisher's
 structure, and a search that silently swaps the root's children for a
 filtered subset sits uneasily with that — the same instinct that ruled
-out a client-derived grouping layer (§95). The complete work lives on the
+out a client-derived grouping layer (§96). The complete work lives on the
 local branch `parked/collection-search` (one WIP commit on top of
 `5fbdfbb`, not pushed) so the decision, when it comes, starts from a
 verified implementation rather than from scratch. What it also surfaced
@@ -5348,13 +5348,97 @@ findings extend. So "health" is defined as **findings, each citing its
 rule, in four tiers**: Invalid (normative), Warning (recommendation),
 Behavior (a server contradicting its own `conformsTo`, shown only after
 a real request), and Observation (a fact with no rule behind it — a flat
-root is one; §95's principle, made structural). The full rule list, with
+root is one; §96's principle, made structural). The full rule list, with
 sources and what is built, is `docs/HEALTH-RULES.md`; adding a rule means
 adding a row there first. What distinguishes this app from those three
 tools is not new rules but placing all three layers on the same picture,
 in a browser, for any public catalog.
 
-## 95. What's deliberately deferred (not forgotten)
+## 95. Making the code contributor-ready, part 1 — the map, the rules of the road, and a clean baseline
+
+Steps 1–3 of the plan recorded in the deferred list (§96), done in one
+morning; 4–6 (tests, the `StructureTree.tsx` split, the comment pass)
+follow.
+
+**`docs/ARCHITECTURE.md`** — the map of the code as it is: the three
+layers and the import direction between them, the `StacNode` model and
+its two discriminated unions, each module's one job, the two stores and
+why `selectedHref` and `browsingHref` differ, one interaction traced end
+to end (a deep link with a query, from hash to rendered results), the
+invariants stated as rules a reviewer can apply, how to verify, and
+where things get written down. Present tense, English, no section
+numbers, no quotes — and with an explicit contract: if it disagrees with
+the code, the document is what's wrong. `DESIGN.md` stays the log.
+
+**`CONTRIBUTING.md` and templates** — what kind of change fits (health
+checks with a cited rule, conformance-gated API features, real-catalog
+fixes) and what doesn't (field-completeness, invented hierarchy,
+single-server quirks); setup; the verification standard with the
+`tsc -b` trap spelled out and a Playwright starter; a table of catalogs
+that exercise specific paths; where decisions go. Three issue forms
+(bug — requires the catalog URL; server behavior — requires the request
+and response; feature — asks which of shape/health/spec-distance it
+serves and, for a check, its source) and a PR template whose checklist
+is the verification standard.
+
+**Prettier and a warning-free lint.** Prettier (single quotes, no
+semicolons, 120 columns — the style the code already had) over code and
+config only; Markdown is excluded on purpose, since this file is a
+5,500-line log that a formatter would rewrap for no gain. The first run
+touched 24 files, ~300 lines each way, all formatting; `tsc -b` and the
+Playwright smoke (header title, Inspector extent, an Item deep link)
+confirmed nothing observable changed. It did break the two single-line
+`eslint-disable-line` suppressions in `usePagedCursorResults.ts` by
+moving the comment off the dependency-array line — replaced with
+`disable-next-line` directly above the array. The twelve baseline
+oxlint warnings went to zero honestly: `only-export-components` is
+turned off for the two deliberate shared-bits modules
+(`ItemSetBrowser.tsx`, `ItemSetResultsPanel.tsx`) via a scoped override,
+not globally; two `set-state-in-effect` sites (`useSelectedItems`, the
+header's root title in `App.tsx`) were rewritten to read the loader's
+cache during render and keep state only for a node the effect itself had
+to fetch, keyed by href so a previous target's result is never shown;
+the two remaining sites are genuine external-system synchronization (the
+resolved deep-link URL; the root's own network load) and carry a one-
+line reason each. CI now runs `format:check`, `lint`, and the real build
+on every push and pull request.
+
+## 96. What's deliberately deferred (not forgotten)
+
+- **In progress (agreed 2026-09-16; steps 1–3 done 2026-09-17, see §95;
+  4–6 next): making the codebase contributor-ready before the repo goes
+  public.** Measured
+  state: 9,300 source lines, 30% comments — all "why", but written for
+  the two of us (Chinese quotes in 23 files, `§NN` pointers into this
+  5,500-line chronological log); `StructureTree.tsx` at 2,034 lines;
+  zero checked-in tests (the Playwright verifications of the last days
+  were ad-hoc scripts); no formatter; 12 baseline lint warnings; no
+  CONTRIBUTING or architecture overview. Plan, in this order:
+  1. `docs/ARCHITECTURE.md` — the current-state map (data layer → hooks
+     → components, the two stores, one interaction traced end to end,
+     the invariants). This file stays the log; that one is the map.
+  2. `CONTRIBUTING.md` + issue/PR templates — how to run and *verify*
+     (`tsc -b`, Playwright against real catalogs), where decisions go
+     (append here; a health check gets a `HEALTH-RULES.md` row first),
+     the README's principles as review criteria; issues must name a
+     catalog URL, PRs must say what was tested against.
+  3. Prettier matching the existing style (single quotes, no semicolons,
+     120 columns) in CI; clear or explicitly allow-list the 12 warnings.
+  4. Tests that pin the verified facts: Vitest over the pure data layer
+     (`graph.ts` link/bbox/bands rules, `apiSearch.ts` params and POST
+     merge, `searchQueryUrl.ts`, `conformance.ts` suffix matching,
+     temporal/spatial normalization — each maps to a `HEALTH-RULES.md`
+     row), plus a small Playwright smoke suite driven by recorded
+     responses via `page.route` (no live servers in CI).
+  5. Split `StructureTree.tsx`: canvas (layout/zoom), node view, the box
+     renderer, `useBoxDragHandles` into `hooks/`, tooltip, legend —
+     pure moves, Playwright before/after.
+  6. Folded into 5, file by file: comments keep their "why" but quote
+     the user in English paraphrase (the original Chinese stays here),
+     replace `§NN` with the section's title text (numbers have shifted
+     twice), and rewrite history-narration into present-tense reasons.
+     Decided: code speaks English to contributors; this document stays
+     bilingual.
 
 - **Parked by decision, complete on `parked/collection-search`:
   Collection Search on API roots (§92).** To revisit: whether the tree

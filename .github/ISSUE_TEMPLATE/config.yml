@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: STAC specification questions
+    url: https://github.com/radiantearth/stac-spec/discussions
+    about: Questions about STAC itself, rather than about STAC Lens, belong with the spec community.

@@ -199,6 +199,9 @@ export function useStructureTree(rootHref: string) {
   // or one `expandAllCatalogs()` call away if the user wants the whole
   // curated hierarchy at once.
   useEffect(() => {
+    // Kicks off the root's own network load; the synchronous part is only
+    // the `loading: true` mark that load is starting.
+    // eslint-disable-next-line react/set-state-in-effect
     void expand(rootHref)
   }, [rootHref, expand])
 

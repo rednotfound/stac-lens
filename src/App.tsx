@@ -151,6 +151,10 @@ function App() {
     // `consumePendingInitialQuery(node.href)` call needs to find it there
     // already.
     if (target.appliedQuery) setPendingInitialQuery(target.appliedQuery.forHref, target.appliedQuery.query)
+    // Synchronizing with an external system — the URL, resolved
+    // asynchronously by `useDeepLinkBootstrap` — is the one job effects are
+    // for; `rootHref` can't be derived, since the user changes it too.
+    // eslint-disable-next-line react/set-state-in-effect
     setRootHref(target.rootHref)
     if (target.selectedHref) select(target.selectedHref)
   }, [target, select, setPendingInitialQuery])
@@ -178,23 +182,20 @@ function App() {
   // this rarely does its own network request in practice — it's here so
   // the header has *something* to show the moment the href itself resolves,
   // not only once Structure Lens gets around to it.
-  const [rootNode, setRootNode] = useState<StacNode | undefined>(undefined)
+  // Read from the loader's cache during render; state only holds a node
+  // this effect had to fetch itself, keyed by href so a previous catalog's
+  // root is never shown under a new one.
+  const [fetchedRoot, setFetchedRoot] = useState<{ href: string; node: StacNode } | undefined>(undefined)
+  const rootNode = rootHref
+    ? (loader.get(rootHref) ?? (fetchedRoot?.href === rootHref ? fetchedRoot.node : undefined))
+    : undefined
   useEffect(() => {
-    if (!rootHref) {
-      setRootNode(undefined)
-      return
-    }
-    const cached = loader.get(rootHref)
-    if (cached) {
-      setRootNode(cached)
-      return
-    }
+    if (!rootHref || loader.get(rootHref)) return
     let cancelled = false
-    setRootNode(undefined)
     loader
       .load(rootHref)
       .then((node) => {
-        if (!cancelled) setRootNode(node)
+        if (!cancelled) setFetchedRoot({ href: rootHref, node })
       })
       .catch(() => {
         // Structure Lens's own root fetch already surfaces this failure

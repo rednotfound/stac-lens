@@ -1,0 +1,57 @@
+name: Bug report
+description: Something renders or behaves wrongly for a specific catalog or API
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Almost every bug in STAC Lens is specific to a catalog. Please include the URL — without it, the report usually can't be reproduced.
+  - type: input
+    id: catalog
+    attributes:
+      label: Catalog or API URL
+      description: The STAC URL you opened (a catalog.json, a collection, an item, or an API root). If you were on staclens.com, the address bar after the `#` is exactly this.
+      placeholder: https://planetarycomputer.microsoft.com/api/stac/v1/collections/3dep-lidar-returns
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the URL above
+        2. Click the Collection …
+        3. In the Search box, set …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Include any error text shown in the app verbatim — it usually quotes the server.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: staclens.com, or a local build (commit / branch)
+      placeholder: staclens.com
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: Chrome 130 / macOS 15
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drag an image here if the problem is visual.

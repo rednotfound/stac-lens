@@ -46,7 +46,7 @@ STAC Lens is a client-side lens on [STAC](https://stacspec.org/) (SpatioTemporal
 
 If you publish a catalog and want visitors to read it, deploy STAC Browser. If you want to see what a catalog *is* — yours or anyone's — open it in STAC Lens.
 
-Full design rationale, research notes, and the reasoning behind every non-obvious decision live in [`docs/DESIGN.md`](docs/DESIGN.md).
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the map of the code as it is today; [`docs/DESIGN.md`](docs/DESIGN.md) is the log of why — research notes, bug post-mortems, and every decision including the reversed ones.
 
 ## Highlights
 
@@ -175,6 +175,10 @@ src/
 scripts/
   verify-fixtures.ts headless data-layer verification (no UI)
 ```
+
+## Contributing
+
+Issues and pull requests are welcome — especially new health checks with a cited rule, STAC API features gated on `conformsTo`, and fixes for how a real public catalog renders. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the verification standard (a change is done when it has been seen working against a real catalog, not when it compiles), and where decisions get written down.
 
 ## Acknowledgements
 

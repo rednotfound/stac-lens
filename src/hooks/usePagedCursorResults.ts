@@ -143,8 +143,16 @@ export function usePagedCursorResults(
   // `setItems` when a fetch actually resolves, so it's genuinely stable
   // across every other re-render; confirmed directly (42 real Leaflet
   // rebuilds during one pan → 0, after this fix landed).
-  const pageItems = useMemo(() => items.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize), [items, pageIndex, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
-  const dimmedItems = useMemo(() => items.slice(0, pageIndex * pageSize).concat(items.slice((pageIndex + 1) * pageSize)), [items, pageIndex, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pageItems = useMemo(
+    () => items.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, pageIndex, pageSize],
+  )
+  const dimmedItems = useMemo(
+    () => items.slice(0, pageIndex * pageSize).concat(items.slice((pageIndex + 1) * pageSize)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, pageIndex, pageSize],
+  )
 
   if (inner.status === 'empty') return { status: 'empty' }
 

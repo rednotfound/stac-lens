@@ -51,31 +51,25 @@ export function useSelectedItems(): SelectedItemsState {
       : selectedHref
     : undefined
 
-  // Synchronous cache read first (matches Detail Panel's own reasoning: a
-  // node reachable via Structure Lens is already loaded by the time it's
-  // selectable) — the effect below only actually fetches for the case that
-  // reasoning doesn't cover: a deep-linked Item whose parent Collection was
-  // never independently visited.
-  const [targetNode, setTargetNode] = useState<StacNode | undefined>(
-    targetHref ? loader.get(targetHref) : undefined,
-  )
+  // The loader's cache is read synchronously during render — a node
+  // reachable via Structure Lens is already loaded by the time it's
+  // selectable, so this covers nearly every case with no extra render.
+  // State exists only for the one case it doesn't: a deep-linked Item
+  // whose parent Collection was never independently visited, which the
+  // effect below fetches. The fetched node is keyed by the href it was
+  // fetched for, so a stale result from a previous target is never shown.
+  const [fetched, setFetched] = useState<{ href: string; node: StacNode } | undefined>(undefined)
+  const targetNode = targetHref
+    ? (loader.get(targetHref) ?? (fetched?.href === targetHref ? fetched.node : undefined))
+    : undefined
 
   useEffect(() => {
-    if (!targetHref) {
-      setTargetNode(undefined)
-      return
-    }
-    const cached = loader.get(targetHref)
-    if (cached) {
-      setTargetNode(cached)
-      return
-    }
+    if (!targetHref || loader.get(targetHref)) return
     let cancelled = false
-    setTargetNode(undefined)
     loader
       .load(targetHref)
       .then((node) => {
-        if (!cancelled) setTargetNode(node)
+        if (!cancelled) setFetched({ href: targetHref, node })
       })
       .catch((err) => {
         console.error('[useSelectedItems] failed', err)

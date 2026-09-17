@@ -1,0 +1,49 @@
+name: Server behavior report
+description: A STAC server does something the spec (or its own conformsTo) says it shouldn't — or STAC Lens misreads a valid server
+labels: [server-behavior]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        STAC Lens reports the gap between what an API declares and what it does. If you've found a server that misbehaves, or a case where STAC Lens blames a server that is actually right, this is the place. Requests and responses are what make these actionable — please paste them.
+  - type: input
+    id: root
+    attributes:
+      label: API root (landing page URL)
+      placeholder: https://planetarycomputer.microsoft.com/api/stac/v1/
+    validations:
+      required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: The request
+      description: The exact URL (and method/body if not a plain GET). A `curl` line is ideal.
+      render: shell
+      placeholder: curl -s 'https://…/search?limit=1&bbox=-75.5,39.5,-73.5,41.5'
+    validations:
+      required: true
+  - type: textarea
+    id: response
+    attributes:
+      label: The response
+      description: Status code and body (trimmed). Redact anything private.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What the spec or the server's conformsTo says should happen
+      description: A link to the spec section or conformance class is enough.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which is it?
+      options:
+        - The server contradicts the spec / its own conformsTo
+        - STAC Lens misreads a server that is behaving correctly
+        - Not sure
+    validations:
+      required: true
