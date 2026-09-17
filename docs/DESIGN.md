@@ -6248,3 +6248,53 @@ slightly "off", and the deep blue text loses its kinship with the mark.
   the current selection" stays one language, and the brand color is
   reserved for the product's own entrance. Moving the selection blue onto
   the brand too is a separate decision, not taken here.
+
+## 102. Every declared bbox is drawn — and the spec's overall-extent rule is checked
+
+**Date:** 2026-09-17. The owner noticed that Collections with several
+bboxes in `extent.spatial.bbox` showed only one on the map and asked
+whether something was being dropped. It was, knowingly: the spec-audit
+round kept the first bbox as "the overall extent" and only counted the
+rest (HEALTH-RULES C-04/C-07 said so, and the Inspector said "the N−1
+sub-extents are not drawn"). Real catalogs make that choice wrong twice
+over.
+
+### What the data actually looks like
+
+A scan of Planetary Computer's 136 Collections: 27 declare more than one
+bbox. The 3dep-lidar family declares two *disjoint* boxes (CONUS+Alaska,
+then Guam) — the first is not an overall extent at all, so drawing "the
+first" showed the mainland and silently lost Guam. `fia` declares 13
+island boxes, none of them a union. `noaa-c-cap` declares 4 where the
+first genuinely contains the others. `goes-cmi` declares two that are one
+antimeridian-crossing extent split at the seam. STAC Index's own guidance
+notwithstanding, "first = overall" is a convention many publishers do
+not follow.
+
+### What changed
+
+- `SpatialExtent.bboxes` holds every declared bbox that passes
+  `isValidBbox` (4 or 6 finite numbers, coordinates in range — I-04, now
+  actually checked for these arrays), in source order; `bbox` stays the
+  first for consumers that want one box; `firstBboxIsUnion` records
+  whether the first contains all the others (`bboxContains`, 3D-aware; an
+  antimeridian-crossing first box is never called a union rather than
+  guessed at).
+- `ItemsMap` takes `statedBboxes` and draws all of them; when the first
+  really is the union it is drawn lighter and more sparsely dashed, so
+  the eye reads "overall extent + parts". Fit-to-view covers every box —
+  Guam is now in the frame, not off it.
+- `SpaceLens`, the API Search box's bbox picker, and the Inspector all
+  use the full array; the Space Lens label says "· N declared bboxes".
+- Inspector notes now match the spec's three cases: exactly two (C-05,
+  invalid) with an added "the first does not contain the second" when
+  true; three or more where the first is not the union (C-06, ⚠ —
+  previously listed as not flagged); three or more that follow the rule
+  (C-07, neutral). All say "drawn above", because they are.
+- Health rules C-04, C-06 and C-07 updated to the implemented state.
+
+Verified live against Planetary Computer: 3dep-lidar-returns draws 2
+rectangles with the two-bbox warning and the "does not contain" clause;
+noaa-c-cap draws 4 with the first lighter and the neutral note; fia draws
+13 with the not-a-union warning. Unit tests cover parsing, containment,
+3D boxes, the antimeridian case and the validator.

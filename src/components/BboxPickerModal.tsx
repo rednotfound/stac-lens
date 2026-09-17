@@ -26,7 +26,7 @@ const NOOP_SELECT = () => {}
  *  it was opened from. */
 export function BboxPickerModal({
   initialBbox,
-  statedBbox,
+  statedBboxes,
   onConfirm,
   onCancel,
 }: {
@@ -38,7 +38,7 @@ export function BboxPickerModal({
    *  reference outline and, for a fresh draw, what the map opens framed
    *  on, so the user starts where the data actually is instead of at a
    *  whole-world view. */
-  statedBbox?: number[]
+  statedBboxes?: number[][]
   onConfirm: (bbox: [number, number, number, number]) => void
   onCancel: () => void
 }) {
@@ -157,7 +157,7 @@ export function BboxPickerModal({
         </div>
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {/* Framed once on open: on the existing box when re-editing one,
-           * otherwise on the Collection's own extent (`statedBbox` is left
+           * otherwise on the Collection's own extent (`statedBboxes` is left
            * out of the fit when re-editing, or a small drawn box would be
            * lost inside a continent-sized union). `fitKey` is constant —
            * the modal mounts fresh every time it opens. */}
@@ -166,7 +166,7 @@ export function BboxPickerModal({
             onSelectItem={NOOP_SELECT}
             drawMode={drawing}
             appliedBbox={drawnBbox}
-            statedBbox={initialBbox ? undefined : statedBbox}
+            statedBboxes={initialBbox ? undefined : statedBboxes}
             fitKey="bbox-picker"
             onBboxDrawn={handleBboxDrawn}
           />

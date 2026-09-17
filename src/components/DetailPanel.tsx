@@ -225,15 +225,27 @@ export function DetailPanel() {
             {node.spatial?.bboxCount === 2 && (
               <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
                 ⚠ source declares exactly two spatial bboxes — STAC 1.1 reports that as invalid (the first must be the
-                overall extent of the rest). Showing the first only.
+                overall extent of the rest). Both are drawn above
+                {node.spatial.firstBboxIsUnion === false && '; the first does not contain the second'}.
               </div>
             )}
-            {node.spatial?.bboxCount != null && node.spatial.bboxCount > 2 && (
-              <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
-                source declares {node.spatial.bboxCount} spatial bboxes — the first (overall extent) is shown; the{' '}
-                {node.spatial.bboxCount - 1} sub-extents are not drawn.
-              </div>
-            )}
+            {node.spatial?.bboxCount != null &&
+              node.spatial.bboxCount > 2 &&
+              node.spatial.firstBboxIsUnion === false && (
+                <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
+                  ⚠ source declares {node.spatial.bboxCount} spatial bboxes, but the first is not their overall extent —
+                  the spec expects it to contain the rest. All {node.spatial.bboxes?.length ?? node.spatial.bboxCount}{' '}
+                  are drawn above.
+                </div>
+              )}
+            {node.spatial?.bboxCount != null &&
+              node.spatial.bboxCount > 2 &&
+              node.spatial.firstBboxIsUnion !== false && (
+                <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  source declares {node.spatial.bboxCount} spatial bboxes — the overall extent (lighter) and{' '}
+                  {node.spatial.bboxCount - 1} sub-extents, all drawn above.
+                </div>
+              )}
           </Field>
 
           {node.license && (

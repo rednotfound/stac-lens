@@ -152,9 +152,12 @@ describe('buildNode — Collection spatial extent', () => {
     )
     expect(node.spatial?.bbox).toEqual([-166.85, 17.66, -64.56, 71.39])
     expect(node.spatial?.bboxCount).toBe(2)
+    expect(node.spatial?.bboxes).toHaveLength(2)
+    // The first does not contain the second — the spec's overall-extent rule is broken.
+    expect(node.spatial?.firstBboxIsUnion).toBe(false)
   })
 
-  it('records three or more bboxes as a count, still drawing the first', () => {
+  it('keeps every bbox for drawing and knows when the first is the overall extent', () => {
     const node = buildNode(
       COL,
       collection([
@@ -164,6 +167,28 @@ describe('buildNode — Collection spatial extent', () => {
       ]),
     )
     expect(node.spatial?.bboxCount).toBe(3)
+    expect(node.spatial?.bboxes).toEqual([
+      [-180, -90, 180, 90],
+      [0, 0, 1, 1],
+      [2, 2, 3, 3],
+    ])
+    expect(node.spatial?.firstBboxIsUnion).toBe(true)
+  })
+
+  it('drops a malformed sub-bbox but keeps the valid ones', () => {
+    const node = buildNode(
+      COL,
+      collection([
+        [-10, 40, 10, 50],
+        [1, 2],
+        [0, 41, 1, 42],
+      ]),
+    )
+    expect(node.spatial?.bboxCount).toBe(3)
+    expect(node.spatial?.bboxes).toEqual([
+      [-10, 40, 10, 50],
+      [0, 41, 1, 42],
+    ])
   })
 
   it('has no spatial extent when the array is malformed', () => {

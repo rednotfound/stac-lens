@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { StacNode } from '../stac/types'
+import { firstBboxIsUnion } from '../stac/spatial'
 
 // The standard OSM tile server — no API key, unlike CARTO's basemap tiles
 // (tried first; they now watermark "API KEY REQUIRED" over the imagery
@@ -52,7 +53,7 @@ export function ItemsMap({
   items,
   dimmedItems,
   highlightHref,
-  statedBbox,
+  statedBboxes,
   appliedBbox,
   drawMode = false,
   onBboxDrawn,
@@ -70,13 +71,17 @@ export function ItemsMap({
    *  so it never needs this. */
   dimmedItems?: StacNode[]
   highlightHref?: string
-  /** A reference footprint to draw as a dashed rectangle (e.g. a
-   *  Collection's own declared `extent.spatial.bbox`) — omit when there's
-   *  nothing meaningful to compare against in this context. */
-  statedBbox?: number[]
+  /** Reference footprints to draw as dashed rectangles — a Collection's
+   *  declared `extent.spatial.bbox` array, every entry (Planetary
+   *  Computer's 3dep Collections declare CONUS+Alaska and Guam; fia
+   *  declares thirteen islands). When there are several and the first
+   *  really contains the rest, the first is drawn lighter as the overall
+   *  extent; otherwise all are drawn alike. Omit when there's nothing
+   *  meaningful to compare against in this context. */
+  statedBboxes?: number[][]
   /** A user-applied query filter's own bbox, rendered as a visually
-   *  distinct, bolder overlay from `statedBbox` — deliberately a separate
-   *  prop rather than reusing `statedBbox`'s rendering path: `statedBbox`
+   *  distinct, bolder overlay from `statedBboxes` — deliberately a separate
+   *  prop rather than reusing that rendering path: a stated bbox
    *  is a passive fact ("this is what the source declares"), this is an
    *  active filter currently constraining what's on screen, and a
    *  Collection can genuinely have both at once. */
@@ -170,13 +175,18 @@ export function ItemsMap({
     if (!layerGroup) return
     layerGroup.clearLayers()
 
-    if (statedBbox) {
-      L.rectangle(bboxToBounds(statedBbox), {
-        color: palette.textFaint,
-        weight: 1,
-        dashArray: '3,2',
-        fill: false,
-      }).addTo(layerGroup)
+    if (statedBboxes) {
+      const overall = statedBboxes.length > 1 && firstBboxIsUnion(statedBboxes)
+      statedBboxes.forEach((bbox, i) => {
+        const isOverall = overall && i === 0
+        L.rectangle(bboxToBounds(bbox), {
+          color: palette.textFaint,
+          weight: 1,
+          dashArray: isOverall ? '2,5' : '3,2',
+          opacity: isOverall ? 0.6 : 1,
+          fill: false,
+        }).addTo(layerGroup)
+      })
     }
 
     // Dimmed (already-loaded, not-currently-active) footprints, drawn
@@ -215,7 +225,7 @@ export function ItemsMap({
       rect.on('click', () => onSelectItem(item.href))
       rect.addTo(layerGroup)
     }
-  }, [itemsWithBbox, dimmedItemsWithBbox, statedBbox, highlightHref, palette, onSelectItem])
+  }, [itemsWithBbox, dimmedItemsWithBbox, statedBboxes, highlightHref, palette, onSelectItem])
 
   // Draw-a-bbox mode — a hand-rolled mousedown/mousemove/mouseup pattern
   // (with `map.dragging.disable()` for the duration), driven by a plain
@@ -347,7 +357,7 @@ export function ItemsMap({
     if (!map || !fitKey || lastFitTargetRef.current === fitKey) return
 
     const boundsList = itemsWithBbox.map((i) => bboxToBounds(i.spatial.bbox))
-    if (statedBbox) boundsList.push(bboxToBounds(statedBbox))
+    for (const bbox of statedBboxes ?? []) boundsList.push(bboxToBounds(bbox))
     // Committing a bbox search is a strong, explicit signal of "look here
     // now" — re-framing the map to it (alongside whatever items already
     // loaded) makes the just-applied filter visibly take effect rather than
@@ -361,7 +371,7 @@ export function ItemsMap({
     if (!bounds) return
     lastFitTargetRef.current = fitKey
     map.fitBounds(bounds, { padding: [24, 24], maxZoom: 12 })
-  }, [fitKey, itemsWithBbox, statedBbox, appliedBbox])
+  }, [fitKey, itemsWithBbox, statedBboxes, appliedBbox])
 
   // Fly to the specifically-selected Item's own bbox — this is what makes
   // an island-sized bbox actually visible instead of a 1-2px speck on a

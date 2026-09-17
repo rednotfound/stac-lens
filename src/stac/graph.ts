@@ -9,7 +9,7 @@ import type {
   StacSourceKind,
 } from './types'
 import { normalizeCollectionTemporalExtent, normalizeItemTemporal, type TemporalProperties } from './temporal'
-import { normalizeSpatial } from './spatial'
+import { firstBboxIsUnion, isValidBbox, normalizeSpatial } from './spatial'
 import { mergeNamespaceScans, scanNamespaces } from './namespaces'
 
 interface StacLink {
@@ -258,17 +258,25 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   }
 }
 
-/** A Collection's `extent.spatial.bbox` is an *array* of bboxes whose first
- *  entry is the overall extent (the rest, if any, are finer sub-extents).
- *  The first is what gets drawn; the count is kept so Inspector can flag
- *  the shape STAC 1.1 calls invalid (exactly two) — see `SpatialExtent.
- *  bboxCount`. */
+/** A Collection's `extent.spatial.bbox` is an *array* of bboxes. Per spec
+ *  the first is the overall extent and the rest are finer sub-extents;
+ *  real catalogs do not always honor that (Planetary Computer's 3dep-lidar
+ *  Collections list two disjoint boxes), so every valid box is kept for
+ *  drawing and `firstBboxIsUnion` records whether the spec's rule holds.
+ *  `bbox` stays the first, for every consumer that wants one box. */
 function collectionSpatial(extent: unknown): SpatialExtent | undefined {
   if (!extent || typeof extent !== 'object') return undefined
-  const bboxes = (extent as { spatial?: { bbox?: unknown } }).spatial?.bbox
-  if (!Array.isArray(bboxes) || !Array.isArray(bboxes[0])) return undefined
-  const spatial = normalizeSpatial({ bbox: bboxes[0] as number[] })
-  return spatial && bboxes.length > 1 ? { ...spatial, bboxCount: bboxes.length } : spatial
+  const raw = (extent as { spatial?: { bbox?: unknown } }).spatial?.bbox
+  if (!Array.isArray(raw) || !Array.isArray(raw[0])) return undefined
+  const spatial = normalizeSpatial({ bbox: raw[0] as number[] })
+  if (!spatial || raw.length === 1) return spatial
+  const valid = raw.filter(isValidBbox)
+  return {
+    ...spatial,
+    bboxCount: raw.length,
+    bboxes: valid,
+    firstBboxIsUnion: firstBboxIsUnion(valid),
+  }
 }
 
 function dedupe(hrefs: string[]): string[] {

@@ -37,6 +37,14 @@ export interface SpatialExtent {
    *  `3dep-lidar-returns` declares exactly two, disjoint (CONUS+Alaska,
    *  then Guam). Absent when there was one bbox or none. */
   bboxCount?: number
+  /** All declared bboxes, in source order, when there is more than one —
+   *  each validated like `bbox`. Drawn together: the first as the overall
+   *  extent (lighter) when it really contains the rest, otherwise all
+   *  alike. */
+  bboxes?: number[][]
+  /** Whether the first declared bbox contains every other one, as the
+   *  spec requires of an overall extent. Only set when `bboxes` is. */
+  firstBboxIsUnion?: boolean
 }
 
 /** Publisher-declared, non-authoritative hints about expected item shape.

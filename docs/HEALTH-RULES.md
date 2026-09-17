@@ -51,10 +51,10 @@
 | C-01 | Invalid | `type` = `Collection`, `stac_version`, `id`, non-empty `description`, `license`, `extent`, `links` all present | spec collection | 🟡 |
 | C-02 | Invalid | `license` is an SPDX identifier, an SPDX expression, or `other` | spec collection | 🟡 — needs the SPDX id list embedded; expression grammar out of scope |
 | C-03 | Warning | `license` is not the deprecated `proprietary` / `various` | spec collection (1.1) | ✅ Inspector note |
-| C-04 | Invalid | `extent.spatial.bbox` is an array of bboxes and its first entry is the overall extent | spec collection | ✅ first taken; shape validated |
+| C-04 | Invalid | `extent.spatial.bbox` is an array of bboxes and its first entry is the overall extent | spec collection | ✅ every valid bbox kept and drawn; the first is drawn lighter when it really contains the rest |
 | C-05 | Invalid | not exactly two spatial bboxes ("two … don't make sense and will be reported as invalid") | spec 1.1 changelog | ✅ ⚠ (3dep-lidar-returns) |
-| C-06 | Warning | every additional bbox lies inside the first (it is the union) | spec collection | 🟡 — 3dep's two are disjoint; not yet flagged as such |
-| C-07 | Observation | three or more spatial bboxes ("only if a union would include large uncovered areas") | spec collection | ✅ neutral note |
+| C-06 | Warning | every additional bbox lies inside the first (it is the union) | spec collection | ✅ ⚠ when the first does not contain the rest (3dep's two are disjoint; `firstBboxIsUnion`) |
+| C-07 | Observation | three or more spatial bboxes ("only if a union would include large uncovered areas") | spec collection | ✅ neutral note; all drawn (fia: 13) |
 | C-08 | Invalid | `extent.temporal.interval` inner arrays have exactly two entries, each RFC 3339 or `null`; first is the overall interval | spec collection | 🟡 |
 | C-09 | Observation | open-ended temporal extent (`null` bound) | spec collection | ✅ timeline renders it distinctly |
 | C-10 | Warning | `summaries` present ("STRONGLY RECOMMENDED") | spec collection; bp ("always provide summaries"); stac-check | 🟡 — shown when present (schema hints), absence not yet flagged |

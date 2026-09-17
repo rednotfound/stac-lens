@@ -3,6 +3,7 @@ import { useSelectedItems } from '../hooks/useSelectedItems'
 import { Spinner } from './Spinner'
 import { ItemsMap } from './ItemsMap'
 import type { StacNode } from '../stac/types'
+import { declaredBboxes } from '../stac/spatial'
 
 const EMPTY_ITEMS: StacNode[] = []
 
@@ -34,7 +35,7 @@ export function SpaceLens() {
   // is set if and only if the original selection was an Item, so
   // suppressing this whenever it's set keeps a single Item's own Inspector
   // widget scoped to exactly that Item.
-  const statedBbox = !highlightHref ? node?.spatial?.bbox : undefined
+  const statedBboxes = !highlightHref ? declaredBboxes(node?.spatial) : undefined
   const itemFootprintCount = items.filter((i) => !!i.spatial?.bbox).length
 
   const isLoadingTarget = target.status === 'loading'
@@ -45,7 +46,7 @@ export function SpaceLens() {
         : 'This node has no Items directly — drill into a sub-collection.'
       : isLoadingTarget
         ? 'Loading…'
-        : itemFootprintCount === 0 && !statedBbox
+        : itemFootprintCount === 0 && !statedBboxes
           ? "No stated bbox, and no footprints visible yet — open Detail Panel to browse this collection's items."
           : undefined
 
@@ -56,7 +57,7 @@ export function SpaceLens() {
       <ItemsMap
         items={items}
         highlightHref={highlightHref}
-        statedBbox={statedBbox}
+        statedBboxes={statedBboxes}
         fitKey={node?.href}
         onSelectItem={select}
       />
@@ -85,6 +86,7 @@ export function SpaceLens() {
             <strong style={{ color: 'var(--color-text)' }}>{node.title ?? node.id}</strong>
             {' · '}
             {itemFootprintCount} item footprint{itemFootprintCount === 1 ? '' : 's'}
+            {statedBboxes && statedBboxes.length > 1 && ` · ${statedBboxes.length} declared bboxes`}
           </>
         ) : (
           <>
