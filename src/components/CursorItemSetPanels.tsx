@@ -105,7 +105,10 @@ export function CursorItemSetPanels({
   // been searched yet, so there's nothing to persist into the shareable
   // URL (an idle `appliedQuery` is just `{}`, a placeholder, not a real
   // applied filter).
-  usePublishAppliedQuery(node.href, state.status === 'empty' || state.status === 'idle' ? undefined : state.appliedQuery)
+  usePublishAppliedQuery(
+    node.href,
+    state.status === 'empty' || state.status === 'idle' ? undefined : state.appliedQuery,
+  )
 
   if (state.status === 'empty') return null
 

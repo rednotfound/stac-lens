@@ -83,8 +83,7 @@ function TimeLensBody({ viewWidth }: { viewWidth: number }) {
     // "nothing to plot yet" (see docs/DESIGN.md §21).
     return (
       <EmptyState>
-        No stated temporal extent, and no items visible yet — open Detail Panel to browse this
-        collection's items.
+        No stated temporal extent, and no items visible yet — open Detail Panel to browse this collection's items.
       </EmptyState>
     )
   }

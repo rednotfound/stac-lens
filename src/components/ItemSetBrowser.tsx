@@ -248,7 +248,10 @@ export function useResetShowOnLenses(nodeHref: string) {
 export function usePublishVisible(nodeHref: string, items: StacNode[]) {
   const setVisible = useItemSetStore((s) => s.setVisible)
   useEffect(() => {
-    setVisible(nodeHref, items.map((i) => i.href))
+    setVisible(
+      nodeHref,
+      items.map((i) => i.href),
+    )
   }, [nodeHref, items, setVisible])
 }
 
@@ -342,4 +345,3 @@ export const formControlStyle: React.CSSProperties = {
   color: 'var(--color-text)',
   colorScheme: 'light dark',
 }
-

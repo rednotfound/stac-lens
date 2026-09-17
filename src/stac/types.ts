@@ -7,23 +7,19 @@ export type StacNodeType = 'Catalog' | 'Collection' | 'Item'
 
 /** How a node's descendants are discovered. Static catalogs are link-walked;
  *  STAC APIs (detected via `conformsTo` / rel=search) are search-queried. */
-export type StacSourceKind =
-  | { kind: 'static-links' }
-  | { kind: 'api-search'; searchHref: string }
+export type StacSourceKind = { kind: 'static-links' } | { kind: 'api-search'; searchHref: string }
 
 /** A node's item set is never assumed to be a finite, enumerable array —
  *  an API-backed collection can hold tens of millions of items behind an
  *  opaque cursor. */
 export type ItemEnumeration =
-  | { kind: 'links'; hrefs: string[] }
-  | { kind: 'cursor'; endpoint: string; cursor?: string; matched?: number }
+  { kind: 'links'; hrefs: string[] } | { kind: 'cursor'; endpoint: string; cursor?: string; matched?: number }
 
 /** An Item's datetime is either a single instant, or an interval whose
  *  start/end are independently nullable (STAC's `datetime: null` pattern,
  *  and open-ended "ongoing" extents where one bound is null). */
 export type TemporalShape =
-  | { kind: 'instant'; at: string }
-  | { kind: 'interval'; start: string | null; end: string | null }
+  { kind: 'instant'; at: string } | { kind: 'interval'; start: string | null; end: string | null }
 
 export interface SpatialExtent {
   bbox?: number[]
@@ -221,9 +217,7 @@ export type NodeShape =
 export function classifyNodeShape(node: StacNode): NodeShape {
   const hasChildren = node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
   const hasItems =
-    node.items.kind === 'links'
-      ? node.items.hrefs.length > 0
-      : (node.items.matched ?? 1) > 0 || !!node.items.cursor
+    node.items.kind === 'links' ? node.items.hrefs.length > 0 : (node.items.matched ?? 1) > 0 || !!node.items.cursor
 
   if (hasChildren && hasItems) return 'mixed'
   if (hasChildren) return 'branch-collections'

@@ -74,9 +74,7 @@ export class StacLoader {
 
   private async loadSettled(hrefs: string[]): Promise<StacNode[]> {
     const results = await Promise.allSettled(hrefs.map((href) => this.load(href)))
-    return results
-      .filter((r): r is PromiseFulfilledResult<StacNode> => r.status === 'fulfilled')
-      .map((r) => r.value)
+    return results.filter((r): r is PromiseFulfilledResult<StacNode> => r.status === 'fulfilled').map((r) => r.value)
   }
 
   /** Finds the catalog root a node belongs to, for opening a deep-linked

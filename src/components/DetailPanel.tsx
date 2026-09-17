@@ -62,11 +62,7 @@ export function DetailPanel() {
   const [tab, setTab] = useState<Tab>('human')
 
   if (!selectedHref) {
-    return (
-      <div style={{ padding: 16, color: 'var(--color-text-muted)', fontSize: 13 }}>
-        Select a node to inspect.
-      </div>
-    )
+    return <div style={{ padding: 16, color: 'var(--color-text-muted)', fontSize: 13 }}>Select a node to inspect.</div>
   }
   if (!node) {
     return <LoadingState>Loading…</LoadingState>
@@ -229,20 +225,19 @@ export function DetailPanel() {
             </div>
             {node.spatial?.geometryInvalid && (
               <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
-                ⚠ raw `geometry` field is present but is not valid GeoJSON — falling back to bbox
-                only.
+                ⚠ raw `geometry` field is present but is not valid GeoJSON — falling back to bbox only.
               </div>
             )}
             {node.spatial?.bboxCount === 2 && (
               <div style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
-                ⚠ source declares exactly two spatial bboxes — STAC 1.1 reports that as invalid (the
-                first must be the overall extent of the rest). Showing the first only.
+                ⚠ source declares exactly two spatial bboxes — STAC 1.1 reports that as invalid (the first must be the
+                overall extent of the rest). Showing the first only.
               </div>
             )}
             {node.spatial?.bboxCount != null && node.spatial.bboxCount > 2 && (
               <div style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
-                source declares {node.spatial.bboxCount} spatial bboxes — the first (overall extent)
-                is shown; the {node.spatial.bboxCount - 1} sub-extents are not drawn.
+                source declares {node.spatial.bboxCount} spatial bboxes — the first (overall extent) is shown; the{' '}
+                {node.spatial.bboxCount - 1} sub-extents are not drawn.
               </div>
             )}
           </Field>
@@ -317,17 +312,14 @@ export function DetailPanel() {
 
           {(node.declaredCollectionHref || node.declaredParentHref) && (
             <Field label="Containment (source)">
-              {node.declaredCollectionHref && (
-                <div>collection: {node.declaredCollectionHref}</div>
-              )}
+              {node.declaredCollectionHref && <div>collection: {node.declaredCollectionHref}</div>}
               {node.declaredParentHref && <div>parent: {node.declaredParentHref}</div>}
               {node.declaredCollectionHref &&
                 node.declaredParentHref &&
                 node.declaredCollectionHref !== node.declaredParentHref && (
                   <div style={{ color: 'var(--color-node-warning)', marginTop: 2 }}>
-                    ⚠ `rel:collection` and `rel:parent` disagree — this node is
-                    physically reachable from one location but thematically belongs to
-                    another. Per STAC's own philosophy, `collection` is the authoritative
+                    ⚠ `rel:collection` and `rel:parent` disagree — this node is physically reachable from one location
+                    but thematically belongs to another. Per STAC's own philosophy, `collection` is the authoritative
                     one; the tree navigates/highlights through it.
                   </div>
                 )}
@@ -436,108 +428,108 @@ function AssetList({ assets }: { assets: ResolvedAsset[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflow: 'auto' }}>
       {assets.map((asset) => (
         <div key={asset.key}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '4px 6px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--color-border)',
-            fontSize: 12,
-          }}
-        >
-          <TypeIcon type="Asset" size={13} color="var(--color-node-asset)" />
-          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {asset.title ?? asset.key}
-          </span>
-          <span
+          <div
             style={{
-              flexShrink: 0,
-              fontSize: 10,
-              padding: '1px 6px',
-              borderRadius: 999,
-              background: 'var(--color-bg)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text-muted)',
-            }}
-          >
-            {describeAssetType(asset.type)}
-          </span>
-          {/* Compact, not a full band table — `gsd`/`raster:bands` are
-           * per-asset fields (a 10m visible band vs. a 20m SWIR band on
-           * the same Item, confirmed against real Earth Search assets),
-           * genuinely useful at a glance without needing to expand
-           * anything. */}
-          {(asset.gsd != null || asset.dataType) && (
-            <span style={{ flexShrink: 0, fontSize: 10, color: 'var(--color-text-faint)' }}>
-              {[asset.gsd != null ? `${asset.gsd}m` : null, asset.dataType].filter(Boolean).join(' · ')}
-            </span>
-          )}
-          <button
-            onClick={() => handleCopy(asset)}
-            title={asset.href}
-            style={{
-              flexShrink: 0,
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 999,
-              border: `1px solid ${copyState?.key === asset.key && !copyState.ok ? 'var(--color-node-warning)' : 'var(--color-border)'}`,
-              background: 'var(--color-surface)',
-              color:
-                copyState?.key === asset.key && !copyState.ok
-                  ? 'var(--color-node-warning)'
-                  : 'var(--color-text-muted)',
-              cursor: 'pointer',
-            }}
-          >
-            {copyState?.key === asset.key ? (copyState.ok ? 'Copied' : 'Copy failed — select below') : 'Copy link'}
-          </button>
-          <a
-            href={asset.href}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              flexShrink: 0,
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 999,
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text-muted)',
-              textDecoration: 'none',
-            }}
-          >
-            Open
-          </a>
-        </div>
-        {/* Only appears when both the modern Clipboard API and the legacy
-         * execCommand fallback failed (see `copyToClipboard` below) — a
-         * real, focused-and-selected, read-only input the user can copy
-         * from with a plain Ctrl/Cmd+C, not just a promise that a button
-         * "did something." Reported directly: "点了Copy link按钮好像也没
-         * 反应,也不知道有没有复制成功" (clicking Copy link seemed to do
-         * nothing, no idea whether it actually copied) — the previous
-         * version's empty `catch {}` gave no feedback either way. */}
-        {copyState?.key === asset.key && !copyState.ok && (
-          <input
-            readOnly
-            autoFocus
-            value={asset.href}
-            onFocus={(e) => e.currentTarget.select()}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              marginTop: 3,
-              padding: '3px 6px',
-              fontSize: 11,
-              fontFamily: 'var(--font-mono)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 6px',
               borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-node-warning)',
-              background: 'var(--color-bg)',
-              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
+              fontSize: 12,
             }}
-          />
-        )}
+          >
+            <TypeIcon type="Asset" size={13} color="var(--color-node-asset)" />
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {asset.title ?? asset.key}
+            </span>
+            <span
+              style={{
+                flexShrink: 0,
+                fontSize: 10,
+                padding: '1px 6px',
+                borderRadius: 999,
+                background: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              {describeAssetType(asset.type)}
+            </span>
+            {/* Compact, not a full band table — `gsd`/`raster:bands` are
+             * per-asset fields (a 10m visible band vs. a 20m SWIR band on
+             * the same Item, confirmed against real Earth Search assets),
+             * genuinely useful at a glance without needing to expand
+             * anything. */}
+            {(asset.gsd != null || asset.dataType) && (
+              <span style={{ flexShrink: 0, fontSize: 10, color: 'var(--color-text-faint)' }}>
+                {[asset.gsd != null ? `${asset.gsd}m` : null, asset.dataType].filter(Boolean).join(' · ')}
+              </span>
+            )}
+            <button
+              onClick={() => handleCopy(asset)}
+              title={asset.href}
+              style={{
+                flexShrink: 0,
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 999,
+                border: `1px solid ${copyState?.key === asset.key && !copyState.ok ? 'var(--color-node-warning)' : 'var(--color-border)'}`,
+                background: 'var(--color-surface)',
+                color:
+                  copyState?.key === asset.key && !copyState.ok
+                    ? 'var(--color-node-warning)'
+                    : 'var(--color-text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              {copyState?.key === asset.key ? (copyState.ok ? 'Copied' : 'Copy failed — select below') : 'Copy link'}
+            </button>
+            <a
+              href={asset.href}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                flexShrink: 0,
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 999,
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-text-muted)',
+                textDecoration: 'none',
+              }}
+            >
+              Open
+            </a>
+          </div>
+          {/* Only appears when both the modern Clipboard API and the legacy
+           * execCommand fallback failed (see `copyToClipboard` below) — a
+           * real, focused-and-selected, read-only input the user can copy
+           * from with a plain Ctrl/Cmd+C, not just a promise that a button
+           * "did something." Reported directly: "点了Copy link按钮好像也没
+           * 反应,也不知道有没有复制成功" (clicking Copy link seemed to do
+           * nothing, no idea whether it actually copied) — the previous
+           * version's empty `catch {}` gave no feedback either way. */}
+          {copyState?.key === asset.key && !copyState.ok && (
+            <input
+              readOnly
+              autoFocus
+              value={asset.href}
+              onFocus={(e) => e.currentTarget.select()}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                marginTop: 3,
+                padding: '3px 6px',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-node-warning)',
+                background: 'var(--color-bg)',
+                color: 'var(--color-text)',
+              }}
+            />
+          )}
         </div>
       ))}
     </div>

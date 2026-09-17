@@ -99,8 +99,7 @@ export const useItemSetStore = create<ItemSetStoreState>((set, get) => ({
       appliedQuery: forHref === state.forHref ? state.appliedQuery : undefined,
     })),
   setShowOnLenses: (v) => set({ showOnLenses: v }),
-  setAppliedQuery: (forHref, query) =>
-    set((state) => (forHref === state.forHref ? { appliedQuery: query } : state)),
+  setAppliedQuery: (forHref, query) => set((state) => (forHref === state.forHref ? { appliedQuery: query } : state)),
   setPendingInitialQuery: (forHref, query) => set({ pendingInitialQuery: { forHref, query } }),
   consumePendingInitialQuery: (forHref) => {
     const pending = get().pendingInitialQuery

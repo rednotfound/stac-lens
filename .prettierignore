@@ -1,0 +1,9 @@
+# Build output and third-party
+dist
+node_modules
+package-lock.json
+public
+docs/images
+# Prose is written, not formatted — DESIGN.md is a long log and Prettier
+# would rewrap tables and lists for no gain.
+*.md

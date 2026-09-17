@@ -406,7 +406,9 @@ export function ItemsTimeline({
 
   if (!domain || !displayDomain) return null
 
-  const baseX = scaleUtc().domain(displayDomain).range([LEFT_PAD, viewWidth - RIGHT_PAD])
+  const baseX = scaleUtc()
+    .domain(displayDomain)
+    .range([LEFT_PAD, viewWidth - RIGHT_PAD])
   // The zoomed/panned view of the same scale — used for every position
   // below instead of `baseX` directly; `displayDomain` itself never
   // changes from zooming alone, so lane-packing (already computed above)
@@ -465,9 +467,7 @@ export function ItemsTimeline({
               domain={displayDomain}
               color="var(--color-text-faint)"
               filled={false}
-              onHover={(clientX, clientY) =>
-                setTooltip({ label: 'stated extent (source)', x: clientX, y: clientY })
-              }
+              onHover={(clientX, clientY) => setTooltip({ label: 'stated extent (source)', x: clientX, y: clientY })}
               onHoverEnd={() => setTooltip(null)}
             />
           </g>
@@ -588,7 +588,18 @@ interface TemporalMarkProps {
 /** Renders one temporal shape as a mark on the shared axis: a small
  *  diamond for an instant, a bar for a closed interval, and a bar that
  *  fades toward an arrow for an open-ended bound. */
-function TemporalMark({ shape, x, y, domain, color, filled, selected, onClick, onHover, onHoverEnd }: TemporalMarkProps) {
+function TemporalMark({
+  shape,
+  x,
+  y,
+  domain,
+  color,
+  filled,
+  selected,
+  onClick,
+  onHover,
+  onHoverEnd,
+}: TemporalMarkProps) {
   const handlers = onHover
     ? {
         onMouseEnter: (e: React.MouseEvent) => onHover(e.clientX, e.clientY),
@@ -608,7 +619,9 @@ function TemporalMark({ shape, x, y, domain, color, filled, selected, onClick, o
     const cx = x(new Date(shape.at))
     return (
       <g onClick={onClick} {...handlers} {...blockPan} style={{ cursor: onClick ? 'pointer' : undefined }}>
-        {selected && <circle cx={cx} cy={y} r={7} fill="none" strokeWidth={2} style={{ stroke: 'var(--color-selection)' }} />}
+        {selected && (
+          <circle cx={cx} cy={y} r={7} fill="none" strokeWidth={2} style={{ stroke: 'var(--color-selection)' }} />
+        )}
         <circle cx={cx} cy={y} r={4} style={{ fill: filled ? color : 'none', stroke: color }} strokeWidth={1.5} />
       </g>
     )
@@ -625,7 +638,16 @@ function TemporalMark({ shape, x, y, domain, color, filled, selected, onClick, o
   return (
     <g onClick={onClick} {...handlers} {...blockPan} style={{ cursor: onClick ? 'pointer' : undefined }}>
       {selected && (
-        <rect x={x1 - 2} y={y - 7} width={x2 - x1 + 4} height={14} rx={3} fill="none" strokeWidth={2} style={{ stroke: 'var(--color-selection)' }} />
+        <rect
+          x={x1 - 2}
+          y={y - 7}
+          width={x2 - x1 + 4}
+          height={14}
+          rx={3}
+          fill="none"
+          strokeWidth={2}
+          style={{ stroke: 'var(--color-selection)' }}
+        />
       )}
       <rect
         x={x1}

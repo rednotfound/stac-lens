@@ -9,9 +9,7 @@ export interface TemporalProperties {
 /** Normalizes an Item's temporal properties per the STAC spec:
  *  `datetime` set -> instant. `datetime: null` + start/end -> interval,
  *  each bound independently nullable (open-ended / "ongoing" extents). */
-export function normalizeItemTemporal(
-  props: TemporalProperties | undefined,
-): TemporalShape | undefined {
+export function normalizeItemTemporal(props: TemporalProperties | undefined): TemporalShape | undefined {
   if (!props) return undefined
 
   if (props.datetime != null) {

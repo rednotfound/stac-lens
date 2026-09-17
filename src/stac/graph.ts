@@ -8,11 +8,7 @@ import type {
   StacProvider,
   StacSourceKind,
 } from './types'
-import {
-  normalizeCollectionTemporalExtent,
-  normalizeItemTemporal,
-  type TemporalProperties,
-} from './temporal'
+import { normalizeCollectionTemporalExtent, normalizeItemTemporal, type TemporalProperties } from './temporal'
 import { normalizeSpatial } from './spatial'
 import { mergeNamespaceScans, scanNamespaces } from './namespaces'
 
@@ -141,9 +137,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const type = detectType(raw)
   const links = raw.links ?? []
 
-  const childHrefs = dedupe(
-    links.filter((l) => l.rel === 'child' && l.href).map((l) => resolveHref(href, l.href!)),
-  )
+  const childHrefs = dedupe(links.filter((l) => l.rel === 'child' && l.href).map((l) => resolveHref(href, l.href!)))
   // Fallback child-discovery for a node with no static `rel:child` links at
   // all — an OGC API - Features "Collections" endpoint (`rel:data`), real
   // and not hypothetical: Microsoft Planetary Computer's own root has zero
@@ -152,16 +146,13 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   // Only consulted when `childHrefs` is empty — a node with a genuine
   // static tree never needs it.
   const dataLink = links.find((l) => l.rel === 'data' && l.href)
-  const collectionsEndpoint =
-    childHrefs.length === 0 && dataLink ? resolveHref(href, dataLink.href!) : undefined
+  const collectionsEndpoint = childHrefs.length === 0 && dataLink ? resolveHref(href, dataLink.href!) : undefined
   // STAC API - Children: one response with every immediate child as a
   // complete object — taken whenever advertised, even alongside `child`
   // links (see `StacNode.childrenEndpoint`).
   const childrenLink = links.find((l) => l.rel === 'children' && l.href)
   const childrenEndpoint = childrenLink ? resolveHref(href, childrenLink.href!) : undefined
-  const itemHrefs = dedupe(
-    links.filter((l) => l.rel === 'item' && l.href).map((l) => resolveHref(href, l.href!)),
-  )
+  const itemHrefs = dedupe(links.filter((l) => l.rel === 'item' && l.href).map((l) => resolveHref(href, l.href!)))
   const itemsLink = links.find((l) => l.rel === 'items' && l.href)
   const sourceKind = detectSourceKind(raw, href)
   // Three ways a node's own direct items can be enumerated, tried in this

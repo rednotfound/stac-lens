@@ -69,7 +69,8 @@ const KNOWN_CATALOGS = [
   // this app is ever served over https, not yet worth the caveat in the UI.
   {
     title: 'CIESIN STAC',
-    description: "Datasets from Columbia's Center for International Earth Science Information Network (CIESIN), including GRID3 population and settlement data.",
+    description:
+      "Datasets from Columbia's Center for International Earth Science Information Network (CIESIN), including GRID3 population and settlement data.",
     href: 'https://ciesin.github.io/sci-apps-stac/stac/catalog.json',
   },
   {
@@ -79,7 +80,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Extremadura SDI (CICTEX)',
-    description: 'Geospatial datasets for the Extremadura region of Spain, converted to cloud-native formats (GeoParquet, PMTiles).',
+    description:
+      'Geospatial datasets for the Extremadura region of Spain, converted to cloud-native formats (GeoParquet, PMTiles).',
     href: 'https://storage.googleapis.com/carto-portolan-ide-extremadura/catalog.json',
   },
   {
@@ -94,7 +96,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'EcoDataCube.eu',
-    description: 'European-wide environmental layers (Landsat/Sentinel-2 mosaics, land cover, soil predictions) from OpenGeoHub.',
+    description:
+      'European-wide environmental layers (Landsat/Sentinel-2 mosaics, land cover, soil predictions) from OpenGeoHub.',
     href: 'https://s3.eu-central-1.wasabisys.com/stac/odse/catalog.json',
   },
   {
@@ -104,7 +107,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Cassini VIMS-IR STAC catalog',
-    description: "Infrared spectral imaging data from the Cassini spacecraft's VIMS instrument, hosted by the University of Nantes.",
+    description:
+      "Infrared spectral imaging data from the Cassini spacecraft's VIMS instrument, hosted by the University of Nantes.",
     href: 'https://vims.univ-nantes.fr/stac/catalog.json',
   },
   {
@@ -129,7 +133,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'HDX HAPI Cloud-Native',
-    description: "Cloud-native Parquet exports of UN OCHA's Humanitarian API, covering affected populations, food security, funding, and conflict indicators.",
+    description:
+      "Cloud-native Parquet exports of UN OCHA's Humanitarian API, covering affected populations, food security, funding, and conflict indicators.",
     href: 'https://data.source.coop/hdx/hapi/collection.json',
   },
   {
@@ -144,12 +149,14 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'FMI ARD Finland',
-    description: 'Analysis-ready Sentinel-1/2 mosaics and forestry inventory data over Finland from the Finnish Meteorological Institute.',
+    description:
+      'Analysis-ready Sentinel-1/2 mosaics and forestry inventory data over Finland from the Finnish Meteorological Institute.',
     href: 'https://pta.data.lit.fmi.fi/stac/root.json',
   },
   {
     title: 'Argentina National Geographic Institute (IGN) Reference Layers',
-    description: "Official reference vector layers (hydrography, transport, boundaries, settlements) from Argentina's National Geographic Institute.",
+    description:
+      "Official reference vector layers (hydrography, transport, boundaries, settlements) from Argentina's National Geographic Institute.",
     href: 'https://data.source.coop/nlebovits/ign-argentina/catalog.json',
   },
   {
@@ -164,22 +171,26 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'GHSL Population Grids (GHS-POP R2023A)',
-    description: "Global population grids (1975-2030, 100m resolution) from the EC Joint Research Centre's GHS-POP model.",
+    description:
+      "Global population grids (1975-2030, 100m resolution) from the EC Joint Research Centre's GHS-POP model.",
     href: 'https://data.source.coop/nlebovits/ghsl/catalog.json',
   },
   {
     title: 'Microsoft ML Road Detections',
-    description: "Road centerlines detected by Microsoft's machine-learning model from Bing Maps aerial imagery, worldwide.",
+    description:
+      "Road centerlines detected by Microsoft's machine-learning model from Bing Maps aerial imagery, worldwide.",
     href: 'https://data.source.coop/nlebovits/microsoft-ml-road-detections/catalog.json',
   },
   {
     title: 'NAIP Aerial Imagery Mosaics',
-    description: 'Per-scene National Agriculture Imagery Program (NAIP) aerial imagery of the United States as Cloud Optimized GeoTIFFs.',
+    description:
+      'Per-scene National Agriculture Imagery Program (NAIP) aerial imagery of the United States as Cloud Optimized GeoTIFFs.',
     href: 'https://data.source.coop/portolan/portolan-pipeline/naip-mosaic/PRs/111/catalog.json',
   },
   {
     title: 'JRC GloFAS Global Flood Hazard Maps',
-    description: "Global riverine flood-hazard and depth maps for multiple return periods from the EC Joint Research Centre's GloFAS model.",
+    description:
+      "Global riverine flood-hazard and depth maps for multiple return periods from the EC Joint Research Centre's GloFAS model.",
     href: 'https://data.source.coop/nlebovits/jrc-glofas/catalog.json',
   },
   {
@@ -209,7 +220,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'LUCAS ML',
-    description: "Segmented land-use survey photos and statistics from the EU's LUCAS field survey, for land-cover-change machine learning.",
+    description:
+      "Segmented land-use survey photos and statistics from the EU's LUCAS field survey, for land-cover-change machine learning.",
     href: 'https://data.source.coop/jrc-lucas/jrc-lucas-ml/stac/catalog.json',
   },
   {
@@ -219,7 +231,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'National geospatial data of the Republic of Moldova',
-    description: "Cadastral parcels, buildings, addresses, land cover, and geodetic layers from Moldova's national geoportal.",
+    description:
+      "Cadastral parcels, buildings, addresses, land cover, and geodetic layers from Moldova's national geoportal.",
     href: 'https://data.source.coop/nlebovits/moldova-geodata/catalog.json',
   },
   {
@@ -229,7 +242,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Planet Labs STAC Catalog',
-    description: 'Creative Commons-licensed open data from Planet Labs, including disaster imagery and SpaceNet 7 labels.',
+    description:
+      'Creative Commons-licensed open data from Planet Labs, including disaster imagery and SpaceNet 7 labels.',
     href: 'https://www.planet.com/data/stac/catalog.json',
   },
   {
@@ -239,12 +253,14 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Portolan Reference Catalog',
-    description: 'Reference catalog demonstrating vector, raster, and tabular data cases in the Portolan cloud-native catalog specification.',
+    description:
+      'Reference catalog demonstrating vector, raster, and tabular data cases in the Portolan cloud-native catalog specification.',
     href: 'https://data.source.coop/portolan/portolan-pipeline/portolan-reference/main/catalog.json',
   },
   {
     title: 'Sentinel-1 RTC CONUS',
-    description: 'Sentinel-1 radiometrically terrain-corrected SAR backscatter tiles over the contiguous United States since 2017.',
+    description:
+      'Sentinel-1 radiometrically terrain-corrected SAR backscatter tiles over the contiguous United States since 2017.',
     href: 'https://raw.githubusercontent.com/scottyhq/sentinel1-rtc-stac/main/collection.json',
   },
   {
@@ -279,7 +295,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'The Wildland Almanac - CONUS',
-    description: '30m Landsat-derived wildland ecosystem property data cube over the contiguous US at decadal snapshots (1990-2024).',
+    description:
+      '30m Landsat-derived wildland ecosystem property data cube over the contiguous US at decadal snapshots (1990-2024).',
     href: 'https://data.source.coop/wildland-almanac/conus/catalog.json',
   },
   {
@@ -294,7 +311,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'The Wildland Almanac - Treatment Scenarios',
-    description: '30m Landsat-derived wildland ecosystem data cube for 24 forest-management treatment scenarios in the western US.',
+    description:
+      '30m Landsat-derived wildland ecosystem data cube for 24 forest-management treatment scenarios in the western US.',
     href: 'https://data.source.coop/wildland-almanac/treatment-scenarios/catalog.json',
   },
   {
@@ -309,12 +327,14 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'EuroSAT: Land Use and Land Cover Classification',
-    description: 'Labeled Sentinel-2 imagery (13 bands, 27,000 images, 10 classes) for land-use/land-cover classification benchmarking.',
+    description:
+      'Labeled Sentinel-2 imagery (13 bands, 27,000 images, 10 classes) for land-use/land-cover classification benchmarking.',
     href: 'https://data.source.coop/nlebovits/eurosat-ms/catalog.json',
   },
   {
     title: 'Soft Commodity Infrastructure (Brazil)',
-    description: 'Locations of Brazilian grain silos, slaughterhouses, dairy plants, and sugar/ethanol mills, from government registries.',
+    description:
+      'Locations of Brazilian grain silos, slaughterhouses, dairy plants, and sugar/ethanol mills, from government registries.',
     href: 'https://data.source.coop/tristangruppwri/soft-commodity-infrastructure/catalog.json',
   },
   {
@@ -324,12 +344,14 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Philadelphia Housing and Land Use',
-    description: 'Property, zoning, vacancy, and affordable-housing datasets for Philadelphia, mirrored from city ArcGIS services.',
+    description:
+      'Property, zoning, vacancy, and affordable-housing datasets for Philadelphia, mirrored from city ArcGIS services.',
     href: 'https://data.source.coop/nlebovits/phl-housing-demo/catalog.json',
   },
   {
     title: 'Trazo Field Boundaries of South America',
-    description: 'Agricultural field boundaries across South America (2023-2024 season) delineated from Sentinel-2 imagery via machine learning.',
+    description:
+      'Agricultural field boundaries across South America (2023-2024 season) delineated from Sentinel-2 imagery via machine learning.',
     href: 'https://data.source.coop/wri-data-lab/trazofields/catalog.json',
   },
   {
@@ -339,12 +361,14 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'USGS 3DEP LiDAR Point Clouds',
-    description: 'LiDAR point-cloud elevation data over the conterminous US, Hawaii, and US territories, hosted on AWS.',
+    description:
+      'LiDAR point-cloud elevation data over the conterminous US, Hawaii, and US territories, hosted on AWS.',
     href: 'https://s3-us-west-2.amazonaws.com/usgs-lidar-stac/ept/catalog.json',
   },
   {
     title: 'World Bank - Light Every Night',
-    description: 'Nightly visible radiance (nighttime lights) data from VIIRS DNB NPP, April 2012 through December 2020.',
+    description:
+      'Nightly visible radiance (nighttime lights) data from VIIRS DNB NPP, April 2012 through December 2020.',
     href: 'https://globalnightlight.s3.amazonaws.com/VIIRS_npp_catalog.json',
   },
   {
@@ -354,7 +378,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Disaster Data Releases from Planet Labs',
-    description: 'Pre- and post-event high-resolution satellite imagery for major disasters (earthquakes, floods, storms, wildfires).',
+    description:
+      'Pre- and post-event high-resolution satellite imagery for major disasters (earthquakes, floods, storms, wildfires).',
     href: 'https://data.source.coop/planet/disasterdata/catalog.json',
   },
   {
@@ -386,7 +411,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Boettiger Lab Geospatial Datasets',
-    description: 'Biodiversity, conservation, census, and environmental datasets from UC Berkeley, on National Research Platform storage.',
+    description:
+      'Biodiversity, conservation, census, and environmental datasets from UC Berkeley, on National Research Platform storage.',
     href: 'https://s3-west.nrp-nautilus.io/public-data/stac/catalog.json',
     isApi: true,
   },
@@ -404,13 +430,14 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'CBERS and Amazonia-1 on AWS',
-    description: "CBERS 4/4A and Amazonia-1 satellite imagery over Brazil, on AWS Open Data.",
+    description: 'CBERS 4/4A and Amazonia-1 satellite imagery over Brazil, on AWS Open Data.',
     href: 'https://stac.scitekno.com.br/v100/',
     isApi: true,
   },
   {
     title: 'Copernicus Data Space Ecosystem',
-    description: 'Asset-level catalogue of Copernicus Sentinel and other Earth-observation missions, actively maintained by ESA.',
+    description:
+      'Asset-level catalogue of Copernicus Sentinel and other Earth-observation missions, actively maintained by ESA.',
     href: 'https://stac.dataspace.copernicus.eu/v1/',
     isApi: true,
   },
@@ -476,7 +503,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'Google Earth Engine (openEO)',
-    description: "Google Earth Engine's openEO backend — 1000+ real datasets, browsable through its own Collections listing rather than a STAC search endpoint.",
+    description:
+      "Google Earth Engine's openEO backend — 1000+ real datasets, browsable through its own Collections listing rather than a STAC search endpoint.",
     href: 'https://earthengine.openeo.org/v1.0/',
   },
   {
@@ -493,7 +521,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'INPE STAC Server',
-    description: "Brazil's National Institute for Space Research (INPE) — Earth-observation collections from its Data Cube Brazil program.",
+    description:
+      "Brazil's National Institute for Space Research (INPE) — Earth-observation collections from its Data Cube Brazil program.",
     href: 'https://data.inpe.br/bdc/stac/v1/',
     isApi: true,
   },
@@ -517,13 +546,15 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'NASA CMR CLOUDSTAC Proxy',
-    description: "NASA's Common Metadata Repository, cloud-hosted-holdings variant — each linked provider exposes its own STAC endpoint.",
+    description:
+      "NASA's Common Metadata Repository, cloud-hosted-holdings variant — each linked provider exposes its own STAC endpoint.",
     href: 'https://cmr.earthdata.nasa.gov/cloudstac/',
     isApi: true,
   },
   {
     title: 'NASA CMR STAC',
-    description: "NASA's Common Metadata Repository as a STAC API — each linked provider exposes its own STAC endpoint.",
+    description:
+      "NASA's Common Metadata Repository as a STAC API — each linked provider exposes its own STAC endpoint.",
     href: 'https://cmr.earthdata.nasa.gov/stac/',
     isApi: true,
   },
@@ -547,7 +578,8 @@ const KNOWN_CATALOGS = [
   },
   {
     title: 'PGC Data Catalog',
-    description: "The Polar Geospatial Center's own digital elevation models, via a live STAC API (a static PGC DEM catalog is already above).",
+    description:
+      "The Polar Geospatial Center's own digital elevation models, via a live STAC API (a static PGC DEM catalog is already above).",
     href: 'https://stac.pgc.umn.edu/api/v1/',
     isApi: true,
   },
@@ -660,8 +692,8 @@ export function LandingPage({
           STAC Lens
         </h1>
         <p style={{ color: 'var(--color-text-muted)', marginTop: 8, maxWidth: 480, lineHeight: 1.5 }}>
-          See the shape of your STAC data. Structure, time, and space as one coordinated view —
-          not another STAC Browser.
+          See the shape of your STAC data. Structure, time, and space as one coordinated view — not another STAC
+          Browser.
         </p>
       </div>
 
@@ -817,9 +849,7 @@ export function LandingPage({
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                  {cat.description}
-                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>{cat.description}</div>
                 <div
                   style={{
                     fontSize: 11,

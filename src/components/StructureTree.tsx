@@ -217,8 +217,7 @@ interface TooltipState extends HoverInfo {
  *  and link is still plain React/SVG so click/hover stay ordinary React
  *  event handlers. */
 export function StructureTree({ rootHref }: { rootHref: string }) {
-  const { root, toggle, collapseAll, expandAllCatalogs, isLoading, rootError } =
-    useStructureTree(rootHref)
+  const { root, toggle, collapseAll, expandAllCatalogs, isLoading, rootError } = useStructureTree(rootHref)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select_ = useSelectionStore((s) => s.select)
@@ -299,9 +298,7 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
   // more independent pair for each of the two boxes. A static catalog's
   // single box is entirely unaffected — `boxOffsets`/`boxSizes` above still
   // own that case exactly as before.
-  const [searchBoxOffsets, setSearchBoxOffsets] = useState<Map<string, { dxHoriz: number; dyVert: number }>>(
-    new Map(),
-  )
+  const [searchBoxOffsets, setSearchBoxOffsets] = useState<Map<string, { dxHoriz: number; dyVert: number }>>(new Map())
   const [searchBoxSizes, setSearchBoxSizes] = useState<Map<string, { width: number; height: number }>>(new Map())
   const [resultsBoxOffsets, setResultsBoxOffsets] = useState<Map<string, { dxHoriz: number; dyVert: number }>>(
     new Map(),
@@ -425,10 +422,7 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     return h
   }, [root])
 
-  const nodes = useMemo(
-    () => (layout?.descendants() ?? []) as HierarchyPointNode<TreeDatum>[],
-    [layout],
-  )
+  const nodes = useMemo(() => (layout?.descendants() ?? []) as HierarchyPointNode<TreeDatum>[], [layout])
   const links = useMemo(
     () =>
       (layout?.links() ?? []) as {
@@ -569,8 +563,8 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
         </div>
         <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginBottom: 8 }}>{rootError}</div>
         <div style={{ color: 'var(--color-text-faint)', fontSize: 12 }}>
-          This can happen if the URL doesn't point to valid STAC JSON, the server doesn't allow
-          cross-origin browser requests (CORS), or the catalog is temporarily unreachable.
+          This can happen if the URL doesn't point to valid STAC JSON, the server doesn't allow cross-origin browser
+          requests (CORS), or the catalog is temporarily unreachable.
         </div>
       </div>
     )
@@ -643,17 +637,11 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
         height="100%"
         style={{ display: 'block', fontFamily: 'var(--font-sans)', cursor: dragging ? 'grabbing' : 'grab' }}
       >
-        <g
-          ref={zoomGRef}
-          transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.k})`}
-        >
+        <g ref={zoomGRef} transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.k})`}>
           {links.map((link) => (
             <path
               key={link.target.data.href}
-              d={
-                linkGenerator({ source: effectiveXY(link.source), target: effectiveXY(link.target) }) ??
-                undefined
-              }
+              d={linkGenerator({ source: effectiveXY(link.source), target: effectiveXY(link.target) }) ?? undefined}
               fill="none"
               style={{ stroke: 'var(--color-border)' }}
               strokeWidth={1.5}
@@ -699,9 +687,7 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                     return next
                   })
                 }}
-                boxSize={
-                  boxSizes.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }
-                }
+                boxSize={boxSizes.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }}
                 onBoxResizeBy={(dxLocal, dyLocal) => {
                   setBoxSizes((prev) => {
                     const next = new Map(prev)
@@ -999,11 +985,7 @@ function Legend() {
 }
 
 function Dot({ color }: { color: string }) {
-  return (
-    <span
-      style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }}
-    />
-  )
+  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
 }
 
 function LegendRow({
@@ -1367,9 +1349,7 @@ function TreeNodeView({
   // see the connecting curve drawn below rather than it being squeezed
   // into a few pixels.
   const labelWidth = estimateTextWidth(labelText, LABEL_FONT_SIZE)
-  const boxNearX = labelOnLeft
-    ? labelDx - labelWidth - ITEM_SET_BOX_GAP
-    : labelDx + labelWidth + ITEM_SET_BOX_GAP
+  const boxNearX = labelOnLeft ? labelDx - labelWidth - ITEM_SET_BOX_GAP : labelDx + labelWidth + ITEM_SET_BOX_GAP
 
   // No clamping against Structure Lens's own visible column at all,
   // neither the box's position nor its size, default or manually resized
@@ -1531,16 +1511,9 @@ function TreeNodeView({
         strokeWidth={1.75}
       />
       {node.spatial?.geometryInvalid && (
-        <circle
-          r={radius + 3}
-          fill="none"
-          strokeDasharray="2,2"
-          style={{ stroke: 'var(--color-node-warning)' }}
-        />
+        <circle r={radius + 3} fill="none" strokeDasharray="2,2" style={{ stroke: 'var(--color-node-warning)' }} />
       )}
-      {selected && (
-        <circle r={radius + 4} fill="none" strokeWidth={2} style={{ stroke: 'var(--color-selection)' }} />
-      )}
+      {selected && <circle r={radius + 4} fill="none" strokeWidth={2} style={{ stroke: 'var(--color-selection)' }} />}
       {!selected && containsSelection && (
         <circle
           r={radius + 4}
@@ -1635,7 +1608,10 @@ function TreeNodeView({
                 icon: 'search',
                 badge: 'API',
                 connectorSource: { x: 0, y: 0 },
-                connectorTarget: { x: 14 + searchBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET, y: boxNearX + searchBox.offset.dxHoriz },
+                connectorTarget: {
+                  x: 14 + searchBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET,
+                  y: boxNearX + searchBox.offset.dxHoriz,
+                },
                 foreignX: searchBoxLeftX,
                 foreignY: 14 + searchBox.offset.dyVert,
                 size: searchBox.size,
@@ -1737,7 +1713,10 @@ function TreeNodeView({
               title: 'Items',
               icon: 'list',
               connectorSource: { x: 0, y: 0 },
-              connectorTarget: { x: 14 + boxOffset.dyVert + BOX_CONNECTOR_TARGET_INSET, y: boxNearX + boxOffset.dxHoriz },
+              connectorTarget: {
+                x: 14 + boxOffset.dyVert + BOX_CONNECTOR_TARGET_INSET,
+                y: boxNearX + boxOffset.dxHoriz,
+              },
               foreignX: (labelOnLeft ? boxNearX - boxSize.width : boxNearX) + boxOffset.dxHoriz,
               foreignY: 14 + boxOffset.dyVert,
               size: boxSize,
@@ -1997,7 +1976,9 @@ function renderBox(opts: {
            * modes (links mode's shorter default content happened to still
            * fit without it, so this one stayed invisible until cursor
            * mode's own longer content exposed it). */}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 8, overflow: 'auto' }}>
+          <div
+            style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 8, overflow: 'auto' }}
+          >
             {opts.children}
           </div>
           {/* A real corner grip, not a whole-edge drag — matches the same

@@ -135,7 +135,9 @@ export function BboxPickerModal({
           }}
         >
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>Draw a search area</span>
-          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flex: 1, textAlign: 'right', marginRight: 12 }}>
+          <span
+            style={{ fontSize: 11, color: 'var(--color-text-muted)', flex: 1, textAlign: 'right', marginRight: 12 }}
+          >
             {hint}
           </span>
           <button

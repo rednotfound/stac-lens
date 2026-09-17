@@ -24,5 +24,10 @@ export function describeAssetType(type: string | undefined): string {
   if (type === 'application/json' || type === 'application/geo+json') return 'JSON'
   if (type === 'application/x-parquet' || type.includes('parquet')) return 'Parquet'
   const slash = type.indexOf('/')
-  return slash === -1 ? type : type.slice(slash + 1).split(';')[0].toUpperCase()
+  return slash === -1
+    ? type
+    : type
+        .slice(slash + 1)
+        .split(';')[0]
+        .toUpperCase()
 }

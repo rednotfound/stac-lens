@@ -6,5 +6,14 @@ import logoUrl from '../assets/stac-lens-logo.svg'
  *  and landing title here, `public/favicon.svg` and the PNG icons for
  *  browsers/home screens (rendered from the same file). */
 export function Logo({ size }: { size: number }) {
-  return <img src={logoUrl} width={size} height={size} alt="" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }} />
+  return (
+    <img
+      src={logoUrl}
+      width={size}
+      height={size}
+      alt=""
+      aria-hidden="true"
+      style={{ display: 'block', flexShrink: 0 }}
+    />
+  )
 }

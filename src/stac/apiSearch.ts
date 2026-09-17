@@ -267,7 +267,10 @@ async function fetchNodeListPage(
  *  ignored and every Collection comes back in one response regardless —
  *  `rel:next` is still checked and followed rather than assumed absent,
  *  since a different implementation may genuinely paginate this). */
-export function fetchCollectionsPage(endpoint: string, opts: { limit: number; next?: NextLink }): Promise<NodeListPage> {
+export function fetchCollectionsPage(
+  endpoint: string,
+  opts: { limit: number; next?: NextLink },
+): Promise<NodeListPage> {
   return fetchNodeListPage(endpoint, 'collections', opts)
 }
 

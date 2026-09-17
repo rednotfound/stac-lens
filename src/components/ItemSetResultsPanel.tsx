@@ -129,7 +129,11 @@ export function ItemSetResultsPanel({
           color: 'var(--color-text-muted)',
         }}
       >
-        <button onClick={() => goToPage(pageIndex - 1)} disabled={pageIndex === 0} style={pagerButtonStyle(pageIndex === 0)}>
+        <button
+          onClick={() => goToPage(pageIndex - 1)}
+          disabled={pageIndex === 0}
+          style={pagerButtonStyle(pageIndex === 0)}
+        >
           ← Prev
         </button>
         {pageList.map((p, i) =>
@@ -182,7 +186,9 @@ export function ItemSetResultsPanel({
           {status === 'loading' ? (
             <LoadingState>Loading items…</LoadingState>
           ) : status === 'error' ? (
-            <div style={{ padding: 8, fontSize: 12, color: 'var(--color-node-warning)' }}>⚠ {error ?? 'search failed'}</div>
+            <div style={{ padding: 8, fontSize: 12, color: 'var(--color-node-warning)' }}>
+              ⚠ {error ?? 'search failed'}
+            </div>
           ) : pageItems.length === 0 ? (
             <div style={{ padding: 8, fontSize: 12, color: 'var(--color-text-faint)' }}>{emptyListMessage}</div>
           ) : (

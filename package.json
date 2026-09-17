@@ -13,6 +13,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "preview": "vite preview",
     "verify:fixtures": "tsx scripts/verify-fixtures.ts"
   },
@@ -43,6 +45,7 @@
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
     "playwright": "^1.63.0",
+    "prettier": "^3.9.7",
     "tsx": "^4.23.13",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"

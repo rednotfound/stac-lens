@@ -89,15 +89,15 @@ async function verifySpecExample() {
 
   let root
   try {
-    root = await loader.load(
-      'https://raw.githubusercontent.com/radiantearth/stac-spec/master/examples/catalog.json',
-    )
+    root = await loader.load('https://raw.githubusercontent.com/radiantearth/stac-spec/master/examples/catalog.json')
   } catch (err) {
     console.log(`  !! failed to load spec example root: ${(err as Error).message}`)
     return
   }
 
-  console.log(`root: type=${root.type} temporal=${JSON.stringify(root.temporal)} (expect undefined — Catalogs have no extent)`)
+  console.log(
+    `root: type=${root.type} temporal=${JSON.stringify(root.temporal)} (expect undefined — Catalogs have no extent)`,
+  )
   describeLinks(root.childHrefs, 'children (collections)')
   describeLinks(root.items.kind === 'links' ? root.items.hrefs : [], 'direct items on Catalog')
 

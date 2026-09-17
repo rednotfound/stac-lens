@@ -216,9 +216,7 @@ export function interpretCommonMetadataFacts(properties: Record<string, unknown>
  *  extension — empty groups are dropped entirely (a fixture with no `sar:*`
  *  fields shows no SAR section at all, not an empty one). `gsd` is checked
  *  separately since it's a common core STAC field, not extension-scoped. */
-export function interpretExtensionFacts(
-  properties: Record<string, unknown> | undefined,
-): ExtensionFactGroup[] {
+export function interpretExtensionFacts(properties: Record<string, unknown> | undefined): ExtensionFactGroup[] {
   if (!properties) return []
   const groups: ExtensionFactGroup[] = []
   for (const [prefix, { title, interpret }] of Object.entries(INTERPRETERS)) {

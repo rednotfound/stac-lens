@@ -51,7 +51,13 @@ export function SpaceLens() {
     // `zIndex: 0` here too, not just decorative — see ItemsMap's own note;
     // this component's overlay label needs the same containment.
     <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 0 }}>
-      <ItemsMap items={items} highlightHref={highlightHref} statedBbox={statedBbox} fitKey={node?.href} onSelectItem={select} />
+      <ItemsMap
+        items={items}
+        highlightHref={highlightHref}
+        statedBbox={statedBbox}
+        fitKey={node?.href}
+        onSelectItem={select}
+      />
       <div
         style={{
           position: 'absolute',
