@@ -16,6 +16,21 @@ Node 20.19+ or 22.12+ (Vite 8's range); `.nvmrc` pins 22.
 Routing is hash-based (`#<stac href>`), so every real URL path is a real
 file and **no SPA fallback rewrite** (`/* → /index.html`) is needed.
 
+The build also writes a handful of static pages generated from the
+Markdown in `docs/` — `/about/`, `/health-rules/`, `/catalogs/`, `/deploy/`,
+their `.md` copies, `llms.txt`, `robots.txt` — so a search engine or a
+crawler that runs no JavaScript has something to read (`docs/DISCOVERABILITY.md`).
+They are plain files under `dist/`; no host configuration is involved.
+
+One optional build-time variable: **`VITE_SITE_URL`**, the absolute address
+of your instance (`https://lens.example.org`, no trailing slash). When set,
+the pages carry canonical URLs and Open Graph URLs, `sitemap.xml` is
+written and `robots.txt` names it. When unset, the build still succeeds
+and prints one warning; nothing absolute is emitted, so a build can never
+claim to be a site it is not. `netlify.toml` sets it for staclens.com. The
+link-preview image `public/og-image.png` names staclens.com; replace it
+for your own instance (`scripts/og-image.html` is its source).
+
 Two headers are worth setting wherever you can. Both are declared in
 `netlify.toml` and `docker/nginx.conf`, so the two shipped configurations
 already agree:

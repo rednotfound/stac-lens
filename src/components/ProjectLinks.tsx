@@ -1,5 +1,6 @@
-export const REPO_URL = 'https://github.com/rednotfound/stac-lens'
-export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`
+import { ECOSYSTEM_LINKS, LICENSE_URL, REPO_URL, SITE_PAGES } from '../data/projectLinks'
+
+export { REPO_URL, LICENSE_URL }
 
 /** The GitHub mark — path from Simple Icons (CC0), inlined so the header
  *  needs no icon library and no external image request. */
@@ -23,37 +24,6 @@ const linkStyle: React.CSSProperties = {
   textDecoration: 'none',
   borderBottom: '1px solid var(--color-border)',
 }
-
-/** The STAC ecosystem this app sits in — the spec and its API, the two
- *  registries the Inspector's extension facts and the API capability gating
- *  are read against, the reference browser this one is explicitly "not
- *  another" of, the directory the landing list comes from, and the
- *  tooling most people arrive from. Every URL checked live before being
- *  listed. */
-const ECOSYSTEM_LINKS: { label: string; href: string; title: string }[] = [
-  { label: 'STAC', href: 'https://stacspec.org/', title: 'SpatioTemporal Asset Catalog — the specification’s home' },
-  {
-    label: 'Spec',
-    href: 'https://github.com/radiantearth/stac-spec',
-    title: 'STAC core specification (Catalog, Collection, Item)',
-  },
-  { label: 'API spec', href: 'https://github.com/radiantearth/stac-api-spec', title: 'STAC API specification' },
-  { label: 'Extensions', href: 'https://stac-extensions.github.io/', title: 'STAC extensions registry' },
-  { label: 'API extensions', href: 'https://stac-api-extensions.github.io/', title: 'STAC API extensions registry' },
-  { label: 'STAC Browser', href: 'https://radiantearth.github.io/stac-browser/', title: 'The reference STAC browser' },
-  {
-    label: 'STAC Index',
-    href: 'https://stacindex.org/',
-    title: 'Public directory of STAC catalogs and APIs — the source of the landing list',
-  },
-  {
-    label: 'stac-utils',
-    href: 'https://github.com/stac-utils',
-    title: 'PySTAC, stac-fastapi, stac-validator and friends',
-  },
-  { label: 'Tutorials', href: 'https://stacspec.org/en/tutorials/', title: 'STAC tutorials' },
-  { label: 'OGC', href: 'https://www.ogc.org/standards/stac/', title: 'STAC as an OGC Community Standard' },
-]
 
 /** The landing page's page foot: version, license, source — the three
  *  facts a visitor to a deployed instance needs to place what they're
@@ -103,7 +73,21 @@ export function LandingFooter() {
           Source on GitHub
         </a>
       </div>
-      {/* Row 2: the ecosystem it belongs to — fainter, one step below the
+      {/* Row 2: the site's own pages — real URLs generated at build time
+       * from docs/*.md (scripts/build-pages.ts), so they are also what a
+       * search engine or a crawler that runs no JavaScript can read. Plain
+       * anchors, same tab: they are part of this site. */}
+      <nav aria-label="About this site" style={rowStyle}>
+        {SITE_PAGES.map((p, i) => (
+          <span key={p.path} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {i > 0 && <span aria-hidden="true">·</span>}
+            <a href={`${import.meta.env.BASE_URL}${p.path}`} title={p.title} style={linkStyle}>
+              {p.label}
+            </a>
+          </span>
+        ))}
+      </nav>
+      {/* Row 3: the ecosystem it belongs to — fainter, one step below the
        * project's own line, so the two read as "about this" then "about
        * STAC" rather than one undifferentiated link pile. */}
       <nav aria-label="STAC ecosystem" style={{ ...rowStyle, color: 'var(--color-text-faint)', fontSize: 11.5 }}>

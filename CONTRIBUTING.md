@@ -82,6 +82,7 @@ These are stated in the README and made concrete in `docs/ARCHITECTURE.md` → *
 - **A new health check** → a row in `docs/HEALTH-RULES.md` first (source, tier, status), then the code.
 - **Moved or split code** → update `docs/ARCHITECTURE.md` in the same PR.
 - **User-visible behavior** → update the README if it describes the old behavior.
+- **`docs/ABOUT.md`, `docs/ABOUT.zh.md`, `docs/HEALTH-RULES.md`, `docs/DEPLOY.md` and the catalog list are also pages on the site** (`/about/`, `/health-rules/`, `/catalogs/`, `/deploy/`), generated at build time by `scripts/pages/`. Editing the Markdown is editing the page; `npm run dev` serves them at the same paths, and `npm run build` writes them under `dist/`. Keep the two About files saying the same thing.
 - **A new landing-page catalog** → verify CORS (a real `GET` with an `Origin` header) and real STAC content before adding it.
 
 ## Code conventions

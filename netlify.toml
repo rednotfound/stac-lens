@@ -17,6 +17,11 @@
   # Vite 8 needs Node 20.19+ / 22.12+; pinned here and in .nvmrc so local,
   # CI and Netlify agree.
   NODE_VERSION = "22"
+  # The absolute address of this instance. The build writes it into the
+  # canonical URLs, Open Graph tags, sitemap.xml and robots.txt of the
+  # generated pages (scripts/pages/vitePlugin.ts). A fork sets its own or
+  # leaves it unset and gets pages without absolute URLs.
+  VITE_SITE_URL = "https://staclens.com"
 
 # Vite emits content-hashed filenames under /assets, so those can be
 # cached forever; index.html and the icons keep Netlify's default

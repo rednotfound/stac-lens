@@ -9,8 +9,9 @@
 // It covers the paths a contributor is most likely to break: the landing
 // page, opening an API root whose children come from /collections, a deep
 // link into a Collection with an applied search, a rejected search shown
-// as an error, the Inspector's Spatial map fitting a Collection's bbox, and
-// the phone layout (390px: Filters button, outline, bottom-sheet Inspector).
+// as an error, the Inspector's Spatial map fitting a Collection's bbox, the
+// phone layout (390px: Filters button, outline, bottom-sheet Inspector), and
+// the static pages generated from docs/ (/about/, robots.txt, llms.txt).
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -160,6 +161,45 @@ check(
 await phone.close()
 
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '))
+
+// 8. The static pages and crawler files generated at build time from
+// docs/*.md (scripts/pages) — real URLs a search engine or a crawler that
+// runs no JavaScript can read, and the home page's own no-JS shell.
+const about = await page.goto(`${BASE_URL}/about/`)
+check(
+  'static pages: /about/ is a real page with a title, a Markdown alternate and JSON-LD',
+  about?.status() === 200 &&
+    (await page.locator('h1').innerText()) === 'About STAC Lens' &&
+    (await page.locator('link[rel="alternate"][type="text/markdown"]').count()) === 1 &&
+    (await page.locator('script[type="application/ld+json"]').count()) === 1,
+  `status ${about?.status()}`,
+)
+const rules = await page.goto(`${BASE_URL}/health-rules/#C-04`)
+check(
+  'static pages: /health-rules/ has citable rule anchors',
+  rules?.status() === 200 && (await page.locator('td#C-04').count()) === 1,
+)
+const crawlerFiles = {}
+for (const path of ['/robots.txt', '/llms.txt', '/catalogs.md', '/og-image.png']) {
+  const r = await page.request.get(`${BASE_URL}${path}`)
+  crawlerFiles[path] = r.status()
+}
+check(
+  'static pages: robots.txt, llms.txt, a Markdown copy and the Open Graph image are served',
+  Object.values(crawlerFiles).every((s) => s === 200),
+  JSON.stringify(crawlerFiles),
+)
+const noJs = await browser.newContext({ javaScriptEnabled: false })
+const noJsPage = await noJs.newPage()
+await noJsPage.goto(`${BASE_URL}/`)
+const noJsText = await noJsPage.locator('#root').innerText()
+check(
+  'home without JavaScript: the shell describes the app and links the static pages',
+  /SpatioTemporal Asset Catalog/.test(noJsText) &&
+    (await noJsPage.locator('#root a[href$="/about/"]').count()) === 1 &&
+    (await noJsPage.locator('#root a[href$="/health-rules/"]').count()) === 1,
+)
+await noJs.close()
 
 await browser.close()
 if (failures.length) {

@@ -129,6 +129,12 @@ These are the rules the code is organized around. A change that breaks one is a 
 
 CI runs all of the above except the live-catalog checks, on every push and pull request.
 
+## Static pages — `scripts/pages/`
+
+Not part of the app, but part of the build. A Vite plugin (`vitePlugin.ts`) turns `docs/ABOUT.md`, `docs/ABOUT.zh.md`, `docs/HEALTH-RULES.md`, `docs/DEPLOY.md` and `src/data/catalogs.json` into real pages under `dist/` (`/about/`, `/health-rules/`, `/catalogs/`, `/deploy/`), plus their Markdown copies, `llms.txt`, `sitemap.xml` and `robots.txt`; it also injects the home page's canonical URL and JSON-LD into `index.html`. `render.ts` is pure (Markdown → HTML with heading ids, rule-id anchors and link rewriting; the catalogs page; the crawler files), `layout.ts` is the HTML shell with a stylesheet built on `src/design/tokens.css`, `site.ts` names the pages and reads the inputs (git dates for `lastmod`), and the plugin writes them after `vite build` or serves them on the fly in `vite dev`. Tests in `scripts/pages/__tests__/`. Why the pages exist: `DISCOVERABILITY.md`.
+
+`src/data/projectLinks.ts` holds the repository URL, the site's own page list and the STAC ecosystem links, read by both the React footer and the page generator.
+
 ## Where things go
 
 - A design decision, a bug's root cause, a reversal: append a section to `DESIGN.md`. It is a log — never rewrite history there.

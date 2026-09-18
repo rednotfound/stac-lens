@@ -2,16 +2,99 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STAC Lens — see the shape of any STAC catalog</title>
+    <meta
+      name="description"
+      content="STAC Lens is a free, open-source, browser-only viewer and health checker for STAC (SpatioTemporal Asset Catalog) catalogs and APIs. Paste a catalog URL to see its structure as a tree, its coverage in time and space, and where its metadata contradicts itself or the specification — for Earth observation, remote sensing and open geospatial data."
+    />
+    <!-- Canonical URL, og:url, og:image and the JSON-LD are injected at
+         build time from VITE_SITE_URL (scripts/pages/vitePlugin.ts), so
+         no deployment's address is written into the source. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="STAC Lens" />
+    <meta property="og:title" content="STAC Lens — see the shape of any STAC catalog" />
+    <meta
+      property="og:description"
+      content="A free, open-source, browser-only viewer and health checker for STAC catalogs and APIs: structure, time and space as one coordinated view, with the metadata problems marked."
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:title" content="STAC Lens — see the shape of any STAC catalog" />
+    <meta
+      name="twitter:description"
+      content="A free, open-source, browser-only viewer and health checker for STAC catalogs and APIs: structure, time and space as one coordinated view, with the metadata problems marked."
+    />
+    <link
+      rel="alternate"
+      type="text/markdown"
+      href="%BASE_URL%llms.txt"
+      title="STAC Lens for language models (llms.txt)"
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0EB4AE" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>STAC Lens</title>
+    <style>
+      /* Only the pre-render shell below; gone once the app replaces #root. */
+      .static-shell a {
+        color: var(--color-brand, #0a7b77);
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- What a reader without JavaScript sees — a search engine's first
+         pass, and most AI crawlers, which run none. createRoot() replaces
+         it the moment the app renders. Same words as the landing page and
+         docs/ABOUT.md; links to the static pages generated from docs/. -->
+    <div id="root">
+      <div
+        class="static-shell"
+        style="
+          max-width: 780px;
+          margin: 0 auto;
+          padding: 56px 16px 40px;
+          font-family: var(--font-sans, system-ui, sans-serif);
+          line-height: 1.55;
+          color: var(--color-text, #1a2b2f);
+        "
+      >
+        <h1 style="font-size: 30px; margin: 0 0 8px">STAC Lens</h1>
+        <p style="margin: 0 0 20px; color: var(--color-text-muted, #70898f)">
+          See the shape of your STAC data — structure, time, and space as one coordinated view.
+        </p>
+        <p>
+          STAC Lens is a free, open-source, browser-only viewer and health checker for
+          <a href="https://stacspec.org/">STAC</a> (SpatioTemporal Asset Catalog) catalogs and APIs — the open standard
+          for Earth observation, remote sensing and other geospatial data. Paste a catalog URL and it draws how the
+          publisher organized the data, what it covers in time and space, where the metadata contradicts itself or the
+          specification, and what the API really does when asked. Nothing is uploaded: every request goes from your
+          browser to the catalog you open.
+        </p>
+        <ul>
+          <li>
+            <strong>Choosing a data source?</strong> See a catalog's shape, coverage and API behavior before writing
+            code against it.
+          </li>
+          <li>
+            <strong>Publishing a catalog?</strong> See the structure you shipped with the problems marked — what the
+            JSON <em>does</em>, not only whether it validates.
+          </li>
+          <li>
+            <strong>Learning STAC?</strong> Catalog → Collection → Item, extents, links and API capabilities as one
+            visual language.
+          </li>
+        </ul>
+        <p>
+          <a href="%BASE_URL%about/">About STAC Lens</a> · <a href="%BASE_URL%health-rules/">Health rules</a> ·
+          <a href="%BASE_URL%catalogs/">Public STAC catalogs</a> · <a href="%BASE_URL%deploy/">Deploying</a> ·
+          <a href="https://github.com/rednotfound/stac-lens">Source on GitHub</a>
+        </p>
+        <noscript>
+          <p>STAC Lens itself is an interactive application and needs JavaScript. The pages linked above are static.</p>
+        </noscript>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

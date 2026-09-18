@@ -4,6 +4,7 @@ import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
 import { useLandingPrefsStore } from './store/landingPrefs'
 import { useIsNarrow } from './hooks/useMediaQuery'
+import { useDocumentTitle } from './hooks/useDocumentTitle'
 import { BottomSheet, type SheetSnap } from './components/BottomSheet'
 import { OutlineView } from './components/OutlineView'
 import { CompactBanner } from './components/CompactBanner'
@@ -202,6 +203,16 @@ function App() {
   const rootNode = rootHref
     ? (loader.get(rootHref) ?? (fetchedRoot?.href === rootHref ? fetchedRoot.node : undefined))
     : undefined
+  // The tab title follows what is on screen: the selected object, else the
+  // catalog, else the landing page's own title. Before any early return
+  // below — hooks must run in the same order every render.
+  const selectedNode = selectedHref ? loader.get(selectedHref) : undefined
+  const subject = selectedNode ?? rootNode
+  useDocumentTitle(
+    rootHref
+      ? `${subject?.title ?? subject?.id ?? rootHref} · STAC Lens`
+      : 'STAC Lens — see the shape of any STAC catalog',
+  )
   useEffect(() => {
     if (!rootHref || loader.get(rootHref)) return
     let cancelled = false
@@ -254,7 +265,6 @@ function App() {
   }
 
   const hasSelection = !!selectedHref
-  const selectedNode = selectedHref ? loader.get(selectedHref) : undefined
   const sheetSnap: SheetSnap = sheet.snap === 'peek' && sheet.href !== selectedHref ? 'half' : sheet.snap
 
   return (

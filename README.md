@@ -24,6 +24,8 @@
 
 STAC Lens is a client-side lens on [STAC](https://stacspec.org/) (SpatioTemporal Asset Catalog) catalogs and APIs. Point it at any catalog and it shows three things a field-by-field browser doesn't: the **shape** of the dataset (how the publisher actually organized it — deep, flat, wide), its **health** (where the metadata contradicts itself or the spec), and its **distance from the specification** (what an API declares it supports versus what it really does when asked). Structure, time, and space are coordinated views of the same data: select a node in one and the others follow.
 
+On the site: [About](https://staclens.com/about/) (also [中文](https://staclens.com/zh/about/)) · [Health rules](https://staclens.com/health-rules/) · [Public STAC catalogs](https://staclens.com/catalogs/) · [Deploying](https://staclens.com/deploy/) — the same documents as this repository's `docs/`, published as pages.
+
 ### Who it's for
 
 - **People choosing a data source** — see how a catalog is organized, what it covers in time and space, and whether its API behaves, before writing a line of code against it. The landing page's 100+ catalogs are each verified to be live, real STAC, and reachable from a browser.
@@ -215,6 +217,10 @@ Issues and pull requests are welcome — especially new health checks with a cit
 ## Acknowledgements
 
 Built on the [STAC specification](https://github.com/radiantearth/stac-spec) and [STAC API](https://github.com/radiantearth/stac-api-spec), maintained by the STAC community; the catalog list comes from [STAC Index](https://stacindex.org). Maps by [Leaflet](https://leafletjs.com/) with tiles © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+
+## Citing
+
+The repository carries a [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this repository" reads it) and a [`codemeta.json`](codemeta.json). How the site is made findable by search engines and AI crawlers, and the off-site listing checklist: [`docs/DISCOVERABILITY.md`](docs/DISCOVERABILITY.md).
 
 ## License
 

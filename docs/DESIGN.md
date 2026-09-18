@@ -6650,3 +6650,104 @@ map where it was, with the hint shown; a two-finger move pans the map (a drawn f
 Desktop 1400 px: a plain wheel over the inline map scrolls the Inspector
 (675 → 756) with the hint; Ctrl+wheel zooms the map and leaves the scroll
 where it was. Smoke suite and 80 unit tests green.
+
+## 107. SEO and AI discoverability — the site gets pages a crawler can read
+
+The request: make the project findable — by search engines for the words
+people actually use (STAC, open data, GIS, remote sensing / 遥感, Earth
+observation), and by AI crawlers in particular, "so that when an AI
+crawls and cites, it finds our site and our way of thinking" — while
+staying inside open-source conventions.
+
+### What was there
+
+An inventory before designing anything: `index.html` had a title and no
+description, no canonical, no Open Graph, no JSON-LD, and an empty
+`#root`; there was no `robots.txt`, `sitemap.xml` or `llms.txt`;
+`document.title` never changed; `package.json` had neither `description`
+nor `keywords`. Routing is `#<stac href>`, so to a search engine the whole
+site was one URL, and to a crawler that runs no JavaScript — GPTBot,
+ClaudeBot, PerplexityBot, Google-Extended all run none — it was blank.
+The 103 catalog titles and descriptions existed only inside the 590 KB
+bundle.
+
+### Research, briefly
+
+- Hash URLs collapse to one page; the standard advice for a client-side
+  app is static HTML for the content that should rank, generated at
+  build time. Prerendering by user agent (what Netlify offers) is
+  host-specific and a form of cloaking; rejected on both counts.
+- What gets cited by answer engines, across the studies published so far:
+  a direct definition in the first 40–60 words, fact density, stable
+  anchors that can be quoted, schema.org markup, and presence in the
+  places the ecosystem already links to (most citations go to sources
+  that are already cited elsewhere). The last point means the STAC Index
+  ecosystem listing — which stacspec.org's own tools page defers to —
+  matters more than any tag.
+- `llms.txt` (llmstxt.org): H1, a blockquote summary, H2 link lists with
+  one-line notes, an `Optional` section; pages offered as `.md` copies.
+- Open-source citation conventions: `CITATION.cff` (GitHub's "Cite this
+  repository"), `codemeta.json`, a Zenodo DOI once released.
+- `meta keywords` is ignored by every major engine; GitHub topics and
+  JSON-LD `keywords` are where a keyword list is still read.
+
+### Decisions
+
+- **Real pages, generated at build time from the Markdown that already
+  exists** — `docs/ABOUT.md` (new, and the one document written for the
+  site: definition first, the STAC Browser comparison, the health
+  definition, principles, a vocabulary, names in other languages),
+  `HEALTH-RULES.md` (each rule id an anchor: `/health-rules/#C-04`),
+  `DEPLOY.md`, and the catalog list as **one dense page**, not 103 thin
+  ones (chosen over per-catalog pages: thin content and a maintenance
+  surface for no clear gain). A Chinese About page with `hreflang`,
+  because the request named Chinese search words; English everywhere
+  else, as open-source projects do.
+- **A Vite plugin, not a framework and not a second build step.**
+  `scripts/pages/` renders Markdown with `marked` (heading ids, rule-id
+  anchors, link rewriting so `/deploy/` and `CATALOGS.md` resolve under
+  any base), wraps it in a shell styled from the app's own tokens (both
+  themes, read from `tokens.css` at build time), and writes the pages,
+  `.md` copies, `llms.txt`, `llms-full.txt`, `sitemap.xml` and
+  `robots.txt` after `vite build`; in `vite dev` it serves the same
+  paths on the fly. The pure part is unit-tested; a sub-path build
+  (`VITE_BASE=/lens/`) was checked for links that escaped the prefix (the
+  test found one: the catalogs page's "Open in STAC Lens" links were
+  double-prefixed until they were written root-relative like every other
+  internal link).
+- **Absolute URLs come from one variable, `VITE_SITE_URL`.** Without it
+  the build still succeeds and emits nothing absolute — no canonical, no
+  sitemap — so a fork's build can never claim to be staclens.com. This
+  is the host-neutrality rule of section 98 applied to metadata.
+- **`index.html` gets a static shell inside `#root`**: the landing page's
+  words, the three audiences, links to the pages. `createRoot` replaces
+  it (no hydration, so no mismatch); a reader without JavaScript sees a
+  document. Plus description, Open Graph, Twitter card, and JSON-LD
+  (`WebSite`, `SoftwareApplication`, `SoftwareSourceCode`) injected by the
+  plugin. `document.title` now follows the open catalog and selection.
+- **Repository files**: `package.json` description and keywords,
+  `CITATION.cff`, `codemeta.json`, README links to the pages. The
+  off-site steps — public repository and topics, the STAC Index
+  ecosystem entry (fields drafted), awesome lists, Search Console and
+  Bing, Zenodo — need the repository public first, which is the owner's
+  decision, so they are a checklist in `docs/DISCOVERABILITY.md` rather
+  than actions taken here.
+- **Not done, on purpose**: no `meta keywords`; no allow-list of AI
+  crawlers in `robots.txt` (`*` already admits them; a name list only
+  goes stale); no analytics; no history routing.
+
+### Verified
+
+Production build served with `vite preview`, Chromium: every page returns
+200 with its title, no horizontal overflow at 1400 px and on an emulated
+iPhone 13 (one fix: catalog root URLs needed `overflow-wrap: anywhere`),
+light and dark themes from the shared tokens, `/health-rules/#C-04`
+scrolls to the row and highlights it, hreflang pairs present on both About
+pages. Home page with JavaScript off: the shell text and six links; with
+JavaScript on: the landing page unchanged, the shell gone, no console
+errors. `document.title` reads "Microsoft Planetary Computer STAC API ·
+STAC Lens", then "USGS 3DEP Lidar Returns · STAC Lens", then the home
+title again. The dev server answers `/about/` (and redirects `/about`),
+`/llms.txt` and `/catalogs.md` with the right media types. A
+`VITE_BASE=/lens/` build has no internal link outside `/lens/`. Fourteen
+new unit tests; four new smoke checks.

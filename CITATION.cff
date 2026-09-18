@@ -1,0 +1,33 @@
+# Citation metadata (https://citation-file-format.github.io/). GitHub reads
+# this file for its "Cite this repository" button; Zenodo reads it when a
+# release is archived. Keep `version` in step with package.json.
+cff-version: 1.2.0
+message: 'If you use STAC Lens in your work, please cite it as below.'
+type: software
+title: 'STAC Lens'
+abstract: >-
+  A free, open-source, browser-only viewer and health checker for STAC
+  (SpatioTemporal Asset Catalog) catalogs and APIs. It draws a catalog's
+  structure as a tree with its coverage in time and space alongside, marks
+  where the metadata contradicts itself or the specification, and reports
+  the difference between what a STAC API declares and what it does when
+  asked.
+authors:
+  - name: 'lavalse'
+    alias: 'lavalse'
+repository-code: 'https://github.com/rednotfound/stac-lens'
+url: 'https://staclens.com'
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-09-18
+keywords:
+  - STAC
+  - SpatioTemporal Asset Catalog
+  - STAC API
+  - geospatial
+  - Earth observation
+  - remote sensing
+  - open data
+  - GIS
+  - metadata quality
+  - data visualization
