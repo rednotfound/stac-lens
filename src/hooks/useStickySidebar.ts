@@ -38,9 +38,10 @@ export function useStickySidebar(
   wrapperRef: RefObject<HTMLElement | null>,
   spacerRef: RefObject<HTMLElement | null>,
   sidebarRef: RefObject<HTMLElement | null>,
-  { top = 16, bottom = 16 }: { top?: number; bottom?: number } = {},
+  { top = 16, bottom = 16, enabled = true }: { top?: number; bottom?: number; enabled?: boolean } = {},
 ) {
   useEffect(() => {
+    if (!enabled) return
     const wrapper = wrapperRef.current
     const spacer = spacerRef.current
     const sidebar = sidebarRef.current
@@ -143,5 +144,5 @@ export function useStickySidebar(
       sidebar.style.bottom = ''
       spacer.style.height = '0px'
     }
-  }, [wrapperRef, spacerRef, sidebarRef, top, bottom])
+  }, [wrapperRef, spacerRef, sidebarRef, top, bottom, enabled])
 }

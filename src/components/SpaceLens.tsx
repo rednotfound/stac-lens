@@ -72,6 +72,7 @@ export function SpaceLens() {
         highlightHref={highlightHref}
         statedBboxes={statedBboxes}
         body={body}
+        gestures="cooperative"
         fitKey={node?.href}
         onSelectItem={select}
       />

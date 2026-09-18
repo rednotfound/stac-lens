@@ -6372,3 +6372,281 @@ record the rule and do nothing yet. **Graticule chosen.**
   it was inherited.
 - HEALTH-RULES gains a "Beyond Earth" section: S-01 (behavior, built),
   S-02 (class shown), S-03 (contradicting Earth datum, not yet).
+
+## 104. Phones — the two layouts that could not be squeezed, stacked
+
+**Date:** 2026-09-18. The owner: small-screen adaptation "has not been
+done at all". True — every layout was designed for a desktop window, and
+nothing in the app evaluated a breakpoint. Measured at an iPhone 13
+viewport (390 px): the landing page laid its 220 px sidebar beside cards
+with a 300 px minimum and forced the page to 576 px wide, half a card
+off-screen; the explorer gave the Inspector the whole width and left the
+Structure canvas 18 px.
+
+### Research, briefly
+
+NN/g on mobile navigation: hidden controls cost discoverability ("out of
+sight is out of mind"), so a filter drawer is acceptable only if the
+*applied* state stays visible; two desktop panes become either a bottom
+sheet over the primary surface (the standard for a detail panel over a
+map or canvas) or tabs. Options put to the owner, with previews: scope
+(both surfaces vs landing only), the explorer's stacking (bottom-sheet
+Inspector vs Structure|Inspector tabs), the landing filters (Filters
+button + full-screen panel vs an accordion above the cards). Chosen:
+both; bottom sheet; Filters button.
+
+### Built
+
+- **One breakpoint**, `(max-width: 720px)`, evaluated in one place:
+  `hooks/useMediaQuery.ts` (`useIsNarrow`, via `useSyncExternalStore`
+  over `matchMedia`, and a non-hook `isNarrowViewport` for code outside
+  render). Styles are inline throughout, so this is the app's `@media`.
+  A portrait tablet (768–834 px) keeps the desktop layouts — verified at
+  820 px: sidebar present, no overflow.
+- **Landing, narrow**: no sidebar column; the toolbar gains a
+  "Filters (n)" button opening a full-screen panel (`FiltersSheet`) that
+  holds the same `SidebarContent` the desktop sidebar renders, with a
+  "Show 40" button as its Done; applied chips stay in the toolbar, so
+  filters are never out of sight. Hero paddings and title shrink; cards
+  run one column at 358 px. `useStickySidebar` is disabled when there is
+  no sidebar to stick.
+- **Explorer, narrow**: the Structure canvas takes the full width; the
+  Inspector is a `BottomSheet` — peek (56 px: the selected object's icon
+  and name), half (50 %), full (90 %). The handle drags with pointer
+  events (mouse and touch share one path, `touch-action: none` on the
+  handle) and snaps to the nearest stop on release; a tap on the handle
+  steps up a stop. Snap state is stored *with the selection it was made
+  for* and derived in render: a peek made for one node reads as half once
+  another is selected — no effect, no synchronizing state. The header
+  drops the source URL line. The bbox picker goes full-screen.
+- **Item Set boxes** default to the viewport: width = viewport − 24
+  (366 px on the phone), height ≈ half the viewport, Search 220 px
+  because its rows wrap. Only defaults — sizes remembered for a session
+  are never overridden. The legend starts closed on a phone.
+
+### Verified on an emulated iPhone 13 (Chromium, touch)
+
+Landing: page 390 px wide with no overflow, no sidebar, cards 358 px;
+Filters opens the panel; checking Imagery shows "Show 40"; closing shows
+"40 of 103 catalogs", the Imagery chip and "Filters (1)". Explorer: canvas
+390 px, sheet 332 px (= half of 664), Search box 366 × 220, header URL
+line gone; a tap on the handle → 598 px (full); a drag down → 56 px
+(peek) showing "USGS 3DEP Lidar Returns"; tapping another node → half
+with that node's name; one-finger drag on empty canvas pans the tree and
+a two-finger spread zooms it (d3-zoom's own touch handling — synthesized
+through CDP). Desktop: smoke suite and 80 unit tests unchanged.
+
+### First correction from real use
+
+The owner, on the phone: opening Filters, there was no way to close it
+except a button reading "Show 103" — "strange as an operation and as a
+hint". Right: the filters apply as they are checked, so there is no
+"apply" step for a button to stand for, and a number on the only exit
+made it look like an action. Now the panel has a × in its title bar, a
+live line under the title ("40 of 103 catalogs match", or "All 103
+catalogs") and a "Clear all" link beside it when anything is applied. The
+lesson generalizes: on a sheet whose changes take effect immediately, the
+exit is a close, not a confirm.
+
+### Not done
+
+Layout inside the Inspector and the Item Set boxes is untouched — long
+descriptions, the timeline and the map simply take the width they get,
+which at 366 px is legible but dense. Landscape phones fall on the
+desktop side of the breakpoint by width and get two columns in a
+short window. Both are follow-ups for after real phone use.
+
+## 105. The phone gets an outline, not the tree — and a line pointing to the desktop
+
+**Date:** 2026-09-18. After trying §104 on a phone, the owner's verdict:
+the free-form, pannable tree "is not suited to being viewed and played
+with on a phone". Proposal: a very simple, document-like structure for
+phones, with details on tap, and a note telling people the full
+experience and the free exploration are in a desktop browser. Asked for
+a best-practice form of both.
+
+### Research
+
+- **Google Search Central** on mobile pages: content covered by an
+  interstitial (a pop-up, a standalone "please use desktop" page) is
+  penalized; a banner that uses a reasonable amount of screen and is
+  easily dismissed is explicitly acceptable — the browsers' own
+  "install the app" banners are its example. So the desktop pointer is a
+  small banner, never a modal.
+- **NN/g** on mobile navigation: hidden controls are forgotten; whatever
+  the phone shows must stand on its own, with the rest reachable by a
+  visible, honest route rather than a blocked one.
+- **The pattern in complex tools** (design tools, notebooks): phones get
+  a read-mostly, simplified view of the same document; editing and free
+  manipulation stay on the desktop; a way to carry the link over
+  ("copy link", "open on desktop") is offered rather than a wall.
+
+Decisions, asked and answered: detail stays in the **bottom sheet** (the
+owner preferred keeping the outline in view over a pushed detail page);
+the pointer is a **dismissible banner with Copy link**, remembered per
+browser; **no "open the full view anyway" escape** — on a phone there is
+only the compact view.
+
+### Built
+
+- `components/OutlineView.tsx` — the same graph as a document outline:
+  the same `useStructureTree` hook (same lazy loading, same "+N more"
+  leaf, same expand semantics), rendered as indented rows with a
+  disclosure chevron, the type icon, the title, and the API / "N items"
+  badges. Tapping a title selects the node exactly as a tree label click
+  does; the bottom sheet opens with the Inspector. Nothing is invented for
+  the phone; it is a second rendering of the same state.
+- `components/PhoneItemSet.tsx` — the Items that on the desktop float in
+  boxes beside the node stack under the Inspector's fields in the sheet:
+  a static catalog's paged list, or an API Collection's Search over its
+  Results, using the very same components (`CursorItemSetPanels` still
+  portals into two targets; here they are two stacked divs with definite
+  heights instead of two `<foreignObject>`s).
+- `components/CompactBanner.tsx` — "Compact view. The full Structure Lens
+  — the interactive tree with time and space beside it — is built for a
+  desktop browser." with **Copy link** (clipboard; a prompt fallback when
+  the clipboard is unavailable) and ×; dismissal stored in
+  `localStorage`.
+- The tree, its boxes and its legend are no longer rendered below the
+  breakpoint; §104's viewport-sized box defaults and phone legend default
+  stay in the code for narrow desktop windows.
+
+### Verified on an emulated iPhone 13
+
+The stac-spec example: four outline rows, no canvas SVG, banner shown;
+tapping "Collection of Extension Items" opens the sheet at half with the
+Inspector and an ITEMS section listing `proj-example`; Copy link puts the
+full `#https://…` URL on the clipboard and the button reads "Copied";
+× hides the banner and it stays hidden after a reload. Planetary
+Computer's 3dep with an applied bbox: the sheet holds SEARCH (date, sort,
+the restored area ≈31,732 km²) over RESULTS, and the search runs once —
+"page 1 of 4 — 124 items total" after ~2.5 s — with the outline's 137
+rows behind it and the selected row highlighted. Desktop unchanged: smoke
+suite and 80 unit tests green.
+
+### Second pass — Items belong in the document; the sheet is for detail only
+
+Trying the first pass, the owner refined the idea: on a phone there is no
+need for the Search box or the paged list at all. Open a Collection and
+its Items are simply listed under it — the first ten — and anyone who
+needs more goes to the desktop. "Functions complete, data truncated": the
+structure, a Collection's detail, its Items, an Item's detail, time and
+space — all present; only the *amount* is capped. The first pass had also
+produced a real confusion: the Item list lived inside the sheet under the
+Inspector, so tapping an Item replaced the Inspector above the list you
+were looking at, out of view.
+
+- `hooks/usePhoneItems.ts` — the first ten Items of a Collection: a static
+  list sliced and loaded through the shared loader; an API Collection
+  fetched once, `limit=10`, in the server's default order, through the
+  same `resolveSearchTarget` the desktop Search box uses (so the request
+  goes to the same endpoint, with the same `collections=` scoping).
+  Results are cached in the loader, so tapping one opens its Inspector
+  at once.
+- `OutlineView`: a Collection's row opens to its Items as rows (icon,
+  title, datetime), then one line: "Showing 10 of 1,953 items — the full
+  list is on the desktop", or for an API "First 10 items in the API's
+  default order — search and paging are on the desktop" (or "First 10 of
+  N matching" when the server reports a count). The chevron toggles
+  children and Items together; tapping a title selects and opens.
+- The sheet now holds only the Inspector of whatever is selected, and
+  scrolls back to the top when the selection changes (`scrollKey`).
+- The loaded Items are published as the Collection's visible set and the
+  aggregate flag is switched on for the phone, so the Collection's own
+  Temporal and Spatial widgets plot those ten — the desktop keeps that
+  flag off because its Item Set box has its own Time & Space view, and
+  the flag is switched off again when the phone rows unmount. `PhoneItemSet`
+  from the first pass is gone. The banner now reads: "Compact view — the
+  structure and the first 10 Items of each Collection. Search, paging and
+  the full data are in the desktop browser."
+
+Verified (emulated iPhone 13): the stac-spec Collection opens to
+`proj-example` with "All 1 item." and its Spatial widget says "1 item
+footprint"; Planetary Computer's 3dep opens to ten rows with the API line,
+its Spatial widget says "10 item footprints · 2 declared bboxes" and the
+map shows the New Jersey and Utah tiles inside the CONUS+Alaska and Guam
+extents; tapping a row puts that Item's Inspector at the top of the sheet
+within 0.8 s. Desktop unchanged: smoke suite and 80 unit tests green.
+
+### Third pass — "load more", as a sliding window
+
+The owner asked for a way to load more Items on the phone, and — when a
+cap of 100 was proposed to keep the list bounded — suggested the better
+rule: once the list is full, each further step drops the oldest ten as it
+adds the newest ten. So the phone's Item list is a **window of 100 that
+slides**: "Load 10 more" never stops being offered while the source has
+more (a static list's remaining hrefs; an API's `next` link, followed
+exactly as the desktop follows it), the rows and the footprints on the
+map stay bounded however far someone goes, and the tail line says which
+rows these are: "Items 11–110; earlier rows unloaded to keep the phone
+light (100 at a time)". Going back is not offered — a static list could
+re-slice, an API cannot re-walk `next` — and the desktop remains the
+place for precision.
+
+Found on the way: with the sheet at half height, the outline's bottom
+padding allowed only for the peek height, so its last rows could never be
+scrolled above the sheet. The padding now follows the sheet's snap (64 px,
+50vh, 90vh).
+
+Verified (emulated iPhone 13): Planetary Computer's 3dep — ten steps of
+"Load 10 more" reach 100 rows ("First 100 items in the API's default
+order"), the eleventh keeps 100 rows and reads "Items 11–110; earlier rows
+unloaded…", the Collection's Spatial widget says "100 item footprints";
+Rosetta's "All anaglyphs" — 10 then 20 rows, "Showing 20 of 1,953 items";
+with the sheet at half, scrolling the outline to its end puts the
+load-more button fully above the sheet.
+
+## 106. The map inside the Inspector no longer traps the scroll — cooperative gestures
+
+**Date:** 2026-09-18. The owner, on the phone: scrolling the Inspector
+sheet down, the scroll stops when the map fills the view, because from
+then on a finger on the map moves the map; only the thin strip beside it
+still scrolls the sheet. The same trap exists on the desktop with the
+wheel: over the inline map the wheel zooms the map instead of scrolling
+the Inspector.
+
+### The named solution
+
+Google Maps' JavaScript API calls the two behaviors **`greedy`** (the map
+takes every gesture) and **`cooperative`**: "users scroll the page
+normally", the map moves only with "two-finger movements on the map for
+touchscreen devices" and zooms with Ctrl/⌘+wheel, and its default `auto`
+picks cooperative whenever the map is embedded (in an iframe) rather than
+being the page. Leaflet has no such mode built in; the community plugin
+Leaflet.GestureHandling reproduces it by toggling `dragging` and
+`scrollWheelZoom` and showing the same overlay text Google shows — "Use
+two fingers to move the map", "Use ctrl + scroll to zoom the map".
+
+### Built, without the plugin (~60 lines, no dependency)
+
+`ItemsMap` gains `gestures: 'greedy' | 'cooperative'`. The Inspector's
+inline map (`SpaceLens`) is cooperative; the bbox picker and the Item
+Set's Time & Space view, where the map *is* the panel, stay greedy.
+
+Cooperative means:
+
+- The container's `touch-action` is `pan-x pan-y`, so the browser owns
+  one-finger pans (the sheet scrolls), and Leaflet's drag handler is
+  switched off for the duration of any one-finger touch so it cannot
+  fight the browser. A one-finger touch shows the hint "Use two fingers
+  to move the map" for 1.4 s.
+- Two fingers reach Leaflet's touch-zoom handler, which pans and zooms
+  together. One detail cost an iteration: Leaflet's touch listeners sit
+  on `document`, which Chrome makes passive, so Leaflet's own
+  `preventDefault` cannot stop the browser from taking a two-finger move
+  as a scroll; a non-passive `touchmove` listener on the element itself,
+  calling `preventDefault` only when two or more fingers are down, is
+  what Chrome honors.
+- `scrollWheelZoom` is off. A wheel with Ctrl/⌘ zooms around the pointer
+  and is consumed; a plain wheel scrolls the page and shows "Use Ctrl +
+  scroll to zoom the map" (⌘ on a Mac). Mouse drag is untouched — it
+  never scrolls a page.
+
+### Verified
+
+Emulated iPhone 13, sheet at full, map scrolled into view: a one-finger
+drag over the map scrolls the sheet (scrollTop 758 → 1046) and leaves the
+map where it was, with the hint shown; a two-finger move pans the map (a drawn footprint moved 80 px on screen, the sheet did not scroll); a pinch changes the map's zoom. A measurement lesson: a two-finger pan through Leaflet's touch-zoom handler leaves the map pane's transform alone and moves the tile level's transform instead — measure the view, not the pane.
+Desktop 1400 px: a plain wheel over the inline map scrolls the Inspector
+(675 → 756) with the hint; Ctrl+wheel zooms the map and leaves the scroll
+where it was. Smoke suite and 80 unit tests green.

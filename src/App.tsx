@@ -3,6 +3,11 @@ import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
 import { useLandingPrefsStore } from './store/landingPrefs'
+import { useIsNarrow } from './hooks/useMediaQuery'
+import { BottomSheet, type SheetSnap } from './components/BottomSheet'
+import { OutlineView } from './components/OutlineView'
+import { CompactBanner } from './components/CompactBanner'
+import { TypeIcon } from './components/TypeIcon'
 import { useSelectionStore } from './store/selection'
 import { useItemSetStore } from './store/itemSet'
 import { useElementSize } from './hooks/useElementSize'
@@ -55,6 +60,14 @@ function App() {
   // DetailPanel.tsx/ItemSetBrowser.tsx.
   const [containerRef, { width: containerWidth }] = useElementSize<HTMLDivElement>()
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH)
+  // Phone layout: the Inspector is a bottom sheet over the canvas instead of
+  // a second column. A new selection pops it from peek to half so the
+  // detail appears without hiding the tree entirely.
+  const narrow = useIsNarrow()
+  // Derived in render, not synced in an effect: a snap is remembered
+  // together with the selection it was made for, and a "peek" made for a
+  // previous selection reads as "half" once a new node is selected.
+  const [sheet, setSheet] = useState<{ snap: SheetSnap; href: string | null }>({ snap: 'half', href: null })
   // Remembers the last non-zero width so double-clicking the handle while
   // collapsed restores whatever size was actually in use, not always the
   // same default.
@@ -241,6 +254,8 @@ function App() {
   }
 
   const hasSelection = !!selectedHref
+  const selectedNode = selectedHref ? loader.get(selectedHref) : undefined
+  const sheetSnap: SheetSnap = sheet.snap === 'peek' && sheet.href !== selectedHref ? 'half' : sheet.snap
 
   return (
     // `overflow: 'hidden'` here is load-bearing, not decorative — this is
@@ -327,7 +342,7 @@ function App() {
           >
             {rootNode?.title ?? rootNode?.id ?? rootHref}
           </span>
-          {rootNode && (
+          {rootNode && !narrow && (
             <span
               style={{
                 fontSize: 11,
@@ -390,9 +405,50 @@ function App() {
             overflow: 'hidden',
           }}
         >
-          <StructureTree key={rootHref} rootHref={rootHref} />
+          {narrow ? (
+            // The phone does not get the canvas: a free-form tree is a
+            // desktop instrument. It gets the same graph as an outline, and
+            // a banner saying where the full view lives.
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <CompactBanner />
+              {/* Bottom padding equal to the sheet's current height, so every
+               * outline row can be scrolled above the sheet — otherwise the
+               * rows under a half-open sheet are unreachable. */}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: 'auto',
+                  paddingBottom: !hasSelection ? 0 : sheetSnap === 'peek' ? 64 : sheetSnap === 'half' ? '50vh' : '90vh',
+                }}
+              >
+                <OutlineView key={rootHref} rootHref={rootHref} />
+              </div>
+            </div>
+          ) : (
+            <StructureTree key={rootHref} rootHref={rootHref} />
+          )}
         </div>
-        {hasSelection && (
+        {hasSelection && narrow && (
+          <BottomSheet
+            snap={sheetSnap}
+            onSnapChange={(snap) => setSheet({ snap, href: selectedHref })}
+            scrollKey={selectedHref}
+            peek={
+              selectedNode ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <TypeIcon type={selectedNode.type} size={12} />
+                  {selectedNode.title ?? selectedNode.id}
+                </span>
+              ) : (
+                'Inspector'
+              )
+            }
+          >
+            <DetailPanel />
+          </BottomSheet>
+        )}
+        {hasSelection && !narrow && (
           <>
             {/* The divider resizes Inspector continuously while it's open
              * (drag past `MIN_INSPECTOR_WIDTH` snaps it fully away), but a

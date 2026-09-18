@@ -10,13 +10,8 @@ import { Legend } from './tree/Legend'
 import { NodeTooltip } from './tree/NodeTooltip'
 import { TreeNodeView } from './tree/TreeNodeView'
 import {
-  DEFAULT_BOX_HEIGHT,
-  DEFAULT_BOX_WIDTH,
-  DEFAULT_RESULTS_BOX_HEIGHT,
-  DEFAULT_RESULTS_BOX_OFFSET,
-  DEFAULT_RESULTS_BOX_WIDTH,
-  DEFAULT_SEARCH_BOX_HEIGHT,
-  DEFAULT_SEARCH_BOX_WIDTH,
+  defaultBoxSize,
+  defaultResultsOffset,
   makeBoxGeometry,
   MIN_BOX_HEIGHT,
   MIN_BOX_WIDTH,
@@ -209,10 +204,10 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
     const isPanTargetCursorMode = target.data.node.items.kind === 'cursor'
     const openBoxWidth = isPanTargetCursorMode
       ? Math.max(
-          searchBoxSizes.get(panHref)?.width ?? DEFAULT_SEARCH_BOX_WIDTH,
-          resultsBoxSizes.get(panHref)?.width ?? DEFAULT_RESULTS_BOX_WIDTH,
+          searchBoxSizes.get(panHref)?.width ?? defaultBoxSize('search').width,
+          resultsBoxSizes.get(panHref)?.width ?? defaultBoxSize('results').width,
         )
-      : (boxSizes.get(panHref)?.width ?? DEFAULT_BOX_WIDTH)
+      : (boxSizes.get(panHref)?.width ?? defaultBoxSize('main').width)
     const BOX_SIDE_MARGIN = openBoxWidth + 40
     const leftMargin = hasOpenBox && targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
     const rightMargin = hasOpenBox && !targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
@@ -352,11 +347,11 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                     return next
                   })
                 }}
-                boxSize={boxSizes.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }}
+                boxSize={boxSizes.get(n.data.href) ?? defaultBoxSize('main')}
                 onBoxResizeBy={(dxLocal, dyLocal) => {
                   setBoxSizes((prev) => {
                     const next = new Map(prev)
-                    const base = prev.get(n.data.href) ?? { width: DEFAULT_BOX_WIDTH, height: DEFAULT_BOX_HEIGHT }
+                    const base = prev.get(n.data.href) ?? defaultBoxSize('main')
                     next.set(n.data.href, {
                       width: Math.max(MIN_BOX_WIDTH, base.width + dxLocal),
                       height: Math.max(MIN_BOX_HEIGHT, base.height + dyLocal),
@@ -371,7 +366,7 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                   ZERO_BOX_OFFSET,
                   searchBoxSizes,
                   setSearchBoxSizes,
-                  { width: DEFAULT_SEARCH_BOX_WIDTH, height: DEFAULT_SEARCH_BOX_HEIGHT },
+                  defaultBoxSize('search'),
                   MIN_BOX_WIDTH,
                   MIN_SEARCH_BOX_HEIGHT,
                 )}
@@ -379,10 +374,10 @@ export function StructureTree({ rootHref }: { rootHref: string }) {
                   n.data.href,
                   resultsBoxOffsets,
                   setResultsBoxOffsets,
-                  DEFAULT_RESULTS_BOX_OFFSET,
+                  defaultResultsOffset(),
                   resultsBoxSizes,
                   setResultsBoxSizes,
-                  { width: DEFAULT_RESULTS_BOX_WIDTH, height: DEFAULT_RESULTS_BOX_HEIGHT },
+                  defaultBoxSize('results'),
                   MIN_BOX_WIDTH,
                   MIN_BOX_HEIGHT,
                 )}

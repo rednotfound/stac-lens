@@ -105,3 +105,27 @@ export function makeBoxGeometry(
     },
   }
 }
+
+/** Default box sizes, clamped to the viewport. The desktop defaults
+ *  (640 wide, 760 tall) are wider than a phone; on a narrow screen a box
+ *  takes the width that is there (minus a margin to see it is a box) and
+ *  about half the height, so the tree above it stays reachable. Read at
+ *  the moment a box first opens — only defaults; every box stays freely
+ *  resizable, and a remembered size is never overridden. */
+export function defaultBoxSize(kind: 'main' | 'search' | 'results'): BoxSize {
+  const vw = typeof window === 'undefined' ? 1600 : window.innerWidth
+  const vh = typeof window === 'undefined' ? 1000 : window.innerHeight
+  const width = Math.max(
+    MIN_BOX_WIDTH - 40,
+    Math.min(kind === 'search' ? DEFAULT_SEARCH_BOX_WIDTH : DEFAULT_BOX_WIDTH, vw - 24),
+  )
+  if (kind === 'search') return { width, height: vw < 720 ? 220 : DEFAULT_SEARCH_BOX_HEIGHT }
+  const height = Math.max(MIN_BOX_HEIGHT, Math.min(DEFAULT_BOX_HEIGHT, Math.round(vh * 0.5)))
+  return { width, height }
+}
+
+/** Results sits below Search by default; the gap is the same wherever the
+ *  Search box's default height lands. */
+export function defaultResultsOffset(): BoxOffset {
+  return { dxHoriz: 0, dyVert: defaultBoxSize('search').height + SEARCH_RESULTS_GAP }
+}

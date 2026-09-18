@@ -57,6 +57,7 @@ export function ItemsMap({
   statedBboxes,
   appliedBbox,
   body,
+  gestures = 'greedy',
   drawMode = false,
   onBboxDrawn,
   fitKey,
@@ -95,6 +96,16 @@ export function ItemsMap({
    *  for the life of the map: parents re-key the component when it
    *  changes (`bodyKey`). */
   body?: CelestialBody
+  /** How the map competes with the page for gestures — the vocabulary of
+   *  the Google Maps API. `greedy` (default): every wheel and every finger
+   *  is the map's; right for a map that *is* the panel (the bbox picker,
+   *  the Item Set's Time & Space view). `cooperative`: one finger scrolls
+   *  the page and a plain wheel scrolls the page; two fingers move the map
+   *  and Ctrl/Cmd+wheel zooms it, with a short hint when a blocked gesture
+   *  happens. Right for a map embedded in scrolling content (the
+   *  Inspector's Spatial field), where a greedy map traps the scroll:
+   *  once the map fills the viewport there is nothing left to scroll by. */
+  gestures?: 'greedy' | 'cooperative'
   /** While true, dragging on the map draws a rectangle instead of panning
    *  it (`map.dragging.disable()` for the duration — the same conflict
    *  resolution the deleted interactive query tool used, the only way a
@@ -109,6 +120,8 @@ export function ItemsMap({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
+  // Cooperative-gesture hint ('Use two fingers to move the map'), shown briefly.
+  const [hint, setHint] = useState<string | null>(null)
   const layerGroupRef = useRef<L.LayerGroup | null>(null)
   const appliedBboxLayerRef = useRef<L.Rectangle | null>(null)
   const drawingRectRef = useRef<L.Rectangle | null>(null)
@@ -120,10 +133,18 @@ export function ItemsMap({
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
+    const cooperative = gestures === 'cooperative'
     const map = body
-      ? L.map(el, { crs: L.CRS.EPSG4326, worldCopyJump: false, zoomControl: false, attributionControl: false })
-      : L.map(el, { worldCopyJump: true, zoomControl: false })
+      ? L.map(el, {
+          crs: L.CRS.EPSG4326,
+          worldCopyJump: false,
+          zoomControl: false,
+          attributionControl: false,
+          scrollWheelZoom: !cooperative,
+        })
+      : L.map(el, { worldCopyJump: true, zoomControl: false, scrollWheelZoom: !cooperative })
     map.setView([0, 0], body ? 1 : 2)
+    const detachGestures = cooperative ? installCooperativeGestures(map, el, setHint) : undefined
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     if (body) addGraticule(map, palette.textFaint)
     else L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map)
@@ -141,7 +162,17 @@ export function ItemsMap({
     resizeObserver.observe(el)
 
     return () => {
+      detachGestures?.()
       resizeObserver.disconnect()
+      // A fit or fly still animating when this map unmounts (navigating to
+      // another catalog mid-flight) leaves Leaflet's 250 ms zoom-transition
+      // fallback timer armed; it then runs `_onZoomTransitionEnd` on a
+      // removed map and throws reading `_leaflet_pos` of the deleted pane.
+      // That handler returns at once when no zoom is animating, so clear
+      // the flag before removing. Reproduced by the smoke suite's route
+      // change; Leaflet's `remove()` does not do this itself.
+      map.stop()
+      ;(map as L.Map & { _animatingZoom?: boolean })._animatingZoom = false
       map.remove()
       mapRef.current = null
       layerGroupRef.current = null
@@ -412,6 +443,7 @@ export function ItemsMap({
     <div style={{ position: 'relative', width: '100%', height: '100%', zIndex: 0 }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', zIndex: 0 }} />
       {body && <BodyNote body={body} />}
+      {hint && <GestureHint text={hint} />}
     </div>
   )
 }
@@ -475,6 +507,100 @@ function BodyNote({ body }: { body: CelestialBody }) {
       }}
     >
       Body-fixed lon/lat on <strong style={{ color: 'var(--color-text)' }}>{describeBody(body)}</strong> — not Earth
+    </div>
+  )
+}
+
+/** Google-Maps-style "cooperative" gestures for a map embedded in
+ *  scrolling content. Touch: the container's `touch-action` lets the
+ *  browser own one-finger pans (the page scrolls), and Leaflet's drag
+ *  handler is switched off for the duration of any one-finger touch so it
+ *  cannot fight; two fingers reach Leaflet's touch-zoom handler, which
+ *  pans and zooms together. Wheel: `scrollWheelZoom` is off; a wheel with
+ *  Ctrl/Cmd zooms around the pointer and is consumed, a plain wheel scrolls
+ *  the page and earns a hint. Mouse drag is untouched — it never scrolls a
+ *  page, so there is nothing to protect. */
+function installCooperativeGestures(map: L.Map, el: HTMLElement, setHint: (h: string | null) => void): () => void {
+  el.style.touchAction = 'pan-x pan-y'
+  let hintTimer = 0
+  const showHint = (text: string) => {
+    setHint(text)
+    window.clearTimeout(hintTimer)
+    hintTimer = window.setTimeout(() => setHint(null), 1400)
+  }
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
+  // Two fingers: the browser must not treat the gesture as a page scroll.
+  // Leaflet's own touch-zoom listener sits on `document`, which Chrome
+  // makes passive, so its preventDefault is ignored; a non-passive
+  // listener on the element itself is honored. One finger: nothing is
+  // prevented, so the page scrolls as `touch-action` allows.
+  const onTouchStart = (e: TouchEvent) => {
+    if (e.touches.length === 1) {
+      if (map.dragging.enabled()) map.dragging.disable()
+      showHint('Use two fingers to move the map')
+    } else {
+      e.preventDefault()
+      setHint(null)
+    }
+  }
+  const onTouchMove = (e: TouchEvent) => {
+    if (e.touches.length >= 2) e.preventDefault()
+  }
+  const onTouchEnd = (e: TouchEvent) => {
+    if (e.touches.length === 0 && !map.dragging.enabled()) map.dragging.enable()
+  }
+  const onWheel = (e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      const point = map.mouseEventToContainerPoint(e as unknown as MouseEvent)
+      map.setZoomAround(point, map.getZoom() + (e.deltaY < 0 ? 1 : -1))
+      setHint(null)
+    } else {
+      showHint(`Use ${isMac ? '\u2318' : 'Ctrl'} + scroll to zoom the map`)
+    }
+  }
+  el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false })
+  el.addEventListener('touchmove', onTouchMove, { passive: false })
+  el.addEventListener('touchend', onTouchEnd, { passive: true })
+  el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+  el.addEventListener('wheel', onWheel, { passive: false })
+  return () => {
+    window.clearTimeout(hintTimer)
+    el.removeEventListener('touchstart', onTouchStart, { capture: true })
+    el.removeEventListener('touchmove', onTouchMove)
+    el.removeEventListener('touchend', onTouchEnd)
+    el.removeEventListener('touchcancel', onTouchEnd)
+    el.removeEventListener('wheel', onWheel)
+  }
+}
+
+function GestureHint({ text }: { text: string }) {
+  return (
+    <div
+      role="status"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 1002,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'none',
+        background: 'rgba(0,0,0,0.28)',
+      }}
+    >
+      <span
+        style={{
+          padding: '8px 14px',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--color-text)',
+          color: 'var(--color-bg)',
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        {text}
+      </span>
     </div>
   )
 }

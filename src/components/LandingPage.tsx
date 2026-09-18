@@ -14,6 +14,7 @@ import {
 } from '../data/catalogFilters'
 import { useLandingPrefsStore } from '../store/landingPrefs'
 import { useStickySidebar } from '../hooks/useStickySidebar'
+import { useIsNarrow } from '../hooks/useMediaQuery'
 
 /** Entry point, not the explorer itself. Two things happen here, in this
  *  order of importance:
@@ -68,7 +69,12 @@ export function LandingPage({
   const sidebarWrapperRef = useRef<HTMLElement>(null)
   const sidebarSpacerRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
-  useStickySidebar(sidebarWrapperRef, sidebarSpacerRef, sidebarRef)
+  // Phone layout: no sidebar column — the same facet groups live behind a
+  // Filters button in the toolbar (a full-screen panel), the applied chips
+  // stay visible in the toolbar, and cards run in one column.
+  const narrow = useIsNarrow()
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  useStickySidebar(sidebarWrapperRef, sidebarSpacerRef, sidebarRef, { enabled: !narrow })
 
   const favorites = useLandingPrefsStore((s) => s.favorites)
   const recent = useLandingPrefsStore((s) => s.recent)
@@ -92,6 +98,17 @@ export function LandingPage({
 
   const toggle = (facet: FacetId, value: string) => setSelection((sel) => toggleFacetValue(sel, facet, value))
 
+  const sidebarProps: SidebarContentProps = {
+    view,
+    setView,
+    favoritesCount: favorites.length,
+    recentCount: recent.length,
+    known,
+    query,
+    selection,
+    toggle,
+  }
+
   function handleOpen(e: React.FormEvent) {
     e.preventDefault()
     if (looksLikeUrl) onOpen(url)
@@ -113,7 +130,7 @@ export function LandingPage({
           width: '100%',
           maxWidth: 760,
           boxSizing: 'border-box',
-          padding: '56px 24px 40px',
+          padding: narrow ? '32px 16px 20px' : '56px 24px 40px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -123,7 +140,7 @@ export function LandingPage({
       >
         <h1
           style={{
-            fontSize: 32,
+            fontSize: narrow ? 26 : 32,
             margin: 0,
             color: 'var(--color-text)',
             display: 'flex',
@@ -215,7 +232,7 @@ export function LandingPage({
           width: '100%',
           maxWidth: 1400,
           boxSizing: 'border-box',
-          padding: '0 24px 32px',
+          padding: narrow ? '0 16px 24px' : '0 24px 32px',
           display: 'flex',
           gap: 32,
           alignItems: 'flex-start',
@@ -231,58 +248,14 @@ export function LandingPage({
          * wrapper is stretched to the row's full height and is the sticky
          * element's containing block; the empty spacer is how the hook
          * freezes the sidebar's position on a direction change. */}
-        <aside ref={sidebarWrapperRef} style={{ width: 220, flexShrink: 0, alignSelf: 'stretch' }}>
-          <div ref={sidebarSpacerRef} aria-hidden style={{ height: 0 }} />
-          <div ref={sidebarRef}>
-            <SidebarGroup title="Yours" defaultOpen>
-              <ViewItem
-                label="All catalogs"
-                count={KNOWN_CATALOGS.length}
-                active={view === 'all'}
-                onClick={() => setView('all')}
-              />
-              <ViewItem
-                label="Favorites"
-                count={favorites.length}
-                active={view === 'favorites'}
-                onClick={() => setView('favorites')}
-                icon={<StarIcon filled size={11} />}
-              />
-              <ViewItem
-                label="Recently opened"
-                count={recent.length}
-                active={view === 'recent'}
-                onClick={() => setView('recent')}
-              />
-            </SidebarGroup>
-            {FACETS.map((facet) => (
-              <FacetGroup
-                key={facet.id}
-                facet={facet}
-                counts={facetCounts(known, query, selection, facet.id)}
-                selected={selection[facet.id]}
-                onToggle={(v) => toggle(facet.id, v)}
-                defaultOpen={facet.id === 'topics' || facet.id === 'regions'}
-              />
-            ))}
-            <div style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 12, lineHeight: 1.5 }}>
-              Catalogs via{' '}
-              <a href="https://stacindex.org" target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
-                STAC Index
-              </a>
-              ; tags are{' '}
-              <a
-                href="https://github.com/rednotfound/stac-lens/blob/main/docs/CATALOGS.md"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'inherit' }}
-              >
-                ours
-              </a>
-              .
+        {!narrow && (
+          <aside ref={sidebarWrapperRef} style={{ width: 220, flexShrink: 0, alignSelf: 'stretch' }}>
+            <div ref={sidebarSpacerRef} aria-hidden style={{ height: 0 }} />
+            <div ref={sidebarRef}>
+              <SidebarContent {...sidebarProps} />
             </div>
-          </div>
-        </aside>
+          </aside>
+        )}
 
         <main style={{ flex: 1, minWidth: 0 }}>
           <Toolbar
@@ -295,14 +268,26 @@ export function LandingPage({
             sort={sort}
             onSort={setSort}
             onClearRecent={view === 'recent' && recent.length > 0 ? clearRecent : undefined}
+            onOpenFilters={narrow ? () => setFiltersOpen(true) : undefined}
           />
+          {narrow && filtersOpen && (
+            <FiltersSheet
+              onClose={() => setFiltersOpen(false)}
+              resultCount={rows.length}
+              total={population.length}
+              appliedCount={FACETS.reduce((n, f) => n + selection[f.id].size, 0)}
+              onClearAll={() => setSelection(EMPTY_SELECTION)}
+            >
+              <SidebarContent {...sidebarProps} />
+            </FiltersSheet>
+          )}
           {rows.length === 0 ? (
             <EmptyCards view={view} query={query} filtering={!isSelectionEmpty(selection)} />
           ) : (
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gridTemplateColumns: `repeat(auto-fill, minmax(${narrow ? 240 : 300}px, 1fr))`,
                 gap: 12,
               }}
             >
@@ -582,6 +567,7 @@ function Toolbar({
   sort,
   onSort,
   onClearRecent,
+  onOpenFilters,
 }: {
   count: number
   total: number
@@ -592,6 +578,8 @@ function Toolbar({
   sort: SortKey
   onSort: (s: SortKey) => void
   onClearRecent?: () => void
+  /** Phone layout: the sidebar is behind this button. */
+  onOpenFilters?: () => void
 }) {
   const applied = FACETS.flatMap((f) =>
     [...selection[f.id]].map((v) => ({ facet: f.id, value: v, label: f.values[v] })),
@@ -656,6 +644,23 @@ function Toolbar({
       {onClearRecent && (
         <button type="button" onClick={onClearRecent} style={{ ...linkButtonStyle, fontSize: 12 }}>
           Clear history
+        </button>
+      )}
+      {onOpenFilters && (
+        <button
+          type="button"
+          onClick={onOpenFilters}
+          style={{
+            ...controlStyle,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            color: applied.length > 0 ? 'var(--color-selection)' : 'var(--color-text)',
+            borderColor: applied.length > 0 ? 'var(--color-selection)' : 'var(--color-border)',
+          }}
+        >
+          Filters{applied.length > 0 ? ` (${applied.length})` : ''}
         </button>
       )}
       {view !== 'recent' && (
@@ -903,5 +908,168 @@ function StarIcon({ filled, size = 14 }: { filled: boolean; size?: number }) {
     >
       <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z" />
     </svg>
+  )
+}
+
+interface SidebarContentProps {
+  view: View
+  setView: (v: View) => void
+  favoritesCount: number
+  recentCount: number
+  known: KnownCatalog[]
+  query: string
+  selection: FacetSelection
+  toggle: (facet: FacetId, value: string) => void
+}
+
+/** The facet sidebar's contents — the "Yours" view switch, one group per
+ *  facet, and the provenance footnote. Rendered in the desktop sidebar and,
+ *  on phones, inside the full-screen Filters panel. */
+function SidebarContent({
+  view,
+  setView,
+  favoritesCount,
+  recentCount,
+  known,
+  query,
+  selection,
+  toggle,
+}: SidebarContentProps) {
+  return (
+    <>
+      <SidebarGroup title="Yours" defaultOpen>
+        <ViewItem
+          label="All catalogs"
+          count={KNOWN_CATALOGS.length}
+          active={view === 'all'}
+          onClick={() => setView('all')}
+        />
+        <ViewItem
+          label="Favorites"
+          count={favoritesCount}
+          active={view === 'favorites'}
+          onClick={() => setView('favorites')}
+          icon={<StarIcon filled size={11} />}
+        />
+        <ViewItem
+          label="Recently opened"
+          count={recentCount}
+          active={view === 'recent'}
+          onClick={() => setView('recent')}
+        />
+      </SidebarGroup>
+      {FACETS.map((facet) => (
+        <FacetGroup
+          key={facet.id}
+          facet={facet}
+          counts={facetCounts(known, query, selection, facet.id)}
+          selected={selection[facet.id]}
+          onToggle={(v) => toggle(facet.id, v)}
+          defaultOpen={facet.id === 'topics' || facet.id === 'regions'}
+        />
+      ))}
+      <div style={{ fontSize: 11, color: 'var(--color-text-faint)', marginTop: 12, lineHeight: 1.5 }}>
+        Catalogs via{' '}
+        <a href="https://stacindex.org" target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>
+          STAC Index
+        </a>
+        ; tags are{' '}
+        <a
+          href="https://github.com/rednotfound/stac-lens/blob/main/docs/CATALOGS.md"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: 'inherit' }}
+        >
+          ours
+        </a>
+        .
+      </div>
+    </>
+  )
+}
+
+/** Phone layout: the sidebar as a full-screen panel over the page. Opened
+ *  from the toolbar's Filters button; the toolbar keeps the applied chips
+ *  visible, so filters are never out of sight even when this is closed —
+ *  the discoverability cost of hidden controls, per NN/g, is paid only by
+ *  the *unapplied* ones. Filters apply as they are checked, so the panel
+ *  has no "apply" step: a plain × closes it (a first version's "Show 103"
+ *  button read as an action nobody had asked for), and a line under the
+ *  title says live how many catalogs match. */
+function FiltersSheet({
+  onClose,
+  resultCount,
+  total,
+  appliedCount,
+  onClearAll,
+  children,
+}: {
+  onClose: () => void
+  resultCount: number
+  total: number
+  appliedCount: number
+  onClearAll: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label="Filters"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 30,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--color-bg)',
+      }}
+    >
+      <div
+        style={{
+          padding: '10px 16px 10px',
+          borderBottom: '1px solid var(--color-border)',
+          background: 'var(--color-surface)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontWeight: 600, fontSize: 16, color: 'var(--color-text)' }}>Filters</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close filters"
+            title="Close"
+            style={{
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              background: 'none',
+              color: 'var(--color-text)',
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 13, color: 'var(--color-text-muted)' }}
+        >
+          <span aria-live="polite">
+            {resultCount === total ? `All ${total} catalogs` : `${resultCount} of ${total} catalogs match`}
+          </span>
+          {appliedCount > 0 && (
+            <button type="button" onClick={onClearAll} style={{ ...linkButtonStyle, fontSize: 13 }}>
+              Clear all
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '8px 16px 24px' }}>{children}</div>
+    </div>
   )
 }

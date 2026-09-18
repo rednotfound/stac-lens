@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { TypeIcon, type StacObjectKind } from '../TypeIcon'
+import { isNarrowViewport } from '../../hooks/useMediaQuery'
 
 const LEGEND_OPEN_STORAGE_KEY = 'stac-lens.legend-open'
 
 function readStoredLegendOpen(): boolean {
+  // First visit: open on a desktop, where it orients without covering
+  // anything; closed on a phone, where it would sit over the tree.
+  const firstVisitDefault = !isNarrowViewport()
   try {
     const stored = localStorage.getItem(LEGEND_OPEN_STORAGE_KEY)
-    return stored === null ? true : stored === 'true'
+    return stored === null ? firstVisitDefault : stored === 'true'
   } catch {
-    return true
+    return firstVisitDefault
   }
 }
 

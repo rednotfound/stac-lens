@@ -9,7 +9,8 @@
 // It covers the paths a contributor is most likely to break: the landing
 // page, opening an API root whose children come from /collections, a deep
 // link into a Collection with an applied search, a rejected search shown
-// as an error, and the Inspector's Spatial map fitting a Collection's bbox.
+// as an error, the Inspector's Spatial map fitting a Collection's bbox, and
+// the phone layout (390px: Filters button, outline, bottom-sheet Inspector).
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -37,7 +38,7 @@ page.on('pageerror', (e) => pageErrors.push(e.message))
 
 // Everything Planetary Computer is served from fixtures; anything else
 // external (map tiles, other catalogs) is refused so the run is offline.
-await page.route('**/*', async (route) => {
+const handleRoute = async (route) => {
   const url = route.request().url()
   if (url.startsWith(BASE_URL)) return route.continue()
   if (url.startsWith(PC)) {
@@ -55,7 +56,8 @@ await page.route('**/*', async (route) => {
     return route.fulfill({ status: 404, body: 'no fixture for ' + path })
   }
   return route.abort()
-})
+}
+await page.route('**/*', handleRoute)
 
 const text = () => page.evaluate(() => document.body.innerText)
 const titleBars = () =>
@@ -123,6 +125,39 @@ check(
   /Search request failed: 422[^\n]*collection is required/.test(await text()),
   (await text()).match(/Search request failed[^\n]*|no items match[^\n]*/)?.[0],
 )
+
+// 5. Phone layout (390px, touch): the landing hides its sidebar behind a
+// Filters button; the explorer shows the outline instead of the canvas,
+// with the Inspector as a bottom sheet and a Collection's Items inline.
+const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+phone.on('pageerror', (e) => pageErrors.push('phone: ' + e.message))
+await phone.route('**/*', handleRoute)
+await phone.goto(`${BASE_URL}/`)
+await phone.waitForSelector('[role="button"][title^="http"]')
+check(
+  'phone landing: sidebar behind a Filters button, no horizontal overflow',
+  (await phone.locator('aside').count()) === 0 &&
+    (await phone.getByRole('button', { name: /^Filters/ }).count()) === 1 &&
+    (await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth)),
+)
+await phone.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns?bbox=-75.5,39.3,-73.9,41.4`)
+await phone.waitForSelector('[role="tree"]', { timeout: 15000 })
+await phone.waitForSelector('[role="dialog"][aria-label="Inspector"]', { timeout: 15000 })
+await phone.waitForFunction(() => document.querySelectorAll('[role="group"] [role="treeitem"]').length > 0, null, {
+  timeout: 15000,
+})
+const phoneText = await phone.evaluate(() => document.body.innerText)
+check(
+  'phone explorer: outline + bottom-sheet Inspector, no canvas, compact banner',
+  !/Collapse to top level/.test(phoneText) && /Compact view/.test(phoneText),
+)
+check(
+  "phone explorer: a Collection's Items listed inline from the recorded search page",
+  (await phone.locator('[role="group"] [role="treeitem"]').count()) === 5 &&
+    /All 5 items the API returned/.test(phoneText),
+  phoneText.match(/All \d+ items[^\n]*|First \d+[^\n]*/)?.[0],
+)
+await phone.close()
 
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '))
 

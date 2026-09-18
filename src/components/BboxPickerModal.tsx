@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ItemsMap } from './ItemsMap'
 import type { CelestialBody } from '../stac/body'
+import { useIsNarrow } from '../hooks/useMediaQuery'
 
 // A stable identity — this modal never shows any Items to click (`items`
 // is always `[]`), but `onSelectItem` is still a required prop and one of
@@ -46,6 +47,7 @@ export function BboxPickerModal({
   onConfirm: (bbox: [number, number, number, number]) => void
   onCancel: () => void
 }) {
+  const narrow = useIsNarrow()
   const [drawnBbox, setDrawnBbox] = useState<[number, number, number, number] | undefined>(initialBbox)
   // Two explicit modes, not permanent draw mode. `ItemsMap`'s draw mode
   // has to take the drag gesture away from Leaflet's own drag-to-pan (the
@@ -115,13 +117,13 @@ export function BboxPickerModal({
         // dismiss, click inside to interact" modal pattern.
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 'min(900px, 92vw)',
-          height: 'min(680px, 88vh)',
+          width: narrow ? '100vw' : 'min(900px, 92vw)',
+          height: narrow ? '100vh' : 'min(680px, 88vh)',
           display: 'flex',
           flexDirection: 'column',
           background: 'var(--color-bg)',
           border: '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: narrow ? 0 : 'var(--radius-md)',
           boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
           overflow: 'hidden',
         }}
