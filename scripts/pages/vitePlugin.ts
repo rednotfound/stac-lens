@@ -17,7 +17,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { Plugin, ResolvedConfig } from 'vite'
 import { absolute, homeJsonLd, type SiteConfig } from './render'
-import { buildOutputs, contentTypeOf, loadSiteInputs } from './site'
+import { buildOutputs, contentTypeOf, loadSiteInputs, PAGE_PATHS } from './site'
 
 export function sitePages({ version }: { version: string }): Plugin {
   let resolved: ResolvedConfig
@@ -69,21 +69,32 @@ export function sitePages({ version }: { version: string }): Plugin {
 
     configureServer(server) {
       const base = resolved.base
+      // Only the paths this plugin owns are answered; everything else —
+      // Vite's own `/@vite/client`, `/@react-refresh`, source modules —
+      // falls through untouched. (An earlier version redirected every
+      // extension-less path to a trailing slash and broke the dev client.)
+      const pagePaths = new Set<string>(PAGE_PATHS)
+      const filePaths = new Set([
+        'robots.txt',
+        'llms.txt',
+        'llms-full.txt',
+        'sitemap.xml',
+        ...PAGE_PATHS.map((p) => p.replace(/\/$/, '.md')),
+      ])
       server.middlewares.use((req, res, next) => {
         const url = (req.url ?? '/').split('?')[0]
         if (!url.startsWith(base)) return next()
-        let path = url.slice(base.length)
-        if (path && !path.endsWith('/') && !/\.[a-z]+$/.test(path)) {
+        const path = url.slice(base.length)
+        if (pagePaths.has(`${path}/`)) {
           res.statusCode = 302
           res.setHeader('Location', `${url}/`)
           return res.end()
         }
-        if (path.endsWith('/')) path += 'index.html'
-        if (!path) return next()
-        const outputs = buildOutputs(loadSiteInputs(resolved.root, site.buildDate), site)
-        const body = outputs.get(path)
+        const file = pagePaths.has(path) ? `${path}index.html` : filePaths.has(path) ? path : undefined
+        if (!file) return next()
+        const body = buildOutputs(loadSiteInputs(resolved.root, site.buildDate), site).get(file)
         if (body === undefined) return next()
-        res.setHeader('Content-Type', contentTypeOf(path))
+        res.setHeader('Content-Type', contentTypeOf(file))
         res.end(body)
       })
     },

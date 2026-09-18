@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useStructureTree, type TreeDatum } from '../hooks/useStructureTree'
+import type { TreeDatum } from '../hooks/useStructureTree'
+import { useStructure } from '../hooks/useStructure'
 import { PHONE_ITEM_LIMIT, PHONE_ITEM_WINDOW, usePhoneItems } from '../hooks/usePhoneItems'
 import { describeTemporal } from '../stac/describe'
 import type { StacNode } from '../stac/types'
@@ -25,8 +26,8 @@ import { hasDirectItems } from './tree/treeGeometry'
  *  desktop. Functions complete, data truncated: tapping an Item shows its
  *  full Inspector; the Collection's Temporal and Spatial widgets plot
  *  those ten. */
-export function OutlineView({ rootHref }: { rootHref: string }) {
-  const { root, toggle, isLoading, rootError } = useStructureTree(rootHref)
+export function OutlineView() {
+  const { root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
@@ -293,7 +294,7 @@ function ItemRows({
     shown === 0
       ? 'No items.'
       : state.windowStart > 0
-        ? `Items ${first}–${last}${totalText ? ` of ${totalText}` : ''}; earlier rows unloaded to keep the phone light (${PHONE_ITEM_WINDOW} at a time).`
+        ? `Items ${first}–${last}${totalText ? ` of ${totalText}` : ''}; earlier rows unloaded to keep the list light (${PHONE_ITEM_WINDOW} at a time).`
         : !state.hasMore
           ? isApi
             ? `All ${shown} item${shown === 1 ? '' : 's'} the API returned.`

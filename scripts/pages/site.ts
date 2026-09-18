@@ -79,6 +79,10 @@ export function loadSiteInputs(root: string, buildDate: string): SiteInputs {
   }
 }
 
+/** Every page path under the base, for the dev middleware to recognize a
+ *  request before it renders anything (a test pins this to `buildPages`). */
+export const PAGE_PATHS = ['about/', 'zh/about/', 'health-rules/', 'catalogs/', 'deploy/'] as const
+
 /** The pages, in the order llms-full.txt and the sitemap list them. */
 export function buildPages(inputs: SiteInputs): PageSpec[] {
   const { docs } = inputs

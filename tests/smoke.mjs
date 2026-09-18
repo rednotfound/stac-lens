@@ -7,7 +7,8 @@
 //   node tests/smoke.mjs
 //
 // It covers the paths a contributor is most likely to break: the landing
-// page, opening an API root whose children come from /collections, a deep
+// page, opening an API root whose children come from /collections, the
+// desktop's view switcher (icicle, radial, outline over the same graph), a deep
 // link into a Collection with an applied search, a rejected search shown
 // as an error, the Inspector's Spatial map fitting a Collection's bbox, the
 // phone layout (390px: Filters button, outline, bottom-sheet Inspector), and
@@ -85,6 +86,42 @@ await page.waitForFunction(() => document.querySelectorAll('svg text').length > 
 const labels = await treeLabels()
 check('API root opens with its Collections as children', labels.length === 6, `labels: ${labels.join(' | ')}`)
 check('header shows the catalog title', (await text()).includes('Microsoft Planetary Computer STAC API'))
+
+// 2b. The desktop's view switcher: the same loaded graph and the same
+// selection rendered as an icicle, a radial tree and an outline. The tree
+// is restored at the end so the checks below find their boxes.
+await page.getByRole('tab', { name: 'Icicle' }).click()
+await page.waitForSelector('g[data-href]')
+const icicleCells = await page.locator('g[data-href]').count()
+check('icicle: one cell per loaded node (root + 5 Collections)', icicleCells === 6, `cells: ${icicleCells}`)
+// Landsat, not 3DEP: the next section deep-links a query into 3DEP, and
+// a query arriving for the Collection that is already selected is not
+// applied (a known edge of the hash sync; docs/DESIGN.md, "Views beyond
+// the tree").
+await page.locator('g[data-href$="/collections/landsat-c2-l2"]').click()
+await page.waitForFunction(() => document.body.innerText.includes('Landsat Collection 2 Level-2'), null, {
+  timeout: 5000,
+})
+check(
+  'icicle: clicking a cell selects it — Inspector follows, cell outlined',
+  (await page.locator('g[data-href$="landsat-c2-l2"] rect[stroke-width="2"]').count()) === 1,
+)
+await page.getByRole('tab', { name: 'Radial' }).click()
+await page.waitForSelector('g[data-href] circle')
+check(
+  'radial: the same nodes, with the selection ring on the selected one',
+  (await page.locator('g[data-href]').count()) === 6 &&
+    (await page.locator('g[data-href$="landsat-c2-l2"] circle').count()) === 2,
+)
+await page.getByRole('tab', { name: 'Outline' }).click()
+await page.waitForSelector('[role="treeitem"]')
+check(
+  'outline on the desktop: rows for the loaded nodes, selection kept',
+  (await page.locator('[role="treeitem"]').count()) >= 6 &&
+    (await page.locator('[role="treeitem"][aria-selected="true"]').count()) === 1,
+)
+await page.getByRole('tab', { name: 'Tree' }).click()
+await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 5000 })
 
 // 3. Deep link into a Collection with an applied bbox search
 await page.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns?bbox=-75.5%2C39.5%2C-73.5%2C41.5`)

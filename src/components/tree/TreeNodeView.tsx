@@ -4,7 +4,6 @@ import { select } from 'd3-selection'
 import { drag, type D3DragEvent } from 'd3-drag'
 import type { TreeDatum } from '../../hooks/useStructureTree'
 import { useBoxDragHandles } from '../../hooks/useBoxDragHandles'
-import { isInlinePreviewAsset } from '../../stac/assets'
 import type { StacNode } from '../../stac/types'
 import { CursorItemSetPanels } from '../CursorItemSetPanels'
 import { LinksItemSetBrowser } from '../LinksItemSetBrowser'
@@ -19,11 +18,13 @@ import {
   type BoxSize,
 } from './boxGeometry'
 import {
+  canExpandNode,
   estimateTextWidth,
-  hasDirectItems,
+  hoverInfoFor,
+  itemCountLabel,
   LABEL_FONT_SIZE,
-  stripMarkdownLinks,
-  TOOLTIP_DESCRIPTION_MAX_CHARS,
+  nodeColor,
+  nodeIsFilled,
   truncateLabel,
   type HoverInfo,
 } from './treeGeometry'
@@ -190,25 +191,18 @@ export function TreeNodeView({
   // reached through the Item Set box, shown below as a count. A node whose
   // children come from a `/collections` or `/children` endpoint expands the
   // same way, just fetched differently.
-  const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
-  // Tidy-tree convention, extended: filled = something behind this circle
-  // is not yet open (tree children, or — for a node with Items and no
-  // children — its Item Set box); hollow = already open, or a genuine dead
-  // end. "Open" for the box half mirrors `showItemSetBox` rather than a
-  // sticky "ever opened" record: it reflects what is open right now.
-  const filled = (canExpand && !hasRenderedChildren) || (hasDirectItems(node) && !showItemSetBox)
+  const canExpand = canExpandNode(node)
+  // Filled/hollow per the shared convention (`nodeIsFilled`); "open" for
+  // the Item Set half mirrors `showItemSetBox` rather than a sticky "ever
+  // opened" record: it reflects what is open right now.
+  const filled = nodeIsFilled(node, hasRenderedChildren, showItemSetBox)
 
-  const color = node.type === 'Catalog' ? 'var(--color-node-catalog)' : 'var(--color-node-collection)'
+  const color = nodeColor(node)
   const radius = node.type === 'Catalog' ? 7 : 6
-  // A static link array has a known count; a cursor (API) node's count is
-  // unknown until queried and is labeled as such, never shown as a fake 0.
   const isApiSearched = node.items.kind === 'cursor'
-  const itemBadgeText =
-    node.items.kind === 'links'
-      ? node.items.hrefs.length > 0
-        ? `${node.items.hrefs.length} item${node.items.hrefs.length === 1 ? '' : 's'}`
-        : undefined
-      : undefined
+  // Never a fake 0 for an API node: `itemCountLabel` says nothing until a
+  // count is known.
+  const itemBadgeText = itemCountLabel(node)
   const labelDx = labelOnLeft ? -(radius + 6) : radius + 6
   const label = node.title ?? node.id
   const labelText = truncateLabel(label)
@@ -231,16 +225,7 @@ export function TreeNodeView({
   const apiTagHeight = 13
   const apiTagWidth = estimateTextWidth('API', apiTagFontSize) + apiTagPadX * 2
   const apiTagX = labelOnLeft ? labelDx - apiTagWidth : labelDx
-  const previewAsset = node.assets.find(isInlinePreviewAsset)
-  const hoverInfo: HoverInfo = {
-    type: node.type,
-    title: label,
-    description: node.description
-      ? truncateLabel(stripMarkdownLinks(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
-      : undefined,
-    note: isApiSearched ? 'API-searched — item count unknown until queried' : undefined,
-    thumbnailHref: previewAsset?.href,
-  }
+  const hoverInfo: HoverInfo = hoverInfoFor(node)
 
   // One handler for both the circle and the label, so "click here to select
   // and reveal what's next" means the same thing on every node — the label

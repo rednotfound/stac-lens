@@ -6751,3 +6751,133 @@ title again. The dev server answers `/about/` (and redirects `/about`),
 `/llms.txt` and `/catalogs.md` with the right media types. A
 `VITE_BASE=/lens/` build has no internal link outside `/lens/`. Fourteen
 new unit tests; four new smoke checks.
+
+## 108. Views beyond the tree — an icicle, a radial tree, and the outline on the desktop
+
+The request: the tree is the main entry and should stay so, but a tool
+whose job is *understanding* a catalog can offer more than one picture of
+it — "多种多样的图形来帮助用户来理解一份数据" — including the phone's
+document-like view on the desktop and some of what d3 can draw, without
+making each as complete as the tree. Research first, then a plan with
+three choices put to the user.
+
+### Research
+
+- **Which hierarchy picture.** The controlled study in *Interactive
+  Visualisation of Hierarchical Quantitative Data: An Evaluation* (arXiv
+  1908.01277) and the Bamberg *Effective Visualization of Hierarchies*
+  review agree: the treemap performs worst on navigation and hierarchy
+  understanding (inner nodes vanish inside the nesting), the sunburst was
+  least preferred (angles are hard to compare, outer labels tilt, the
+  circle wastes space), the icicle is the recommended default for a
+  space-filling view, and the indented tree remains the right tool for
+  browsing a large hierarchy. treevis.net (Schulz) is the reference for
+  the wider space; d3-hierarchy ships `partition`, `treemap`, `pack` and
+  `tree`, all already installed here.
+- **The icicle's precondition** is that a node's size is the sum of its
+  children's. STAC breaks that in two ways: an API Collection's Item count
+  is unknown until searched, and a static Collection's link count is a
+  fact about links, not a size to roll up. So the honest encoding is
+  *structure only*: every loaded leaf weighs one. A flat root of 422
+  Collections is then one wide row of thin cells and a deep catalog is a
+  staircase — which is exactly the "shape" the tool exists to show. Known
+  Item counts appear as text in the cell; never as area.
+- **Radial layouts** were rejected as the *main* tree in §5 ("read poorly
+  for strict parent-child order at depth"). That still holds. As an
+  overview they do the one thing the horizontal tree cannot: show the
+  whole breadth at once — a flat root becomes a full ring, depth becomes
+  concentric rings — with no labels needed. The user asked for it by
+  name; it is the same `tree()` layout in polar coordinates plus
+  `linkRadial`, so it costs little.
+- **One view at a time.** GNOME's Disk Usage Analyzer (Baobab) switches
+  between a rings chart and a treemap over one scan rather than showing
+  both; side-by-side panels each get too small.
+- **What the ecosystem has.** No STAC tool offers an overview of a whole
+  catalog's structure; the closest anything comes to a catalog-wide
+  picture is NASA Earthdata Search's per-file timeline. Three views that
+  would answer data users' questions directly — a timeline of every
+  Collection's temporal extent, a grid of small maps of every declared
+  bbox, and a rules × objects health matrix — were offered and deferred
+  by the user for this round (recorded below).
+
+### Decisions
+
+- **Views: Tree · Outline · Icicle · Radial**, a `TabButton` row at the
+  top of the left column, the tree default, one view at a time, the
+  Inspector unchanged on the right. Labels are the chart's name, not a
+  concept ("Shape"), so the label says what will appear. Phones keep the
+  outline only. The chosen view is not in the URL: the hash's query
+  segment carries API search parameters (§94's shareable search), and a
+  `view=` key there would pollute that contract — deferred, see §96.
+- **The structure state moves up.** `useStructureTree` kept its expanded/
+  loading map inside whichever component called it — fine while each
+  layout had one view. With a switcher, expansion has to survive the
+  switch, so `StructureProvider` calls the hook once per open catalog and
+  every view reads it through `useStructure()`; each view is a second
+  rendering of the same state, which is what the phone outline already
+  claimed to be. The tree still remounts on return (its pan position and
+  dragged offsets reset); expansion and selection do not.
+- **Only what is loaded, plus an explicit "Load all catalogs".** Overview
+  views draw the loaded datum tree and say so in a line above the
+  picture ("127 Collections in 98 Catalogs loaded · 106 children not
+  loaded · 17 catalogs not opened yet"); the button is the tree's own
+  `expandAllCatalogs` (Catalogs only, budget 60). Nothing is fetched
+  because a tab was clicked. An API root's `/collections` answer already
+  holds every Collection, so for an API the overview is complete at once;
+  a static catalog fills in as catalogs are opened.
+- **One vocabulary.** Type colors, filled = more to reveal, solid ring =
+  selected, dashed ring = contains the selection, the hover card, the
+  "+N more (not loaded)" leaf — all extracted from `TreeNodeView` into
+  `treeGeometry.ts` (`canExpandNode`, `nodeIsFilled`, `nodeColor`,
+  `itemCountLabel`, `hoverInfoFor`) and used by every view. Clicking
+  anything selects exactly that object (the selection-scoping rule); in
+  the radial view a click also opens a closed node, the tree's gesture; in
+  the icicle a click opens a closed node and, when the node has children,
+  makes it the focus (the zoomable-icicle convention), while a leaf only
+  selects — enlarging one of 422 Collections to full width shows nothing.
+
+### Built and verified
+
+Chromium 1400 px, light and dark, against live catalogs: Planetary
+Computer's root is one row of 136 cells in the icicle and one full ring
+in the radial view; clicking the 3DEP Lidar cell selects it in the
+Inspector and the same node carries the ring in the radial view and the
+highlight in the outline; back in the tree the selection and expansion
+are intact. Capella after "Load all catalogs": the year → month → day
+catalogs read as a staircase with hatched "+N more" cells where the
+100-per-page child budget stopped, and the radial view shows the three
+facets as three arcs; clicking "By Product Type" focuses the icicle on its
+seven Collections with their known Item counts as text. Wheel zoom and
+drag pan work in the radial view; the phone layout is unchanged (no tab
+row). 96 unit tests, 23 smoke checks.
+
+A bug from the previous round surfaced while verifying and is fixed here:
+the dev-server middleware for the static pages redirected *every*
+extension-less path to a trailing slash, including Vite's `/@vite/client`,
+so `npm run dev` served a broken client after commit 4c744f4. The
+middleware now answers only the page paths it owns (`PAGE_PATHS`, pinned
+by a test) and passes everything else through.
+
+### Deferred, for the next round
+
+- **Time**: one lane per loaded Collection, its `extent.temporal`
+  intervals on a shared axis (open-ended as arrows), tree order — the
+  question "what years does this catalog cover, per Collection" that no
+  STAC tool answers today.
+- **Space**: a grid of small equirectangular maps, one per Collection,
+  each with all its declared bboxes (graticule for non-Earth bodies) —
+  small multiples rather than one map, because hundreds of bboxes on one
+  map are unreadable.
+- **Health**: rows = loaded Catalogs/Collections, columns = the rules in
+  `HEALTH-RULES.md` that are built or checkable from held data, cells =
+  invalid / warning / ok / n.a. Needs the five inline Inspector checks
+  extracted into a pure `health.ts` first — the "health summary" §94 named
+  as the next step for the positioning.
+- The chosen view in the URL; keeping the tree mounted across switches so
+  its pan and drag state survive.
+- Found while writing the smoke check: a `#href?query` arriving by hash
+  change for the Collection that is *already* selected does not apply the
+  query (`pendingInitialQuery` is consumed only when the Search panel
+  mounts). Pre-existing, narrow — a pasted link normally loads fresh —
+  but worth a fix in `CursorItemSetBrowser` (consume on `pendingInitialQuery`
+  change, not only on mount).

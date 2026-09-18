@@ -1,4 +1,5 @@
 import { linkHorizontal } from 'd3-shape'
+import { isInlinePreviewAsset } from '../../stac/assets'
 import { classifyNodeShape, type StacNode } from '../../stac/types'
 import type { StacObjectKind } from '../TypeIcon'
 
@@ -87,3 +88,57 @@ export interface TooltipState extends HoverInfo {
  *  without turning the tooltip into the Inspector field it is not trying
  *  to replace. */
 export const TOOLTIP_DESCRIPTION_MAX_CHARS = 160
+
+/** Structural children only — sub-Catalogs/Collections, however they are
+ *  fetched (static `child` links, a `/collections` listing, a `/children`
+ *  endpoint). Direct Items are never children in any view; they are
+ *  reached through the Item Set and shown as a count. */
+export function canExpandNode(node: StacNode): boolean {
+  return node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
+}
+
+/** The tidy-tree glyph convention every structure view shares: filled =
+ *  something behind this node is not yet open (structural children, or —
+ *  for a node with Items and no children — its Item Set), hollow = already
+ *  open, or a genuine dead end. `itemSetOpen` is whether that node's Items
+ *  are open right now in the view asking (the desktop's box, the phone's
+ *  inline rows); a view with no Item Set passes false. */
+export function nodeIsFilled(node: StacNode, hasRenderedChildren: boolean, itemSetOpen: boolean): boolean {
+  return (canExpandNode(node) && !hasRenderedChildren) || (hasDirectItems(node) && !itemSetOpen)
+}
+
+/** The color a node of this type takes in every structure view — the two
+ *  hierarchy hues from the STAC mark, read from the tokens so the theme
+ *  decides the exact value. */
+export function nodeColor(node: StacNode): string {
+  return node.type === 'Catalog' ? 'var(--color-node-catalog)' : 'var(--color-node-collection)'
+}
+
+/** A static link array has a known count; a cursor (API) node's count is
+ *  unknown until queried and is never shown as a fake 0 — `undefined`
+ *  means "don't say". A `matched` total is known only after a search. */
+export function knownItemCount(node: StacNode): number | undefined {
+  if (node.items.kind === 'links') return node.items.hrefs.length > 0 ? node.items.hrefs.length : undefined
+  return node.items.matched
+}
+
+export function itemCountLabel(node: StacNode): string | undefined {
+  const n = knownItemCount(node)
+  return n === undefined ? undefined : `${n} item${n === 1 ? '' : 's'}`
+}
+
+/** The hover card's content for a node, identical in every view: type,
+ *  full title, a description snippet, the API caveat, a thumbnail when the
+ *  node has a browser-renderable preview asset. */
+export function hoverInfoFor(node: StacNode): HoverInfo {
+  const previewAsset = node.assets.find(isInlinePreviewAsset)
+  return {
+    type: node.type,
+    title: node.title ?? node.id,
+    description: node.description
+      ? truncateLabel(stripMarkdownLinks(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
+      : undefined,
+    note: node.items.kind === 'cursor' ? 'API-searched — item count unknown until queried' : undefined,
+    thumbnailHref: previewAsset?.href,
+  }
+}

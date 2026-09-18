@@ -54,6 +54,8 @@ If you publish a catalog and want visitors to read it, deploy STAC Browser. If y
 
 **Structure Lens** — a horizontal, curved node-link tree over the Catalog → Collection graph. Items are never tree nodes: a Collection with two million Items is one leaf, not a wall. Nothing loads until you expand it; the canvas pans and zooms by direct manipulation (drag, wheel), and nodes and panels can be rearranged by hand. Selecting an Item highlights the Collection it belongs to with a dashed ring, distinct from the solid ring of a direct selection.
 
+**Other views of the same structure** — the tree is the entry, and on a desktop three lighter views sit beside it over the same loaded graph and the same selection: an **Outline** (the structure as an indented document), an **Icicle** (space-filling layers — how wide and how deep the publisher's hierarchy is, at a glance; width is share of loaded leaves, never an invented Item count) and a **Radial** tree (breadth as a ring, depth as concentric rings). Click anything in any view and the Inspector follows.
+
 **Item Set, embedded in the tree** — selecting a Collection opens its Items right at that node, in window-style panels (title bar as drag handle, corner resize) rather than in a separate page. Static catalogs and API-backed Collections get genuinely different UI, because they are different things:
 
 - A static catalog's Item list is known up front, so it gets **real numbered pagination** with a per-page cache.

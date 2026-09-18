@@ -13,7 +13,7 @@ import {
   type CatalogRecord,
   type SiteConfig,
 } from '../render'
-import { buildOutputs, buildPages, type SiteInputs } from '../site'
+import { buildOutputs, buildPages, PAGE_PATHS, type SiteInputs } from '../site'
 
 const catalogs: CatalogRecord[] = [
   {
@@ -167,6 +167,10 @@ describe('crawler files', () => {
 })
 
 describe('buildOutputs', () => {
+  it('publishes exactly the paths the dev middleware knows', () => {
+    expect(buildPages(inputs).map((p) => p.path)).toEqual([...PAGE_PATHS])
+  })
+
   it('emits a page, a Markdown copy and the crawler files, with head metadata', () => {
     const out = buildOutputs(inputs, hosted)
     expect([...out.keys()].sort()).toEqual(

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { hierarchy, tree, type HierarchyPointNode } from 'd3-hierarchy'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type D3ZoomEvent } from 'd3-zoom'
-import { useStructureTree, type TreeDatum } from '../hooks/useStructureTree'
+import type { TreeDatum } from '../hooks/useStructureTree'
+import { useStructure } from '../hooks/useStructure'
 import { useSelectionStore } from '../store/selection'
 import { loader } from '../stac/loaderInstance'
 import { Spinner } from './Spinner'
@@ -47,8 +48,8 @@ const canvasButtonStyle: React.CSSProperties = {
  *  offsets, per-node box geometry, auto-pan to an off-screen selection, and
  *  the layer boxes are portaled into. A node itself is `TreeNodeView`; a
  *  box is `renderBox` (`tree/ItemSetBox.tsx`). */
-export function StructureTree({ rootHref }: { rootHref: string }) {
-  const { root, toggle, collapseAll, expandAllCatalogs, isLoading, rootError } = useStructureTree(rootHref)
+export function StructureTree() {
+  const { root, toggle, collapseAll, expandAllCatalogs, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select_ = useSelectionStore((s) => s.select)

@@ -32,6 +32,20 @@ interface NodeUiState {
   childHrefs?: string[]
 }
 
+/** What every structure view receives: the loaded subset of the graph as a
+ *  datum tree, the expand/collapse actions, and per-node loading state. One
+ *  instance per open catalog, shared by every view through
+ *  `StructureProvider`, so switching views keeps the same expansion. */
+export interface StructureTreeState {
+  root: TreeDatum | undefined
+  toggle: (href: string) => void
+  collapseAll: () => void
+  expandAllCatalogs: () => Promise<void>
+  isLoading: (href: string) => boolean
+  isExpanded: (href: string) => boolean
+  rootError: string | undefined
+}
+
 export interface TreeDatum {
   href: string
   node: StacNode
@@ -78,7 +92,7 @@ async function loadAllFromListEndpoint(
  *  a Collection the user had just manually collapsed. Structure Lens is now
  *  purely a Catalog/Collection navigator — see docs/DESIGN.md, "Items
  *  removed from Structure Lens entirely". */
-export function useStructureTree(rootHref: string) {
+export function useStructureTree(rootHref: string): StructureTreeState {
   const [uiState, setUiState] = useState<Map<string, NodeUiState>>(new Map())
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
