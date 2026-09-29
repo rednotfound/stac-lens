@@ -10,6 +10,7 @@ import type {
 } from './types'
 import { normalizeCollectionTemporalExtent, normalizeItemTemporal, type TemporalProperties } from './temporal'
 import { firstBboxIsUnion, isValidBbox, normalizeSpatial } from './spatial'
+import { isInlineImageType } from './assets'
 import { mergeNamespaceScans, scanNamespaces } from './namespaces'
 
 interface StacLink {
@@ -246,6 +247,10 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
 
     schemaHints: type === 'Collection' ? buildSchemaHints(raw) : undefined,
     assets: buildAssets(href, raw),
+    previewHref: (() => {
+      const preview = links.find((l) => l.rel === 'preview' && l.href && isInlineImageType(l.type))
+      return preview ? resolveHref(href, preview.href!) : undefined
+    })(),
 
     // `description`/`created`/`updated` are top-level fields on a Catalog/
     // Collection but live inside an Item's own `properties` instead (Common

@@ -86,7 +86,8 @@ STAC Lens reads STAC 1.0 and 1.1 static catalogs and STAC APIs, and follows the 
 | Pagination | `next` links followed exactly as advertised — `href`, and the spec's `method` / `headers` / `body` / `merge` (POST-paginating servers included); `context` and `numberMatched` both understood, a total count never assumed |
 | Children extension | `rel:children` → `/children`, preferred over one fetch per `child` link when a server offers it |
 | STAC 1.1 | common `bands` / `data_type` (with `raster:bands` fallback), Link `method`/`body`, deprecated `license` values flagged in the Inspector |
-| Spatial extents | every declared `extent.spatial.bbox` drawn (not only the first); the spec's overall-extent rule checked and its two-bbox case flagged; malformed bboxes dropped |
+| Spatial extents | every declared `extent.spatial.bbox` drawn in the Collection's hue (not only the first); a sub-extent too small to see at the current zoom is marked with a dot; the spec's overall-extent rule checked and its two-bbox case flagged; malformed bboxes dropped |
+| Previews | a `thumbnail` or `overview` asset with a browser image type, or a `rel: preview` link with one, shown in the hover card (tree, outline, icicle, the Items window's list) and in the Inspector |
 | Solar System extension | `ssys:targets` / `ssys:target_class` read on Catalogs, Collections and Items and resolved up the parent chain; a non-Earth body's extents are drawn on a plain lon/lat graticule with the body named, never on Earth tiles (Rosetta's comet 67P, Cassini's Titan) |
 | Real-world behavior | verified against live servers — Earth Search, Microsoft Planetary Computer, Copernicus Data Space, NASA CMR and others — and worked around only where a server contradicts the spec (documented in `docs/DESIGN.md`) |
 

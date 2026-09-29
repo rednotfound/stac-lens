@@ -205,6 +205,9 @@ export interface StacNode {
    *  (shared/representative assets, per the Collection spec's own
    *  optional `assets` field) — empty array when the source has none. */
   assets: ResolvedAsset[]
+  /** A `rel: preview` link with a browser image type, resolved — the
+   *  link-level way to offer a picture of a Catalog, Collection or Item. */
+  previewHref?: string
 
   /** stac_extensions as declared by the publisher. */
   declaredExtensions: string[]

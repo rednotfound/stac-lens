@@ -37,7 +37,9 @@ export function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
         borderRadius: 'var(--radius-sm)',
         fontSize: 12,
         pointerEvents: 'none',
-        zIndex: 10,
+        // Above the Items window (50), below the bbox modal (100): the card
+        // for a row inside the window must not paint underneath it.
+        zIndex: 60,
         boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
       }}
     >

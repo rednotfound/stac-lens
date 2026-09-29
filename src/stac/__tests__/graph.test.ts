@@ -291,3 +291,23 @@ describe('buildNode — Solar System extension', () => {
     expect(coll.ssysTargets).toBeUndefined()
   })
 })
+
+describe('buildNode — preview link', () => {
+  it('keeps a rel:preview link with an image type, resolved, and ignores other types', () => {
+    const raw = {
+      type: 'Collection',
+      id: 'c',
+      links: [
+        { rel: 'preview', href: './preview.png', type: 'image/png' },
+        { rel: 'preview', href: './preview.html', type: 'text/html' },
+      ],
+    } as unknown as RawStacObject
+    expect(buildNode('https://x/cat/collection.json', raw).previewHref).toBe('https://x/cat/preview.png')
+    const html = {
+      type: 'Collection',
+      id: 'c',
+      links: [{ rel: 'preview', href: './p.html', type: 'text/html' }],
+    } as unknown as RawStacObject
+    expect(buildNode('https://x/cat/collection.json', html).previewHref).toBeUndefined()
+  })
+})

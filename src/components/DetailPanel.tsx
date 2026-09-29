@@ -6,7 +6,7 @@ import { useSelectionStore } from '../store/selection'
 import { useItemSetStore } from '../store/itemSet'
 import { KNOWN_EXTENSION_PREFIXES } from '../stac/namespaces'
 import { interpretExtensionFacts, interpretCommonMetadataFacts } from '../stac/extensionFacts'
-import { isInlinePreviewAsset, describeAssetType } from '../stac/assets'
+import { describeAssetType, previewImageHref } from '../stac/assets'
 import { summarizeItemSet } from '../stac/itemSetSummary'
 import { TimeLens } from './TimeLens'
 import { SpaceLens } from './SpaceLens'
@@ -68,7 +68,7 @@ export function DetailPanel() {
   const properties = (node.raw as { properties?: Record<string, unknown> } | null)?.properties
   const extensionFactGroups = interpretExtensionFacts(properties)
   const commonMetadataFacts = interpretCommonMetadataFacts(properties)
-  const previewAsset = node.assets.find(isInlinePreviewAsset)
+  const previewHref = previewImageHref(node)
   // STAC only really has three kinds of object — Item, Catalog, Collection
   // — so each gets its own recognizable identity here rather than one
   // undifferentiated panel. This was an explicit request: each of these
@@ -171,11 +171,11 @@ export function DetailPanel() {
         <>
           {node.description && <Field label="Description (source)">{node.description}</Field>}
 
-          {previewAsset && (
+          {previewHref && (
             <div style={{ marginBottom: 12 }}>
               <img
-                src={previewAsset.href}
-                alt={previewAsset.title ?? 'thumbnail'}
+                src={previewHref}
+                alt="preview"
                 style={{
                   maxWidth: '100%',
                   maxHeight: 220,
