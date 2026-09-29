@@ -51,7 +51,7 @@
 | C-01 | Invalid | `type` = `Collection`, `stac_version`, `id`, non-empty `description`, `license`, `extent`, `links` all present | spec collection | 🟡 |
 | C-02 | Invalid | `license` is an SPDX identifier, an SPDX expression, or `other` | spec collection | 🟡 — needs the SPDX id list embedded; expression grammar out of scope |
 | C-03 | Warning | `license` is not the deprecated `proprietary` / `various` | spec collection (1.1) | ✅ Inspector note |
-| C-04 | Invalid | `extent.spatial.bbox` is an array of bboxes and its first entry is the overall extent | spec collection | ✅ every valid bbox kept and drawn; the first is drawn lighter when it really contains the rest |
+| C-04 | Invalid | `extent.spatial.bbox` is an array of bboxes and its first entry is the overall extent | spec collection | ✅ every valid bbox kept and drawn in the Collection's hue; the first is drawn dashed when it really contains the rest; a sub-extent too small to see at the current zoom is marked with a dot |
 | C-05 | Invalid | not exactly two spatial bboxes ("two … don't make sense and will be reported as invalid") | spec 1.1 changelog | ✅ ⚠ (3dep-lidar-returns) |
 | C-06 | Warning | every additional bbox lies inside the first (it is the union) | spec collection | ✅ ⚠ when the first does not contain the rest (3dep's two are disjoint; `firstBboxIsUnion`) |
 | C-07 | Observation | three or more spatial bboxes ("only if a union would include large uncovered areas") | spec collection | ✅ neutral note; all drawn (fia: 13) |
@@ -103,7 +103,7 @@
 | L-02 | Warning | a link's `title` matches the destination's own `title` | bp ("link titles should exactly reflect the title of the corresponding entity") | 🟡 for destinations already loaded |
 | L-03 | Warning | one consistent href convention — all-relative (self-contained) or all-absolute (published) | bp | 🟡 |
 | L-04 | Warning | URLs to directories end with a slash, consistently | bp | 🟡 low priority |
-| L-05 | Observation | `alternate` (`text/html`), `canonical`, `via`, `derived_from`, `license`, `preview` links present | bp | 🟡 — not yet surfaced in the Inspector (listed in `DESIGN.md` §96) |
+| L-05 | Observation | `alternate` (`text/html`), `canonical`, `via`, `derived_from`, `license`, `preview` links present | bp | 🟡 — a `preview` link with an image type is shown as the node's preview ✅; the others not yet surfaced in the Inspector (listed in `DESIGN.md` §96) |
 | L-06 | Invalid | a pagination `next` link's `method` / `headers` / `body` / `merge` are honored by the client | api (Features, Item Search); spec 1.1 links | ✅ client obligation, met |
 
 ## API — declared

@@ -5,6 +5,7 @@ import { useElementSize } from '../hooks/useElementSize'
 import { describeTemporal } from '../stac/describe'
 import { LoadingState } from './LoadingState'
 import { TypeIcon } from './TypeIcon'
+import { hoverInfoFor, type HoverInfo } from './tree/treeGeometry'
 import { ItemsTimeline } from './ItemsTimeline'
 import { ItemsMap } from './ItemsMap'
 import { TabButton } from './TabButton'
@@ -55,17 +56,22 @@ export function ItemRow({
   item,
   selected,
   onSelect,
+  onHover,
   rowRef,
 }: {
   item: StacNode
   selected: boolean
   onSelect: () => void
+  /** The shared hover card (`hoverInfoFor`), when the host shows one. */
+  onHover?: (info: HoverInfo | null, clientX: number, clientY: number) => void
   rowRef?: RefObject<HTMLDivElement | null>
 }) {
   return (
     <div
       ref={rowRef}
       onClick={onSelect}
+      onMouseMove={(e) => onHover?.(hoverInfoFor(item), e.clientX, e.clientY)}
+      onMouseLeave={(e) => onHover?.(null, e.clientX, e.clientY)}
       style={{
         padding: '5px 8px',
         fontSize: 12,

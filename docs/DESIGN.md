@@ -7175,3 +7175,65 @@ only to *which* Collection is browsed:
   a searched Collection (dark theme, like the landing one).
 - The window is one; comparing two Collections side by side would need
   the multi-window option the user declined for now.
+
+## 111. Declared bboxes that could not be seen
+
+The user's own catalog (PLATEAU city objects, a Cloudflare R2 bucket)
+declares five spatial bboxes on its Buildings Collection — Honshu-wide
+overall, then Hiroshima, Kumagaya, Kashiwa and Taito — and STAC Browser
+shows them; STAC Lens showed none, though the Inspector said "5 declared
+bboxes" and the map held five rectangles. Two causes, both ours:
+
+- The declared extents were drawn in `textFaint` gray, 1 px, dashed —
+  and that gray was still the old warm neutral, never updated when the
+  palette moved to the brand's hue (§101). On OSM's light tiles it was
+  simply not there.
+- The four sub-extents are cities inside a region: at the zoom that fits
+  the overall extent each is about 3 px wide. A 3 px dashed gray outline
+  is invisible however the palette reads.
+
+Fixed in `ItemsMap`: declared extents use the Collection's own hue (the
+teal the tree draws Collections in, darkened in the light theme as
+`--color-brand` is), 2 px solid with a faint fill for sub-extents, dashed
+1.5 px for the overall extent when it really contains the rest; and a
+sub-extent narrower than 12 px on screen gets a dot at its center,
+refreshed on every zoom and gone once the rectangle itself is readable.
+The map's faint-gray token was updated to the cool neutrals. Verified on
+that Collection in both themes: overall dashed box plus four dots at the
+fitted zoom; zooming into Kanto turns three of them into rectangles with
+the dot remaining only on the smallest.
+
+## 112. Preview images: what the hover card shows, and what a catalog has to offer
+
+Asked for thumbnails in the hover card, on the same catalog as §111. The
+card already had them — `hoverInfoFor` carries a thumbnail and
+`NodeTooltip` draws it; Planetary Computer's Collections show theirs in
+the tree, the outline and the icicle (verified: the image loads at 720 px
+wide). That catalog shows none because it declares none: its Items'
+assets are Parquet and FlatCityBuf with `data`/`metadata` roles, its
+Collections have no `assets`, and no object carries a `rel: preview`
+link.
+
+What changed is how wide the net is. Detection used to accept only a
+`thumbnail`-role asset with a browser image type. It now takes, in order,
+a `thumbnail` asset, an `overview` asset — *if* its type is a browser
+image; overviews are usually COGs, which is why the type decides, not the
+role — and a `rel: preview` link with an image type (`StacNode.previewHref`,
+resolved), the link-level convention STAC Browser honors too. One
+helper, `previewImageHref`, serves the hover card and the Inspector's
+preview, so they can never disagree. Nothing that merely looks like a
+picture by name is loaded on speculation.
+
+For a catalog to show a picture, then: an asset with `roles:
+["thumbnail"]` (or `overview`) and `type: image/png|jpeg|webp|gif`, or a
+`links` entry with `rel: preview` and such a `type`. A Collection can
+carry one at its own level; an Item's is shown when the Item is hovered
+or inspected.
+
+The one place Items are met most — the Items window's list — had no
+hover card at all (the tree, outline and icicle rows did). `ItemRow` now
+takes the same `onHover`, and `ItemSetResultsPanel` shows the card,
+portaled to `body` because the window animates with a transform, which
+would re-anchor a fixed-position card to the window. Verified on a
+Landsat search: hovering a row shows the card with the Item's own
+thumbnail.

@@ -146,6 +146,11 @@ check(
   (await page.evaluate(() => decodeURIComponent(location.hash))).endsWith('?bbox=-75.5,39.5,-73.5,41.5'),
 )
 check('Inspector flags the two-bbox extent as the spec does', (await text()).includes('exactly two spatial bboxes'))
+check(
+  'the Inspector map draws both declared bboxes',
+  (await page.locator('.leaflet-overlay-pane path').count()) >= 2,
+  `overlay paths: ${await page.locator('.leaflet-overlay-pane path').count()}`,
+)
 check('Inspector marks the deprecated license value', (await text()).includes('deprecated value since STAC 1.1'))
 
 // 3b. The Items window is the same window in every view: switching to

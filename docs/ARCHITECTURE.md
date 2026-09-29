@@ -34,7 +34,7 @@ A STAC catalog is a graph of JSON documents linked by `rel` links. The data laye
 
 **`searchQueryUrl.ts`** — the `?query` half of the URL hash: `encodeSearchQuery` / `decodeSearchQuery` (tolerant, never throws) and `splitHashFragment` / `joinHashFragment` (split on the *last* `?`, so an href with its own query string survives).
 
-**`temporal.ts`, `spatial.ts`, `describe.ts`, `assets.ts`, `namespaces.ts`, `extensionFacts.ts`, `itemSetSummary.ts`** — normalization and human-readable interpretation: instants vs. intervals with open ends, bbox/geometry with a defensive fallback for invalid geometry, approximate bbox area, which asset is an inline-previewable thumbnail, which extension prefixes appear in `properties`, and per-extension readable facts for the Inspector.
+**`temporal.ts`, `spatial.ts`, `describe.ts`, `assets.ts`, `namespaces.ts`, `extensionFacts.ts`, `itemSetSummary.ts`** — normalization and human-readable interpretation: instants vs. intervals with open ends, bbox/geometry with a defensive fallback for invalid geometry, approximate bbox area, which image a node can show as its preview (`previewImageHref`: a `thumbnail` or `overview` asset with a browser image type, else a `rel: preview` link), which extension prefixes appear in `properties`, and per-extension readable facts for the Inspector.
 
 ## State — `src/store/`
 

@@ -1,5 +1,5 @@
 import { linkHorizontal } from 'd3-shape'
-import { isInlinePreviewAsset } from '../../stac/assets'
+import { previewImageHref } from '../../stac/assets'
 import { classifyNodeShape, type StacNode } from '../../stac/types'
 import type { StacObjectKind } from '../TypeIcon'
 
@@ -72,7 +72,7 @@ export interface HoverInfo {
   description?: string
   note?: string
   /** The node's browser-renderable thumbnail asset, if any — decided by the
-   *  same `isInlinePreviewAsset` check the Inspector's preview uses, so
+   *  same `previewImageHref` the Inspector's preview uses, so
    *  both places agree on what counts. Planetary Computer's Collections
    *  carry exactly this. */
   thumbnailHref?: string
@@ -131,7 +131,6 @@ export function itemCountLabel(node: StacNode): string | undefined {
  *  full title, a description snippet, the API caveat, a thumbnail when the
  *  node has a browser-renderable preview asset. */
 export function hoverInfoFor(node: StacNode): HoverInfo {
-  const previewAsset = node.assets.find(isInlinePreviewAsset)
   return {
     type: node.type,
     title: node.title ?? node.id,
@@ -139,6 +138,6 @@ export function hoverInfoFor(node: StacNode): HoverInfo {
       ? truncateLabel(stripMarkdownLinks(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
       : undefined,
     note: node.items.kind === 'cursor' ? 'API-searched — item count unknown until queried' : undefined,
-    thumbnailHref: previewAsset?.href,
+    thumbnailHref: previewImageHref(node),
   }
 }

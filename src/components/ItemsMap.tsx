@@ -18,9 +18,16 @@ const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyrigh
 // the way our own `style={{ fill: 'var(...)' }}` SVG elements do elsewhere
 // in this app, so the palette is duplicated here rather than referenced.
 const PALETTE = {
-  light: { item: '#144e63', selection: '#2563eb', textFaint: '#b7b1a4' },
-  dark: { item: '#6fb3d2', selection: '#60a5fa', textFaint: '#6b6558' },
+  light: { item: '#144e63', selection: '#2563eb', textFaint: '#a2b4b9', collection: '#0a7b77' },
+  dark: { item: '#6fb3d2', selection: '#60a5fa', textFaint: '#546a6f', collection: '#0eb4ae' },
 }
+
+/** A declared bbox narrower than this on screen is also marked with a dot
+ *  at its center, so a city-sized sub-extent inside a region-sized overall
+ *  extent does not vanish into a 3 px sliver at the zoom that fits the
+ *  whole. The dot goes away once zooming in makes the rectangle itself
+ *  readable. */
+const MIN_VISIBLE_BBOX_PX = 12
 
 function useIsDark(): boolean {
   const [isDark, setIsDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -223,18 +230,55 @@ export function ItemsMap({
     if (!layerGroup) return
     layerGroup.clearLayers()
 
-    if (statedBboxes) {
+    // The Collection's declared extents, in the Collection's own hue: the
+    // overall extent (the first, when it really contains the rest) as a
+    // dashed outline, each sub-extent as a solid outline with a faint
+    // fill. These used to be 1 px faint-gray dashes, which a light tile
+    // set swallowed whole — a reported case: five declared bboxes, none
+    // visible (docs/DESIGN.md, "Declared bboxes that could not be seen").
+    // A sub-extent too small to read at the current zoom also gets a dot
+    // at its center, refreshed on every zoom.
+    const map = mapRef.current
+    const smallMarkers: L.CircleMarker[] = []
+    let refreshSmall: (() => void) | undefined
+    if (statedBboxes && map) {
       const overall = statedBboxes.length > 1 && firstBboxIsUnion(statedBboxes)
       statedBboxes.forEach((bbox, i) => {
         const isOverall = overall && i === 0
-        L.rectangle(bboxToBounds(bbox), {
-          color: palette.textFaint,
-          weight: 1,
-          dashArray: isOverall ? '2,5' : '3,2',
-          opacity: isOverall ? 0.6 : 1,
-          fill: false,
-        }).addTo(layerGroup)
+        const rect = L.rectangle(bboxToBounds(bbox), {
+          color: palette.collection,
+          weight: isOverall ? 1.5 : 2,
+          dashArray: isOverall ? '6,4' : undefined,
+          opacity: isOverall ? 0.7 : 0.95,
+          fill: !isOverall,
+          fillOpacity: 0.08,
+          interactive: false,
+        })
+        rect.addTo(layerGroup)
       })
+      refreshSmall = () => {
+        for (const m of smallMarkers) layerGroup.removeLayer(m)
+        smallMarkers.length = 0
+        statedBboxes.forEach((bbox, i) => {
+          if (overall && i === 0) return
+          const bounds = L.latLngBounds(bboxToBounds(bbox))
+          const sw = map.latLngToContainerPoint(bounds.getSouthWest())
+          const ne = map.latLngToContainerPoint(bounds.getNorthEast())
+          if (Math.abs(ne.x - sw.x) >= MIN_VISIBLE_BBOX_PX && Math.abs(sw.y - ne.y) >= MIN_VISIBLE_BBOX_PX) return
+          const marker = L.circleMarker(bounds.getCenter(), {
+            radius: 5,
+            color: palette.collection,
+            weight: 2,
+            fillColor: palette.collection,
+            fillOpacity: 0.35,
+            interactive: false,
+          })
+          marker.addTo(layerGroup)
+          smallMarkers.push(marker)
+        })
+      }
+      refreshSmall()
+      map.on('zoomend', refreshSmall)
     }
 
     // Dimmed (already-loaded, not-currently-active) footprints, drawn
@@ -272,6 +316,9 @@ export function ItemsMap({
       rect.bindTooltip(item.title ?? item.id, { sticky: true, direction: 'top' })
       rect.on('click', () => onSelectItem(item.href))
       rect.addTo(layerGroup)
+    }
+    return () => {
+      if (refreshSmall) map?.off('zoomend', refreshSmall)
     }
   }, [itemsWithBbox, dimmedItemsWithBbox, statedBboxes, highlightHref, palette, onSelectItem])
 

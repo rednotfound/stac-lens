@@ -1,4 +1,8 @@
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Spinner } from './Spinner'
+import { NodeTooltip } from './tree/NodeTooltip'
+import type { TooltipState } from './tree/treeGeometry'
 import { LoadingState } from './LoadingState'
 import type { StacNode } from '../stac/types'
 import {
@@ -103,6 +107,11 @@ export function ItemSetResultsPanel({
   appliedRange,
 }: ItemSetResultsPanelProps) {
   const selectedRowRef = useScrollSelectedIntoView(selectedHref, pageItems)
+  // The same hover card the tree, outline and icicle show — title,
+  // description, thumbnail. Portaled to body: the window this panel lives
+  // in animates with a transform, which would otherwise re-anchor a
+  // fixed-position card to the window.
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const pageList = buildPageList(pageIndex + 1, totalPages)
   const atApparentLastPage = pageIndex >= totalPages - 1
 
@@ -198,6 +207,7 @@ export function ItemSetResultsPanel({
                 item={item}
                 selected={item.href === selectedHref}
                 onSelect={() => onSelect(item.href)}
+                onHover={(info, x, y) => setTooltip(info ? { ...info, x, y } : null)}
                 rowRef={item.href === selectedHref ? selectedRowRef : undefined}
               />
             ))
@@ -255,6 +265,7 @@ export function ItemSetResultsPanel({
           </>
         )}
       </div>
+      {tooltip && createPortal(<NodeTooltip tooltip={tooltip} />, document.body)}
     </div>
   )
 }
