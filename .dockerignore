@@ -2,7 +2,12 @@ node_modules
 dist
 .git
 .github
-docs
 tests
-*.md
 netlify.toml
+# The build reads docs/*.md to generate the site's static pages
+# (scripts/pages), so docs/ stays in the context — minus the parts the
+# build never reads: screenshots and the long design log.
+docs/images
+docs/DESIGN.md
+# Root-level Markdown (README, CONTRIBUTING) is not needed to build.
+*.md
