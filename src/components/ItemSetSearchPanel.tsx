@@ -1,6 +1,6 @@
 import { describeBboxArea, describeBboxCoords } from '../stac/describe'
 import { formControlStyle, pagerButtonStyle } from './ItemSetBrowser'
-import type { QueryDraft } from './CursorItemSetPanels'
+import type { QueryDraft } from '../stac/queryDraft'
 
 const searchButtonStyle: React.CSSProperties = {
   fontSize: 11,

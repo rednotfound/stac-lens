@@ -1,5 +1,7 @@
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type { SearchFilter } from '../stac/apiSearch'
+import type { WindowGeometry } from '../components/itemsWindowGeometry'
 
 interface ItemSetStoreState {
   /** href of the Collection/Catalog the current `visibleHrefs` belong to —
@@ -62,6 +64,17 @@ interface ItemSetStoreState {
    *  since-abandoned Collection is never silently picked up by a different
    *  one later. */
   consumePendingInitialQuery: (forHref: string) => SearchFilter | undefined
+  /** Whether the Items window — the one floating panel that shows the
+   *  browsed Collection's Item Set in every view — is showing. Opened
+   *  again whenever browsing moves to a Collection with Items (`App`);
+   *  closed by its × until then. Not persisted. */
+  windowOpen: boolean
+  setWindowOpen: (open: boolean) => void
+  /** Where the user last put the window and how big; `null` until it has
+   *  been moved or resized once, meaning "use the default placement".
+   *  Persisted per browser, written only when a drag or resize ends. */
+  windowGeometry: WindowGeometry | null
+  setWindowGeometry: (g: WindowGeometry | null) => void
 }
 
 /** What the tree-embedded browse panel (rendered inline in Structure Lens
@@ -73,33 +86,55 @@ interface ItemSetStoreState {
  *  Inspector's own Declared-extensions/Property-namespaces fields also
  *  read it (via `visibleHrefs`) to annotate what's common across the
  *  browsed set, regardless of `showOnLenses`. */
-export const useItemSetStore = create<ItemSetStoreState>((set, get) => ({
-  forHref: null,
-  visibleHrefs: [],
-  showOnLenses: false,
-  appliedQuery: undefined,
-  pendingInitialQuery: null,
-  setVisible: (forHref, hrefs) =>
-    set((state) => ({
-      forHref,
-      visibleHrefs: hrefs,
-      // Switching to a *different* box (a new `forHref`) must not let a
-      // stale `appliedQuery` from the abandoned one survive — otherwise
-      // switching from a just-searched API Collection to a plain static
-      // Collection would leak the old query into the new one's shareable
-      // URL, since the `forHref === browsingHref` freshness check would
-      // wrongly pass. `CursorItemSetPanels`'s own `setAppliedQuery` call
-      // re-asserts the real value right after, in the same commit (see
-      // its `usePublishAppliedQuery`), so there's no observable gap.
-      appliedQuery: forHref === state.forHref ? state.appliedQuery : undefined,
-    })),
-  setShowOnLenses: (v) => set({ showOnLenses: v }),
-  setAppliedQuery: (forHref, query) => set((state) => (forHref === state.forHref ? { appliedQuery: query } : state)),
-  setPendingInitialQuery: (forHref, query) => set({ pendingInitialQuery: { forHref, query } }),
-  consumePendingInitialQuery: (forHref) => {
-    const pending = get().pendingInitialQuery
-    if (!pending || pending.forHref !== forHref) return undefined
-    set({ pendingInitialQuery: null })
-    return pending.query
-  },
-}))
+export const useItemSetStore = create<ItemSetStoreState>()(
+  persist(
+    (set, get) => ({
+      forHref: null,
+      visibleHrefs: [],
+      showOnLenses: false,
+      appliedQuery: undefined,
+      pendingInitialQuery: null,
+      windowOpen: true,
+      windowGeometry: null,
+      setWindowOpen: (open) => set({ windowOpen: open }),
+      setWindowGeometry: (g) => set({ windowGeometry: g }),
+      setVisible: (forHref, hrefs) =>
+        set((state) => ({
+          forHref,
+          visibleHrefs: hrefs,
+          // Switching to a *different* box (a new `forHref`) must not let a
+          // stale `appliedQuery` from the abandoned one survive — otherwise
+          // switching from a just-searched API Collection to a plain static
+          // Collection would leak the old query into the new one's shareable
+          // URL, since the `forHref === browsingHref` freshness check would
+          // wrongly pass. `CursorItemSetPanels`'s own `setAppliedQuery` call
+          // re-asserts the real value right after, in the same commit (see
+          // its `usePublishAppliedQuery`), so there's no observable gap.
+          appliedQuery: forHref === state.forHref ? state.appliedQuery : undefined,
+        })),
+      setShowOnLenses: (v) => set({ showOnLenses: v }),
+      setAppliedQuery: (forHref, query) =>
+        set((state) => (forHref === state.forHref ? { appliedQuery: query } : state)),
+      setPendingInitialQuery: (forHref, query) => set({ pendingInitialQuery: { forHref, query } }),
+      consumePendingInitialQuery: (forHref) => {
+        const pending = get().pendingInitialQuery
+        if (!pending || pending.forHref !== forHref) return undefined
+        set({ pendingInitialQuery: null })
+        return pending.query
+      },
+    }),
+    {
+      name: 'stac-lens.items-window',
+      version: 1,
+      // Only the window's placement is remembered; everything else here is
+      // live state for one session. A throwing `localStorage` (blocked site
+      // data) makes `createJSONStorage` return no storage, and the store
+      // simply runs in memory.
+      storage: createJSONStorage(() => {
+        if (typeof localStorage === 'undefined') throw new Error('localStorage unavailable')
+        return localStorage
+      }),
+      partialize: (state) => ({ windowGeometry: state.windowGeometry }),
+    },
+  ),
+)

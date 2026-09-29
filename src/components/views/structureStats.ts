@@ -7,7 +7,7 @@ export interface StructureStats {
   catalogs: number
   collections: number
   /** Catalogs that have structural children but have not been expanded
-   *  — what "Load all catalogs" would open (within its budget). */
+   *  — what "Expand all catalogs" would open (within its budget). */
   unopenedCatalogs: number
   /** Children hidden behind "+N more" leaves, summed. */
   moreLeaves: number

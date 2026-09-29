@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useRef, useState } from 'react'
 import { usePagedCursorResults } from '../hooks/usePagedCursorResults'
 import type { CursorQuery } from '../hooks/useCursorQueriedItemSet'
 import { useApiConformance } from '../hooks/useApiConformance'
@@ -10,88 +9,68 @@ import { ItemSetResultsPanel } from './ItemSetResultsPanel'
 import { ItemSetSearchPanel } from './ItemSetSearchPanel'
 import { BboxPickerModal } from './BboxPickerModal'
 import { useResetShowOnLenses, usePublishVisible, type ItemSetView } from './ItemSetBrowser'
+import { itemSetSessions } from '../store/itemSetSessions'
+import {
+  describeDraft,
+  draftToFilter,
+  EMPTY_DRAFT,
+  isEmptyQuery,
+  queryToDraft,
+  type QueryDraft,
+} from '../stac/queryDraft'
 import type { StacNode } from '../stac/types'
 import { declaredBboxes } from '../stac/spatial'
 import { resolveBody } from '../stac/body'
 import { loader } from '../stac/loaderInstance'
 
-function toRfc3339Start(dateOnly: string): string {
-  return `${dateOnly}T00:00:00Z`
-}
-function toRfc3339End(dateOnly: string): string {
-  return `${dateOnly}T23:59:59Z`
-}
-function toDateInputValue(rfc3339: string | undefined): string {
-  return rfc3339 ? rfc3339.slice(0, 10) : ''
-}
-
-export interface QueryDraft {
-  dateStart: string // yyyy-mm-dd, from <input type="date">
-  dateEnd: string
-  sortDirection?: 'asc' | 'desc'
-  bbox?: [number, number, number, number]
-}
-
-const EMPTY_DRAFT: QueryDraft = { dateStart: '', dateEnd: '' }
-
-function draftToFilter(draft: QueryDraft): CursorQuery {
-  return {
-    datetimeStart: draft.dateStart ? toRfc3339Start(draft.dateStart) : undefined,
-    datetimeEnd: draft.dateEnd ? toRfc3339End(draft.dateEnd) : undefined,
-    sortDirection: draft.sortDirection,
-    bbox: draft.bbox,
-  }
-}
-
-/** Inverse of `draftToFilter` — used to pre-fill the draft controls from a
- *  query restored off a shareable URL, so the date inputs/sort select/bbox
- *  chip visibly match on load, not just the results list. */
-function queryToDraft(q: CursorQuery): QueryDraft {
-  return {
-    dateStart: toDateInputValue(q.datetimeStart),
-    dateEnd: toDateInputValue(q.datetimeEnd),
-    sortDirection: q.sortDirection,
-    bbox: q.bbox,
-  }
-}
-
-function isEmptyQuery(q: CursorQuery): boolean {
-  return !q.datetimeStart && !q.datetimeEnd && !q.sortDirection && !q.bbox
-}
-
-/** API-backed Collections get two genuinely independent boxes — a real
- *  node-editor-style pair, not two `<div>`s sharing one `foreignObject`.
- *  This was an explicit request: two literally separate foreignObjects,
- *  one Search, one Result.
- *  `StructureTree.tsx` renders those two `foreignObject`s (each with its
- *  own independent drag/resize handles and a connecting line between them)
- *  and gives this component two plain target `<div>`s, one inside each —
- *  this is the single place the shared state (the query, the paged
- *  results) actually lives, portaled out into both targets via
- *  `createPortal` so one hook instance backs two physically separate
- *  places in the DOM. `usePagedCursorResults` adapts the underlying
- *  cursor/accumulation hook into the same paged shape `LinksItemSetBrowser`
- *  gets from `useLinksPagedItemSet`, so once a query has produced a
- *  result, both modes present it through `ItemSetResultsPanel`
- *  identically. */
-export function CursorItemSetPanels({
-  node,
-  searchTarget,
-  resultsTarget,
-}: {
-  node: StacNode & { items: { kind: 'cursor' } }
-  searchTarget: HTMLDivElement
-  resultsTarget: HTMLDivElement
-}) {
+/** An API-backed Collection's Item Set: the Search section above the
+ *  Results, in one column of the Items window. Search-first — nothing is
+ *  fetched until Search is clicked (or a query arrives by URL). The
+ *  Search section collapses to a one-line summary of its conditions so
+ *  the results get the height. This used to be two separate boxes in the
+ *  tree canvas joined by a connector, the node-editor reading; in a
+ *  floating window that reading has no line to hang on, and one column
+ *  with a divider says the same thing: conditions above, what they
+ *  produced below (docs/DESIGN.md, "The Items window"). One hook instance
+ *  (`usePagedCursorResults`) backs both halves, so they can never
+ *  disagree. */
+export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind: 'cursor' } } }) {
   const initialQuery = useState(() => useItemSetStore.getState().consumePendingInitialQuery(node.href))[0]
   const state = usePagedCursorResults(node, initialQuery)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
-  const [view, setView] = useState<ItemSetView>('list')
+  const session = initialQuery === undefined ? itemSetSessions.getCursor(node.href) : undefined
+  const [view, setView] = useState<ItemSetView>(session?.view ?? 'list')
   const conformsTo = useApiConformance(node)
   const sortAvailable = supportsSort(conformsTo)
 
-  const [draft, setDraft] = useState<QueryDraft>(() => queryToDraft(initialQuery ?? {}))
+  const [draft, setDraft] = useState<QueryDraft>(() =>
+    initialQuery !== undefined ? queryToDraft(initialQuery) : (session?.draft ?? EMPTY_DRAFT),
+  )
+  const [searchCollapsed, setSearchCollapsed] = useState(session?.searchCollapsed ?? false)
+  useEffect(() => {
+    itemSetSessions.setCursor(node.href, { view, draft, searchCollapsed })
+  }, [node.href, view, draft, searchCollapsed])
+
+  // A query arriving by URL for a Collection whose panel is already
+  // mounted — a pasted link while it is open, back/forward between two
+  // searches of the same Collection — is applied here; the one-shot read
+  // above only covers a fresh mount.
+  const pending = useItemSetStore((s) => s.pendingInitialQuery)
+  const applyQueryRef = useRef<((q: CursorQuery) => void) | undefined>(undefined)
+  useEffect(() => {
+    applyQueryRef.current = state.status === 'empty' ? undefined : state.applyQuery
+  })
+  useEffect(() => {
+    if (!pending || pending.forHref !== node.href) return
+    const query = useItemSetStore.getState().consumePendingInitialQuery(node.href)
+    if (!query) return
+    // Synchronizing with the URL store's one-shot event: the draft must
+    // show the query the URL brought, not what was being typed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft(queryToDraft(query))
+    applyQueryRef.current?.(query)
+  }, [pending, node.href])
   // Drawing a bbox happens in a dedicated modal (`BboxPickerModal`), not
   // by switching Results over to its own Time & Space tab and drawing
   // there. This was an explicit request: clicking something and getting a
@@ -140,9 +119,45 @@ export function CursorItemSetPanels({
   }
 
   return (
-    <>
-      {createPortal(
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <button
+        type="button"
+        onClick={() => setSearchCollapsed((c) => !c)}
+        aria-expanded={!searchCollapsed}
+        aria-label={searchCollapsed ? 'Show the search conditions' : 'Hide the search conditions'}
+        title={searchCollapsed ? 'Show the search conditions' : 'Collapse the search conditions to one line'}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          border: 'none',
+          background: 'none',
+          padding: '2px 0 6px',
+          font: 'inherit',
+          fontSize: 11,
+          color: 'var(--color-text-muted)',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <span aria-hidden="true" style={{ display: 'inline-block', width: 10 }}>
+          {searchCollapsed ? '▸' : '▾'}
+        </span>
+        <span style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', fontSize: 10 }}>Search</span>
+        {searchCollapsed && (
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {describeDraft(draft, sortAvailable)}
+            {state.status !== 'idle' && !draftDirty
+              ? ''
+              : draftDirty
+                ? ' · edited, not searched'
+                : ' · not searched yet'}
+          </span>
+        )}
+      </button>
+      {!searchCollapsed && (
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', paddingBottom: 8 }}>
           <ItemSetSearchPanel
             draft={draft}
             setDraft={setDraft}
@@ -155,8 +170,7 @@ export function CursorItemSetPanels({
             clearDisabled={!appliedFilterActive && isEmptyQuery(draftFilter)}
             draftDirty={draftDirty}
           />
-        </div>,
-        searchTarget,
+        </div>
       )}
       {bboxModalOpen && (
         <BboxPickerModal
@@ -170,13 +184,14 @@ export function CursorItemSetPanels({
           onCancel={() => setBboxModalOpen(false)}
         />
       )}
-      {createPortal(
+      <div style={{ borderTop: '1px solid var(--color-border)', margin: '0 -8px 8px' }} />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <ItemSetResultsPanel
           view={view}
           setView={setView}
           status={state.status}
           error={state.error}
-          idleMessage="Set your search filters above and click Search to see results."
+          idleMessage="Set your search conditions above and click Search to see results."
           pageItems={pageItems}
           dimmedItems={state.dimmedItems}
           pageIndex={state.pageIndex}
@@ -195,22 +210,15 @@ export function CursorItemSetPanels({
           emptyLensMessage={() =>
             appliedFilterActive ? 'no items match this query' : 'no matching data in the loaded items'
           }
-          // The *draft* bbox, not `appliedQuery.bbox` — shown immediately
-          // once drawn, before "Search" is ever clicked. This was a reported
-          // problem, not a guess: after drawing a search area, the drawn area
-          // was invisible even though "bbox set" appeared — the temporary drawing preview is
-          // removed the instant the gesture ends (by design, it's only a
-          // live preview), and nothing else stood in for it until a search
-          // actually ran, leaving a multi-second gap with zero visual
-          // confirmation of what was just drawn. The two values are
-          // identical the moment Search does commit, so this never looks
-          // different from showing the applied one once submitted.
+          // The *draft* bbox, not `appliedQuery.bbox` — shown the moment it
+          // is drawn, before Search is clicked (a reported gap: a drawn
+          // area was invisible until the search ran). Identical once
+          // Search commits.
           appliedBbox={draft.bbox}
           appliedRange={{ start: appliedQuery.datetimeStart, end: appliedQuery.datetimeEnd }}
-        />,
-        resultsTarget,
-      )}
-    </>
+        />
+      </div>
+    </div>
   )
 }
 

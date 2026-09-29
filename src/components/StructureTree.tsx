@@ -6,21 +6,11 @@ import type { TreeDatum } from '../hooks/useStructureTree'
 import { useStructure } from '../hooks/useStructure'
 import { useSelectionStore } from '../store/selection'
 import { loader } from '../stac/loaderInstance'
+import { useItemSetStore } from '../store/itemSet'
 import { Spinner } from './Spinner'
 import { Legend } from './tree/Legend'
 import { NodeTooltip } from './tree/NodeTooltip'
 import { TreeNodeView } from './tree/TreeNodeView'
-import {
-  defaultBoxSize,
-  defaultResultsOffset,
-  makeBoxGeometry,
-  MIN_BOX_HEIGHT,
-  MIN_BOX_WIDTH,
-  MIN_SEARCH_BOX_HEIGHT,
-  ZERO_BOX_OFFSET,
-  type BoxOffset,
-  type BoxSize,
-} from './tree/boxGeometry'
 import {
   BLOCK_PAN_ATTR,
   hasDirectItems,
@@ -47,19 +37,21 @@ const canvasButtonStyle: React.CSSProperties = {
  *  handlers. This component owns the canvas: layout, pan/zoom, manual node
  *  offsets, per-node box geometry, auto-pan to an off-screen selection, and
  *  the layer boxes are portaled into. A node itself is `TreeNodeView`; a
- *  box is `renderBox` (`tree/ItemSetBox.tsx`). */
+ *  Items are in the Items window (`ItemsWindow`), not in this canvas. */
 export function StructureTree() {
-  const { root, toggle, collapseAll, expandAllCatalogs, isLoading, rootError } = useStructure()
+  const { root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select_ = useSelectionStore((s) => s.select)
 
   // `browsingHref` — the Catalog/Collection being browsed, pinned across
-  // Item selections inside it (see `store/selection.ts`) — is what hosts the
-  // Item Set box and reads as "contains the selection"; `selectedHref` may
-  // point at one Item within it, which is never a tree node.
+  // Item selections inside it (see `store/selection.ts`) — is what the
+  // Items window shows and reads as "contains the selection"; `selectedHref`
+  // may point at one Item within it, which is never a tree node.
   const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
-  const boxHref = browsingHref && browsingNode && hasDirectItems(browsingNode) ? browsingHref : undefined
+  const windowOpen = useItemSetStore((s) => s.windowOpen)
+  const itemsOpenHref =
+    windowOpen && browsingHref && browsingNode && hasDirectItems(browsingNode) ? browsingHref : undefined
 
   const svgRef = useRef<SVGSVGElement>(null)
   // The zoom-transformed group. Every d3-drag in the tree uses it as its
@@ -74,39 +66,13 @@ export function StructureTree() {
   const lastCenteredRef = useRef<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
-  // The open box is portaled into this `<g>`, rendered last inside the
-  // zoomed canvas, so it always paints above every node and link — SVG
-  // paints in document order, and a box rendered inline in its own node's
-  // `<g>` landed above some siblings and below others. State rather than a
-  // ref: a ref read during another component's render is not attached on
-  // the first pass, and nothing would re-render to retry; a callback ref
-  // into state triggers exactly that retry once the element exists.
-  const [boxLayer, setBoxLayer] = useState<SVGGElement | null>(null)
-
   // Manual position overrides on top of what `tree()` computes, keyed by
   // href so they survive re-layout on expand/collapse. Dragging a node moves
   // its whole subtree: the same delta is written into every descendant's
   // entry at drag time, so each node's effective position is one lookup.
   const [dragOffsets, setDragOffsets] = useState<Map<string, { x: number; y: number }>>(new Map())
-  // Per-node box geometry, remembered for the session so revisiting a
-  // Collection finds its box where it was left. A static catalog has one
-  // box; an API Collection has an independent Search and Results pair,
-  // each with its own Maps of the same shape.
-  const [boxOffsets, setBoxOffsets] = useState<Map<string, BoxOffset>>(new Map())
-  const [boxSizes, setBoxSizes] = useState<Map<string, BoxSize>>(new Map())
-  const [searchBoxOffsets, setSearchBoxOffsets] = useState<Map<string, BoxOffset>>(new Map())
-  const [searchBoxSizes, setSearchBoxSizes] = useState<Map<string, BoxSize>>(new Map())
-  const [resultsBoxOffsets, setResultsBoxOffsets] = useState<Map<string, BoxOffset>>(new Map())
-  const [resultsBoxSizes, setResultsBoxSizes] = useState<Map<string, BoxSize>>(new Map())
-
   function resetLayout() {
     setDragOffsets(new Map())
-    setBoxOffsets(new Map())
-    setBoxSizes(new Map())
-    setSearchBoxOffsets(new Map())
-    setSearchBoxSizes(new Map())
-    setResultsBoxOffsets(new Map())
-    setResultsBoxSizes(new Map())
   }
 
   function effectiveXY(n: HierarchyPointNode<TreeDatum>): { x: number; y: number } {
@@ -195,23 +161,8 @@ export function StructureTree() {
     const currentScreenY = currentTransform.y + targetPos.x * currentTransform.k
     const VISIBILITY_MARGIN = 100
 
-    // With an open box, "visible" must include room for the box on its own
-    // side — sized from the box's actual current width, not a guess, and
-    // the wider of the two for an API Collection's pair. The same margin
-    // drives both the visibility test and the pan target below, so they
-    // always agree on how much room the box needs.
-    const targetLabelOnLeft = !!target.children && target.depth !== 0
-    const hasOpenBox = boxHref === panHref
-    const isPanTargetCursorMode = target.data.node.items.kind === 'cursor'
-    const openBoxWidth = isPanTargetCursorMode
-      ? Math.max(
-          searchBoxSizes.get(panHref)?.width ?? defaultBoxSize('search').width,
-          resultsBoxSizes.get(panHref)?.width ?? defaultBoxSize('results').width,
-        )
-      : (boxSizes.get(panHref)?.width ?? defaultBoxSize('main').width)
-    const BOX_SIDE_MARGIN = openBoxWidth + 40
-    const leftMargin = hasOpenBox && targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
-    const rightMargin = hasOpenBox && !targetLabelOnLeft ? BOX_SIDE_MARGIN : VISIBILITY_MARGIN
+    const leftMargin = VISIBILITY_MARGIN
+    const rightMargin = VISIBILITY_MARGIN
 
     const alreadyVisible =
       currentScreenX >= leftMargin &&
@@ -226,16 +177,10 @@ export function StructureTree() {
     lastCenteredRef.current = panHref
     const k = viewTransformRef.current.k
     const cy = svgEl.clientHeight / 2
-    // Bias the pan so the node sits near the edge *away* from its box,
-    // leaving the box's side the full remaining width.
-    const cx = hasOpenBox
-      ? targetLabelOnLeft
-        ? Math.max(svgEl.clientWidth - BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
-        : Math.min(BOX_SIDE_MARGIN, svgEl.clientWidth / 2)
-      : svgEl.clientWidth / 2
+    const cx = svgEl.clientWidth / 2
     svgSel.call(behavior.transform, zoomIdentity.translate(cx - targetPos.y * k, cy - targetPos.x * k).scale(k))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHref, nodes, browsingHref, boxHref])
+  }, [selectedHref, nodes, browsingHref])
 
   if (rootError) {
     return (
@@ -252,37 +197,16 @@ export function StructureTree() {
     )
   }
 
-  const layoutCustomized =
-    dragOffsets.size > 0 ||
-    boxOffsets.size > 0 ||
-    boxSizes.size > 0 ||
-    searchBoxOffsets.size > 0 ||
-    searchBoxSizes.size > 0 ||
-    resultsBoxOffsets.size > 0 ||
-    resultsBoxSizes.size > 0
+  const layoutCustomized = dragOffsets.size > 0
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: 'var(--color-bg)' }}>
       <Legend />
       <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 5, display: 'flex', gap: 6 }}>
-        <button
-          onClick={collapseAll}
-          title="Collapse every expanded node back down to just the root's direct children"
-          style={canvasButtonStyle}
-        >
-          Collapse to top level
-        </button>
-        <button
-          onClick={() => void expandAllCatalogs()}
-          title="Expand every Catalog down to (but not into) Collection level"
-          style={canvasButtonStyle}
-        >
-          Expand all catalogs
-        </button>
         {layoutCustomized && (
           <button
             onClick={resetLayout}
-            title="Snap every manually-dragged node and Item Set box back to its computed position/size"
+            title="Snap every manually-dragged node back to its computed position"
             style={canvasButtonStyle}
           >
             Reset layout
@@ -321,7 +245,7 @@ export function StructureTree() {
                 loading={isLoading(n.data.href)}
                 selected={selectedHref === n.data.href}
                 containsSelection={browsingHref === n.data.href}
-                showItemSetBox={boxHref === n.data.href}
+                itemsOpen={itemsOpenHref === n.data.href}
                 onToggle={() => toggle(n.data.href)}
                 onSelect={() => select_(n.data.href)}
                 onHover={(info, clientX, clientY) =>
@@ -339,59 +263,9 @@ export function StructureTree() {
                     return next
                   })
                 }}
-                boxOffset={boxOffsets.get(n.data.href) ?? ZERO_BOX_OFFSET}
-                onBoxDragBy={(dxLocal, dyLocal) => {
-                  setBoxOffsets((prev) => {
-                    const next = new Map(prev)
-                    const base = prev.get(n.data.href) ?? ZERO_BOX_OFFSET
-                    next.set(n.data.href, { dxHoriz: base.dxHoriz + dxLocal, dyVert: base.dyVert + dyLocal })
-                    return next
-                  })
-                }}
-                boxSize={boxSizes.get(n.data.href) ?? defaultBoxSize('main')}
-                onBoxResizeBy={(dxLocal, dyLocal) => {
-                  setBoxSizes((prev) => {
-                    const next = new Map(prev)
-                    const base = prev.get(n.data.href) ?? defaultBoxSize('main')
-                    next.set(n.data.href, {
-                      width: Math.max(MIN_BOX_WIDTH, base.width + dxLocal),
-                      height: Math.max(MIN_BOX_HEIGHT, base.height + dyLocal),
-                    })
-                    return next
-                  })
-                }}
-                searchBox={makeBoxGeometry(
-                  n.data.href,
-                  searchBoxOffsets,
-                  setSearchBoxOffsets,
-                  ZERO_BOX_OFFSET,
-                  searchBoxSizes,
-                  setSearchBoxSizes,
-                  defaultBoxSize('search'),
-                  MIN_BOX_WIDTH,
-                  MIN_SEARCH_BOX_HEIGHT,
-                )}
-                resultsBox={makeBoxGeometry(
-                  n.data.href,
-                  resultsBoxOffsets,
-                  setResultsBoxOffsets,
-                  defaultResultsOffset(),
-                  resultsBoxSizes,
-                  setResultsBoxSizes,
-                  defaultBoxSize('results'),
-                  MIN_BOX_WIDTH,
-                  MIN_BOX_HEIGHT,
-                )}
-                boxLayer={boxLayer}
               />
             )
           })}
-          {/* The box layer: rendered last so an open box paints above every
-           * node and link by construction. `outline: none` because Chrome's
-           * click-to-focus fallback lands on this `<g>` for non-focusable
-           * content inside a `<foreignObject>` and would draw a focus ring
-           * around it (Firefox never does). */}
-          <g ref={setBoxLayer} style={{ outline: 'none' }} />
         </g>
       </svg>
       {/* Centered, not tucked in a corner: opening a catalog is the fetch a

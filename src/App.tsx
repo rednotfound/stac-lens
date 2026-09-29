@@ -12,7 +12,11 @@ import { StructureProvider } from './components/StructureProvider'
 import { TabButton } from './components/TabButton'
 import { EXPLORER_VIEWS, type ExplorerView } from './components/views/explorerViews'
 import { IcicleView } from './components/views/IcicleView'
-import { RadialTreeView } from './components/views/RadialTreeView'
+import { ItemsWindow } from './components/ItemsWindow'
+import { canvasButtonStyle } from './components/views/canvasButton'
+import { StructureActions } from './components/views/StructureActions'
+import { itemSetSessions } from './store/itemSetSessions'
+import { hasDirectItems } from './components/tree/treeGeometry'
 import { TypeIcon } from './components/TypeIcon'
 import { useSelectionStore } from './store/selection'
 import { useItemSetStore } from './store/itemSet'
@@ -43,8 +47,8 @@ function App() {
   const select = useSelectionStore((s) => s.select)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
-  // Which Item Set box's search (if any) belongs on the URL right now —
-  // scoped to `browsingHref` (the Collection whose Item Set box is open),
+  // Which Item Set's search (if any) belongs on the URL right now —
+  // scoped to `browsingHref` (the Collection the Items window shows),
   // not `selectedHref` (which can drill into an Item inside it): see
   // `store/itemSet.ts`. `itemSetForHref === browsingHref` guards against a
   // one-render-stale value from a just-abandoned box before its own
@@ -70,6 +74,24 @@ function App() {
   // a second column. A new selection pops it from peek to half so the
   // detail appears without hiding the tree entirely.
   const narrow = useIsNarrow()
+  // The Items window: the browsed Collection's Item Set, floating above
+  // every view. It opens whenever browsing arrives at a Collection with
+  // Items and stays closed only until the next one (or the Items button).
+  const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
+  const itemsNode = browsingNode && hasDirectItems(browsingNode) ? browsingNode : undefined
+  const windowOpen = useItemSetStore((s) => s.windowOpen)
+  const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
+  const itemsHref = itemsNode?.href
+  // Keyed on the *act* of selecting (`selectSeq`), not only on which
+  // Collection: clicking the same Collection again after closing the
+  // window must reopen it — with the href alone nothing changed and the
+  // window stayed shut, which read as broken.
+  const selectSeq = useSelectionStore((s) => s.selectSeq)
+  useEffect(() => {
+    if (itemsHref) setWindowOpen(true)
+  }, [itemsHref, selectSeq, setWindowOpen])
+  const headerRef = useRef<HTMLElement | null>(null)
+  const leftColumnRef = useRef<HTMLDivElement | null>(null)
   // Which view of the open catalog the desktop shows. Remembered with the
   // catalog it was chosen for, so opening another catalog starts at the
   // tree again without an effect to reset it.
@@ -215,6 +237,11 @@ function App() {
   const rootNode = rootHref
     ? (loader.get(rootHref) ?? (fetchedRoot?.href === rootHref ? fetchedRoot.node : undefined))
     : undefined
+  // A different catalog: its Collections' Item Set sessions are not this
+  // one's.
+  useEffect(() => {
+    itemSetSessions.clear()
+  }, [rootHref])
   // The tab title follows what is on screen: the selected object, else the
   // catalog, else the landing page's own title. Before any early return
   // below — hooks must run in the same order every render.
@@ -303,6 +330,7 @@ function App() {
     <StructureProvider key={rootHref} rootHref={rootHref}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <header
+          ref={headerRef}
           style={{
             padding: '10px 16px',
             borderBottom: '1px solid var(--color-border)',
@@ -415,7 +443,7 @@ function App() {
               minWidth: 0,
               // The tree's own SVG doesn't clip content panned/zoomed past
               // its column's edge — normally invisible off-screen, but the
-              // Item Set box (foreignObject, real HTML) can land close
+              // Item Set box (then a foreignObject, real HTML) could land close
               // enough to this boundary that part of it renders *inside*
               // the Inspector column's own screen area, where that column's
               // later-painted, opaque content (Detail Panel's div) silently
@@ -457,7 +485,7 @@ function App() {
               </div>
             ) : (
               // The desktop gets a view switcher over the same loaded graph:
-              // the tree (with its Item Set boxes) is the entry; the others
+              // the tree is the entry; the others
               // are lighter readings of the same structure and selection.
               // One view at a time — the Baobab pattern, not side-by-side
               // panels that would each be too small. The tree remounts on
@@ -484,8 +512,23 @@ function App() {
                       onClick={() => setViewChoice({ view: v.id, forRoot: rootHref })}
                     />
                   ))}
+                  <span
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 8 }}
+                  >
+                    <StructureActions />
+                    {itemsNode && !windowOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setWindowOpen(true)}
+                        title={`Reopen the Items window for ${itemsNode.title ?? itemsNode.id}`}
+                        style={canvasButtonStyle}
+                      >
+                        Items ▸ {itemsNode.title ?? itemsNode.id}
+                      </button>
+                    )}
+                  </span>
                 </div>
-                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                <div ref={leftColumnRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
                   {view === 'tree' && <StructureTree key={rootHref} />}
                   {view === 'outline' && (
                     <div style={{ height: '100%', overflow: 'auto' }}>
@@ -495,8 +538,15 @@ function App() {
                     </div>
                   )}
                   {view === 'icicle' && <IcicleView key={rootHref} />}
-                  {view === 'radial' && <RadialTreeView key={rootHref} />}
                 </div>
+                {itemsNode && windowOpen && (
+                  <ItemsWindow
+                    node={itemsNode}
+                    areaRef={leftColumnRef}
+                    headerRef={headerRef}
+                    onClose={() => setWindowOpen(false)}
+                  />
+                )}
               </div>
             )}
           </div>

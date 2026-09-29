@@ -28,20 +28,28 @@ interface SelectionState {
    *  not a guess: the user lost their place. See docs/DESIGN.md, "Items
    *  removed from Structure Lens entirely". */
   browsingHref: string | null
+  /** Counts every `select` call, including one that re-selects what is
+   *  already selected. A selection is an *act*, and some things answer the
+   *  act rather than the value: the Items window reopens when a Collection
+   *  is clicked again after being closed, which `browsingHref` alone can
+   *  never say. */
+  selectSeq: number
   select: (href: string | null) => void
 }
 
 export const useSelectionStore = create<SelectionState>((set) => ({
   selectedHref: null,
   browsingHref: null,
+  selectSeq: 0,
   select: (href) =>
     set((state) => {
-      if (!href) return { selectedHref: null, browsingHref: null }
+      if (!href) return { selectedHref: null, browsingHref: null, selectSeq: state.selectSeq + 1 }
       const node = loader.get(href)
       const isItem = node?.type === 'Item'
       return {
         selectedHref: href,
         browsingHref: isItem ? (state.browsingHref ?? node?.parentHref ?? null) : href,
+        selectSeq: state.selectSeq + 1,
       }
     }),
 }))

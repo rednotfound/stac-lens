@@ -3,17 +3,21 @@ import { hierarchy, partition, type HierarchyRectangularNode } from 'd3-hierarch
 import type { TreeDatum } from '../../hooks/useStructureTree'
 import { useElementSize } from '../../hooks/useElementSize'
 import { useSelectionStore } from '../../store/selection'
+import { useItemSetStore } from '../../store/itemSet'
+import { sessionPage } from '../../store/itemSetSessions'
 import { useStructure } from '../../hooks/useStructure'
 import { TypeIcon } from '../TypeIcon'
 import { NodeTooltip } from '../tree/NodeTooltip'
 import {
   canExpandNode,
   estimateTextWidth,
+  hasDirectItems,
   hoverInfoFor,
   itemCountLabel,
   nodeColor,
   type TooltipState,
 } from '../tree/treeGeometry'
+import { IcicleItems } from './IcicleItems'
 import { OverviewBar } from './OverviewBar'
 import { StructureFallback } from './StructureFallback'
 
@@ -45,13 +49,16 @@ type Rect = HierarchyRectangularNode<TreeDatum>
  *  opens it (the same lazy expansion as the tree); clicking anything
  *  selects it, so the Inspector follows. */
 export function IcicleView() {
-  const { root, toggle, expandAllCatalogs, isLoading, isExpanded, rootError } = useStructure()
+  const { root, toggle, isLoading, isExpanded, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
   const [containerRef, { width }] = useElementSize<HTMLDivElement>()
   const [focusHref, setFocusHref] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  // Read so this re-renders when the Items window's page moves (the rows
+  // below draw it); the value itself is read inside `IcicleItems`.
+  useItemSetStore((s) => s.visibleHrefs)
 
   const layout = useMemo(() => {
     if (!root) return undefined
@@ -70,7 +77,18 @@ export function IcicleView() {
   const span = focus.x1 - focus.x0 || 1
   const px = (v: number) => ((v - focus.x0) / span) * width
   const visible = focus.descendants().filter((n) => px(n.x1) - px(n.x0) >= 0.75)
-  const rows = layout.height - focus.depth + 1
+  // Items appear as one more row under a Collection's subtree: the page
+  // the Items window is on for the Collection being browsed, and — dimmer
+  // — the page last seen for every other visible Collection that has been
+  // browsed (its session), so the exploration so far stays on the shape
+  // and two Collections' pages can be compared side by side.
+  const itemHosts = visible.filter(
+    (n) =>
+      !n.data.moreCount &&
+      hasDirectItems(n.data.node) &&
+      (n.data.href === browsingHref || sessionPage(n.data.node) !== undefined),
+  )
+  const rows = layout.height - focus.depth + 1 + (itemHosts.length ? 1 : 0)
   const crumbs = focus.ancestors().reverse()
 
   function onCellClick(n: Rect) {
@@ -83,7 +101,7 @@ export function IcicleView() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)' }}>
-      <OverviewBar root={root} isExpanded={isExpanded} expandAllCatalogs={expandAllCatalogs} />
+      <OverviewBar root={root} isExpanded={isExpanded} />
       <nav
         aria-label="Icicle focus"
         style={{
@@ -141,6 +159,20 @@ export function IcicleView() {
                 <line x1="0" y1="0" x2="0" y2="6" stroke="var(--color-text-faint)" strokeWidth="1" />
               </pattern>
             </defs>
+            {itemHosts.map((host) => (
+              <IcicleItems
+                key={host.data.href}
+                node={host.data.node}
+                current={host.data.href === browsingHref}
+                x={px(host.x0)}
+                y={(host.depth + host.height + 1 - focus.depth) * ROW}
+                width={Math.max(1, px(host.x1) - px(host.x0) - 1)}
+                height={ROW}
+                selectedHref={selectedHref}
+                onSelect={select}
+                onHover={(info, cx, cy) => setTooltip(info ? { ...info, x: cx, y: cy } : null)}
+              />
+            ))}
             {visible.map((n) => {
               const x = px(n.x0)
               const w = Math.max(0.75, px(n.x1) - px(n.x0) - 1)
@@ -229,7 +261,8 @@ export function IcicleView() {
         }}
       >
         Width = share of loaded leaves, never an Item count · counts appear as text where known · dot and dashed
-        baseline = not opened yet · hatched = children not loaded · click a node with children to focus on it
+        baseline = not opened yet · hatched = not loaded · click a node with children to focus on it · Item rows = the
+        Items window's page for the browsed Collection, dimmer for pages last seen in other Collections
       </div>
       {tooltip && <NodeTooltip tooltip={tooltip} />}
     </div>

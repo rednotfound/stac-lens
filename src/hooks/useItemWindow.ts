@@ -6,18 +6,18 @@ import type { StacNode } from '../stac/types'
 import { usePublishVisible } from '../components/ItemSetBrowser'
 import { useItemSetStore } from '../store/itemSet'
 
-/** How many Items the phone loads per step. Enough to see what the Items
- *  are like — names, dates, footprints on the map — and no more at once;
- *  a "load more" adds the next ten. */
-export const PHONE_ITEM_LIMIT = 10
-/** How many rows the phone keeps at once. Loading never stops — the list
- *  is a window that slides: once it is full, each further step drops the
- *  oldest ten as it adds the newest ten, so the rows (and the footprints on
- *  the map) stay bounded however far someone goes. Searching and paging
- *  thousands of Items with any precision remains the desktop's job. */
-export const PHONE_ITEM_WINDOW = 100
+/** How many Items one step loads. Enough to see what the Items are like
+ *  — names, dates, footprints on the map — and no more at once; "load
+ *  more" adds the next ten. */
+export const ITEM_WINDOW_STEP = 10
+/** How many Items the window keeps at once. Loading never stops — the
+ *  window slides: once it is full, each further step drops the oldest ten
+ *  as it adds the newest ten, so the rows (and the footprints on the map)
+ *  stay bounded however far someone goes. Searching and paging thousands
+ *  of Items with any precision remains the tree's Item Set's job. */
+export const ITEM_WINDOW_MAX = 100
 
-export interface PhoneItemsState {
+export interface ItemWindowState {
   status: 'loading' | 'ready' | 'error'
   items: StacNode[]
   /** Known for a static list (its length); for an API only when the
@@ -47,15 +47,18 @@ interface Loaded {
 }
 
 /** Appends a step's Items and slides the window: never more than
- *  PHONE_ITEM_WINDOW rows, the oldest dropped first. */
+ *  ITEM_WINDOW_MAX rows, the oldest dropped first. */
 function windowed(prev: Loaded | null, added: StacNode[]): { items: StacNode[]; windowStart: number } {
   const all = [...(prev?.items ?? []), ...added]
-  const drop = Math.max(0, all.length - PHONE_ITEM_WINDOW)
+  const drop = Math.max(0, all.length - ITEM_WINDOW_MAX)
   return { items: all.slice(drop), windowStart: (prev?.windowStart ?? 0) + drop }
 }
 
-/** The first Items of a Collection, ten at a time, for the phone's
- *  outline. A static list is sliced and loaded through the shared loader;
+/** The first Items of a Collection, ten at a time, as a sliding window —
+ *  the "functions complete, data truncated" reading of a Collection's
+ *  Items for the phone's outline, which has no Items window (the desktop
+ *  views show the window's own page instead). A static list is sliced
+ *  and loaded through the shared loader;
  *  an API Collection is requested in the server's default order through
  *  the same `resolveSearchTarget` the desktop's Search box uses (same
  *  endpoint, same `collections=` scoping) and continued through the
@@ -63,7 +66,7 @@ function windowed(prev: Loaded | null, added: StacNode[]): { items: StacNode[]; 
  *  one opens its Inspector at once. The loaded Items are published as the
  *  Collection's visible set, so the Inspector's Temporal and Spatial
  *  widgets plot them — the full function on a slice of the data. */
-export function usePhoneItems(node: StacNode): PhoneItemsState {
+export function useItemWindow(node: StacNode): ItemWindowState {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
@@ -73,7 +76,7 @@ export function usePhoneItems(node: StacNode): PhoneItemsState {
     if (node.items.kind === 'links') {
       const all = node.items.hrefs
       const offset = prev?.offset ?? 0
-      const slice = all.slice(offset, offset + PHONE_ITEM_LIMIT)
+      const slice = all.slice(offset, offset + ITEM_WINDOW_STEP)
       const items = await Promise.all(slice.map((h) => loader.load(h)))
       return {
         forHref: node.href,
@@ -85,7 +88,7 @@ export function usePhoneItems(node: StacNode): PhoneItemsState {
     }
     const target = prev?.target ?? (await resolveSearchTarget(node as StacNode & { items: { kind: 'cursor' } }))
     const page = await fetchSearchPage(target.endpoint, {
-      limit: PHONE_ITEM_LIMIT,
+      limit: ITEM_WINDOW_STEP,
       collections: target.collections,
       next: prev?.next,
     })
@@ -130,12 +133,12 @@ export function usePhoneItems(node: StacNode): PhoneItemsState {
   const items = current?.items ?? []
   usePublishVisible(node.href, items)
 
-  // On the desktop the Inspector's Temporal/Spatial widgets show only the
-  // Collection's own declared extent — the Item Set box has its own Time &
-  // Space view for the Items. The phone has no such box, so here the
-  // Inspector's widgets *are* where the loaded Items are plotted: the
-  // aggregate flag is on while this Collection's Items are the visible set
-  // and off again when the rows unmount.
+  // In the tree the Inspector's Temporal/Spatial widgets show only the
+  // Collection's own declared extent — the Items window has its own Time &
+  // Space view for the Items. The views using this window have no such
+  // box, so here the Inspector's widgets *are* where the loaded Items are
+  // plotted: the aggregate flag is on while this Collection's Items are
+  // the visible set and off again when the rows unmount.
   const ready = !!current
   const setShowOnLenses = useItemSetStore((s) => s.setShowOnLenses)
   useEffect(() => {

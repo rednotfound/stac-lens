@@ -12,13 +12,18 @@ const CHILD_PAGE_SIZE = 100
  *  firing an unbounded number of fetches — remaining nodes just wait for a
  *  manual click, same as any other collapsed node. */
 const EXPAND_ALL_BUDGET = 60
-/** Safety backstop for a `collectionsEndpoint` fetch (`rel:data`) — every
- *  real implementation checked so far (Microsoft Planetary Computer, ~136
- *  Collections) returns everything in one unpaginated response regardless
- *  of a `limit` param, so this is a defensive cap against a hypothetical
- *  implementation with many thousands of Collections, not a limit expected
- *  to actually bind today. */
+/** Safety backstop for a `collectionsEndpoint` / `childrenEndpoint` walk:
+ *  a defensive cap on the total against a hypothetical implementation with
+ *  many thousands of Collections, not a limit expected to bind today. */
 const COLLECTIONS_SAFETY_CAP = 2000
+/** The `limit` asked of a list endpoint per page. Not the cap above: on
+ *  2026-09-29 Planetary Computer started answering `limit=2000` with 400
+ *  "Collection limit must be between 1 and 1000" (it used to return all
+ *  ~138 in one response whatever the limit), and paginates with a
+ *  `cursor` `next` link above 100. The STAC API spec sets no maximum, so
+ *  the largest value a real server is known to accept is the page size,
+ *  and the loop below follows `next` to the cap either way. */
+const COLLECTIONS_PAGE_SIZE = 1000
 
 interface NodeUiState {
   expanded: boolean
@@ -70,7 +75,7 @@ async function loadAllFromListEndpoint(
   const all: StacNode[] = []
   let next: NextLink | undefined
   do {
-    const page = await fetchPage(endpoint, { limit: COLLECTIONS_SAFETY_CAP, next })
+    const page = await fetchPage(endpoint, { limit: COLLECTIONS_PAGE_SIZE, next })
     for (const node of page.items) loader.cachePreFetched(node)
     all.push(...page.items)
     next = page.next

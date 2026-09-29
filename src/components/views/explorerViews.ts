@@ -1,15 +1,18 @@
 /** The explorer's views over one open catalog. All of them render the same
  *  loaded graph (`StructureProvider`) and the same selection; they differ
- *  in what question they answer. The tree is the entry and the only view
- *  with Item Set boxes; the others are lighter readings of the structure.
- *  Named after the chart, not the concept, so the label says what appears. */
-export type ExplorerView = 'tree' | 'outline' | 'icicle' | 'radial'
+ *  in what question they answer. The tree is the entry and comes first;
+ *  the others are lighter readings of the same structure. Every view is
+ *  named after its chart so the label says what appears — the tree was
+ *  briefly "Explore" while it alone had the Item Set; with the Items
+ *  window and the structure actions shared by every view, it is a tree
+ *  among views again. */
+export type ExplorerView = 'tree' | 'outline' | 'icicle'
 
 export const EXPLORER_VIEWS: { id: ExplorerView; label: string; title: string }[] = [
   {
     id: 'tree',
     label: 'Tree',
-    title: 'The catalog as a node-link tree with each Collection’s Items opened in place — the main view',
+    title: 'The main view: the catalog as a node-link tree — the structure as the publisher made it',
   },
   {
     id: 'outline',
@@ -20,10 +23,5 @@ export const EXPLORER_VIEWS: { id: ExplorerView; label: string; title: string }[
     id: 'icicle',
     label: 'Icicle',
     title: 'Space-filling layers: how wide and how deep the publisher’s hierarchy is, at a glance',
-  },
-  {
-    id: 'radial',
-    label: 'Radial',
-    title: 'The same tree wrapped around a circle: breadth as a ring, depth as concentric rings',
   },
 ]

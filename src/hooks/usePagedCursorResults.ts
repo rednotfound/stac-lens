@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCursorQueriedItemSet, type CursorQuery } from './useCursorQueriedItemSet'
 import type { StacNode } from '../stac/types'
+import { itemSetSessions } from '../store/itemSetSessions'
 
 export const CURSOR_RESULTS_PAGE_SIZE_OPTIONS = [20, 40, 100, 200]
 export const DEFAULT_CURSOR_RESULTS_PAGE_SIZE = 40
@@ -61,9 +62,18 @@ export function usePagedCursorResults(
 ): PagedCursorResultsState {
   const inner = useCursorQueriedItemSet(node, initialQuery)
 
-  const [pageIndex, setPageIndex] = useState(0)
-  const [pageSize, setPageSizeState] = useState(DEFAULT_CURSOR_RESULTS_PAGE_SIZE)
+  // Page position comes back with the session (see `useCursorQueriedItemSet`);
+  // page size is a preference that carries over to the next Collection.
+  const restored = node && initialQuery === undefined ? itemSetSessions.getCursor(node.href) : undefined
+  const [pageIndex, setPageIndex] = useState(restored?.pageIndex ?? 0)
+  const [pageSize, setPageSizeState] = useState(
+    restored?.pageSize ?? itemSetSessions.preferredCursorPageSize ?? DEFAULT_CURSOR_RESULTS_PAGE_SIZE,
+  )
   const [catchingUp, setCatchingUp] = useState(false)
+  useEffect(() => {
+    if (!node) return
+    itemSetSessions.setCursor(node.href, { pageIndex, pageSize })
+  }, [node, pageIndex, pageSize])
 
   // A fresh `appliedQuery` object identity means a real `applyQuery`/
   // `clearQuery`/mount just happened (`useCursorQueriedItemSet` never
@@ -71,7 +81,9 @@ export function usePagedCursorResults(
   // page 1 for the new result set. Computed during render and compared
   // against a ref, React's own documented pattern for "adjust state when
   // an upstream value changes" without an extra effect round-trip.
-  const lastQueryRef = useRef<CursorQuery | undefined>(undefined)
+  // Seeded with the restored query so a restored page position survives
+  // the first render instead of being reset to page 1 as "a new query".
+  const lastQueryRef = useRef<CursorQuery | undefined>(restored?.appliedQuery)
   const appliedQuery = inner.status === 'empty' ? undefined : inner.appliedQuery
   if (appliedQuery !== undefined && appliedQuery !== lastQueryRef.current) {
     lastQueryRef.current = appliedQuery

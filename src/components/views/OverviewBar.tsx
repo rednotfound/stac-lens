@@ -1,40 +1,14 @@
-import { useState } from 'react'
 import type { TreeDatum } from '../../hooks/useStructureTree'
-import { Spinner } from '../Spinner'
-import { canvasButtonStyle } from './canvasButton'
 import { structureStats } from './structureStats'
 
 /** The line above an overview view saying what it is drawing — only what
- *  is loaded — and offering to open the rest. "Load all catalogs" is the
- *  tree's own `expandAllCatalogs` (Catalogs only, never a Collection's
- *  Items, within its budget); nothing is fetched until it is clicked, the
- *  same rule as the tree. The counts come from the loaded datum tree, so
- *  they update as the expansion lands, and the text stays honest when the
- *  budget runs out: whatever is still closed is still counted. */
-export function OverviewBar({
-  root,
-  isExpanded,
-  expandAllCatalogs,
-  children,
-}: {
-  root: TreeDatum
-  isExpanded: (href: string) => boolean
-  expandAllCatalogs: () => Promise<void>
-  /** Extra controls a view wants on the same line (e.g. Collapse). */
-  children?: React.ReactNode
-}) {
-  const [loading, setLoading] = useState(false)
+ *  is loaded — and what is still closed. The counts come from the loaded
+ *  datum tree, so they update as an expansion lands; the actions that
+ *  change them (collapse, expand all catalogs) live in the view switcher's
+ *  row, shared by every view. */
+export function OverviewBar({ root, isExpanded }: { root: TreeDatum; isExpanded: (href: string) => boolean }) {
   const stats = structureStats(root, isExpanded)
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-
-  async function loadAll() {
-    setLoading(true)
-    try {
-      await expandAllCatalogs()
-    } finally {
-      setLoading(false)
-    }
-  }
 
   return (
     <div
@@ -56,19 +30,6 @@ export function OverviewBar({
         {stats.moreLeaves > 0 && <> · {stats.moreLeaves} children not loaded</>}
         {stats.unopenedCatalogs > 0 && <> · {plural(stats.unopenedCatalogs, 'catalog')} not opened yet</>}
       </span>
-      {stats.unopenedCatalogs > 0 && (
-        <button
-          type="button"
-          onClick={() => void loadAll()}
-          disabled={loading}
-          title="Expand every Catalog down to (but not into) Collection level, within the same budget as the tree"
-          style={{ ...canvasButtonStyle, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-        >
-          {loading && <Spinner size={11} />}
-          {loading ? 'Loading…' : 'Load all catalogs'}
-        </button>
-      )}
-      {children}
     </div>
   )
 }

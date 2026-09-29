@@ -2,7 +2,7 @@ import { StructureContext } from '../hooks/useStructure'
 import { useStructureTree } from '../hooks/useStructureTree'
 
 /** One `useStructureTree` instance for the open catalog, shared by every
- *  structure view — the tree, the outline, the icicle, the radial tree.
+ *  structure view — the tree, the outline, the icicle.
  *  The hook's state (which nodes are expanded, which are loading) used to
  *  live inside whichever component called it, which was fine while only
  *  one view existed per layout; with a view switcher, expansion has to
