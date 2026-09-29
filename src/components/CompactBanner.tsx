@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PHONE_ITEM_LIMIT } from '../hooks/usePhoneItems'
+import { ITEM_WINDOW_STEP } from '../hooks/useItemWindow'
 
 const DISMISSED_KEY = 'stac-lens.compact-banner-dismissed'
 
@@ -60,7 +60,7 @@ export function CompactBanner() {
     >
       <span style={{ flex: 1, minWidth: 0 }}>
         <strong style={{ color: 'var(--color-text)' }}>Compact view</strong> — the structure and each Collection's
-        Items, {PHONE_ITEM_LIMIT} at a time. Search, filters and the full data are in the desktop browser.
+        Items, {ITEM_WINDOW_STEP} at a time. Search, filters and the full data are in the desktop browser.
       </span>
       <button type="button" onClick={copyLink} style={linkButton}>
         {copied ? 'Copied' : 'Copy link'}

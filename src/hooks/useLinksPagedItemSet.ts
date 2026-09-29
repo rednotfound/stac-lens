@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
 import type { StacNode } from '../stac/types'
+import { itemSetSessions } from '../store/itemSetSessions'
 
 export const DEFAULT_LINKS_PAGE_SIZE = 40
 
@@ -50,22 +51,34 @@ export function useLinksPagedItemSet(
   const nodeHref = node?.href
   const totalItems = node?.items.hrefs.length ?? 0
 
-  const [pageCache, setPageCache] = useState<Record<number, StacNode[]>>({})
-  const [pageIndex, setPageIndex] = useState(0) // target/requested page
-  const [renderedIndex, setRenderedIndex] = useState(0) // page whose items are actually shown
-  const [pageSize, setPageSizeState] = useState(DEFAULT_LINKS_PAGE_SIZE)
+  // A session left by a previous mount for this Collection brings its
+  // fetched pages and page position back — no re-fetch, no flicker.
+  const restored = nodeHref ? itemSetSessions.getLinks(nodeHref) : undefined
+  const [pageCache, setPageCache] = useState<Record<number, StacNode[]>>(restored?.pageCache ?? {})
+  const [pageIndex, setPageIndex] = useState(restored?.pageIndex ?? 0) // target/requested page
+  const [renderedIndex, setRenderedIndex] = useState(restored?.renderedIndex ?? 0) // page whose items are actually shown
+  const [pageSize, setPageSizeState] = useState(
+    restored?.pageSize ?? itemSetSessions.preferredLinksPageSize ?? DEFAULT_LINKS_PAGE_SIZE,
+  )
 
   const generationRef = useRef(0)
 
   // Node changed — a whole different href array, previous pages are
-  // meaningless for it. Page size deliberately survives a node change (a
-  // UI preference, not per-collection state).
+  // meaningless for it unless a session for it exists. Page size
+  // deliberately survives a node change (a UI preference, not
+  // per-collection state).
   useEffect(() => {
     generationRef.current += 1
-    setPageCache({})
-    setPageIndex(0)
-    setRenderedIndex(0)
+    const session = nodeHref ? itemSetSessions.getLinks(nodeHref) : undefined
+    setPageCache(session?.pageCache ?? {})
+    setPageIndex(session?.pageIndex ?? 0)
+    setRenderedIndex(session?.renderedIndex ?? 0)
   }, [nodeHref])
+
+  useEffect(() => {
+    if (!nodeHref) return
+    itemSetSessions.setLinks(nodeHref, { pageCache, pageIndex, renderedIndex, pageSize })
+  }, [nodeHref, pageCache, pageIndex, renderedIndex, pageSize])
 
   useEffect(() => {
     if (!node || totalItems === 0) return

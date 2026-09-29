@@ -108,7 +108,7 @@ export function Legend() {
         <div>┄ dashed ring — your selected Item is inside</div>
         <div>"N items" label — browse via Detail Panel, not the tree</div>
         <div>blue "API" tag — items are live-queried, not a static list</div>
-        <div>drag a label (or the Item Set panel) to rearrange freely</div>
+        <div>drag a label to rearrange; the Items window floats above every view</div>
       </div>
     </div>
   )

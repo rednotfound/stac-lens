@@ -83,7 +83,7 @@ export function DetailPanel() {
       : node.type === 'Collection'
         ? 'var(--color-node-collection)'
         : 'var(--color-node-item)'
-  // Whatever Item Set (the tree-embedded browse panel) currently has
+  // Whatever Item Set (the Items window's panel) currently has
   // loaded/filtered for this exact Collection — used below only to
   // annotate the Declared-extensions/Property-namespaces fields with what's
   // common across the browsed set, not to render a browse UI of its own

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { itemSetSessions } from '../store/itemSetSessions'
 import { useLinksPagedItemSet } from '../hooks/useLinksPagedItemSet'
 import { useSelectionStore } from '../store/selection'
 import { ItemSetResultsPanel } from './ItemSetResultsPanel'
@@ -15,7 +16,10 @@ export function LinksItemSetBrowser({ node }: { node: StacNode & { items: { kind
   const state = useLinksPagedItemSet(node)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const select = useSelectionStore((s) => s.select)
-  const [view, setView] = useState<ItemSetView>('list')
+  const [view, setView] = useState<ItemSetView>(() => itemSetSessions.getLinks(node.href)?.view ?? 'list')
+  useEffect(() => {
+    itemSetSessions.setLinks(node.href, { view })
+  }, [node.href, view])
 
   useResetShowOnLenses(node.href)
   const pageItems = state.status === 'empty' ? [] : state.pageItems

@@ -5690,6 +5690,17 @@ server omits — both loosened to match what matters, not the accident.
 - CQL2 arbitrary-property filtering on an API search, and per-field sort
   beyond `properties.datetime` (§68, reaffirmed in §84's own research
   pass) — still genuinely out of scope, not just unmentioned.
+- Added 2026-09-29 (§108–§110): the chosen *view* in the URL (the hash's
+  query segment carries API search parameters; a `view=` key there would
+  pollute that contract); the three overview views researched and set
+  aside — Time (one lane per Collection's temporal extent), Space (a grid
+  of small maps of declared bboxes), Health (rules × objects, needing the
+  Inspector's inline checks extracted into a pure `health.ts`); an
+  aggregation-gated Item histogram under every Collection wherever the
+  API declares the Aggregation extension (3 of 34 listed APIs, Earth
+  Search among them); more than one Items window at a time (comparing two
+  Collections side by side — the user declined for now); keeping the tree
+  mounted across view switches so its pan and drag offsets survive.
 
 ## 97. Making the code contributor-ready, part 2 — the tree split into modules, and the comments switched to English
 
@@ -6751,3 +6762,416 @@ title again. The dev server answers `/about/` (and redirects `/about`),
 `/llms.txt` and `/catalogs.md` with the right media types. A
 `VITE_BASE=/lens/` build has no internal link outside `/lens/`. Fourteen
 new unit tests; four new smoke checks.
+
+## 108. Views beyond the tree — an icicle, a radial tree, and the outline on the desktop
+
+The request: the tree is the main entry and should stay so, but a tool
+whose job is *understanding* a catalog can offer more than one picture of
+it — "多种多样的图形来帮助用户来理解一份数据" — including the phone's
+document-like view on the desktop and some of what d3 can draw, without
+making each as complete as the tree. Research first, then a plan with
+three choices put to the user.
+
+### Research
+
+- **Which hierarchy picture.** The controlled study in *Interactive
+  Visualisation of Hierarchical Quantitative Data: An Evaluation* (arXiv
+  1908.01277) and the Bamberg *Effective Visualization of Hierarchies*
+  review agree: the treemap performs worst on navigation and hierarchy
+  understanding (inner nodes vanish inside the nesting), the sunburst was
+  least preferred (angles are hard to compare, outer labels tilt, the
+  circle wastes space), the icicle is the recommended default for a
+  space-filling view, and the indented tree remains the right tool for
+  browsing a large hierarchy. treevis.net (Schulz) is the reference for
+  the wider space; d3-hierarchy ships `partition`, `treemap`, `pack` and
+  `tree`, all already installed here.
+- **The icicle's precondition** is that a node's size is the sum of its
+  children's. STAC breaks that in two ways: an API Collection's Item count
+  is unknown until searched, and a static Collection's link count is a
+  fact about links, not a size to roll up. So the honest encoding is
+  *structure only*: every loaded leaf weighs one. A flat root of 422
+  Collections is then one wide row of thin cells and a deep catalog is a
+  staircase — which is exactly the "shape" the tool exists to show. Known
+  Item counts appear as text in the cell; never as area.
+- **Radial layouts** were rejected as the *main* tree in §5 ("read poorly
+  for strict parent-child order at depth"). That still holds. As an
+  overview they do the one thing the horizontal tree cannot: show the
+  whole breadth at once — a flat root becomes a full ring, depth becomes
+  concentric rings — with no labels needed. The user asked for it by
+  name; it is the same `tree()` layout in polar coordinates plus
+  `linkRadial`, so it costs little.
+- **One view at a time.** GNOME's Disk Usage Analyzer (Baobab) switches
+  between a rings chart and a treemap over one scan rather than showing
+  both; side-by-side panels each get too small.
+- **What the ecosystem has.** No STAC tool offers an overview of a whole
+  catalog's structure; the closest anything comes to a catalog-wide
+  picture is NASA Earthdata Search's per-file timeline. Three views that
+  would answer data users' questions directly — a timeline of every
+  Collection's temporal extent, a grid of small maps of every declared
+  bbox, and a rules × objects health matrix — were offered and deferred
+  by the user for this round (recorded below).
+
+### Decisions
+
+- **Views: Tree · Outline · Icicle · Radial**, a `TabButton` row at the
+  top of the left column, the tree default, one view at a time, the
+  Inspector unchanged on the right. Labels are the chart's name, not a
+  concept ("Shape"), so the label says what will appear. Phones keep the
+  outline only. The chosen view is not in the URL: the hash's query
+  segment carries API search parameters (§94's shareable search), and a
+  `view=` key there would pollute that contract — deferred, see §96.
+- **The structure state moves up.** `useStructureTree` kept its expanded/
+  loading map inside whichever component called it — fine while each
+  layout had one view. With a switcher, expansion has to survive the
+  switch, so `StructureProvider` calls the hook once per open catalog and
+  every view reads it through `useStructure()`; each view is a second
+  rendering of the same state, which is what the phone outline already
+  claimed to be. The tree still remounts on return (its pan position and
+  dragged offsets reset); expansion and selection do not.
+- **Only what is loaded, plus an explicit "Load all catalogs".** Overview
+  views draw the loaded datum tree and say so in a line above the
+  picture ("127 Collections in 98 Catalogs loaded · 106 children not
+  loaded · 17 catalogs not opened yet"); the button is the tree's own
+  `expandAllCatalogs` (Catalogs only, budget 60). Nothing is fetched
+  because a tab was clicked. An API root's `/collections` answer already
+  holds every Collection, so for an API the overview is complete at once;
+  a static catalog fills in as catalogs are opened.
+- **One vocabulary.** Type colors, filled = more to reveal, solid ring =
+  selected, dashed ring = contains the selection, the hover card, the
+  "+N more (not loaded)" leaf — all extracted from `TreeNodeView` into
+  `treeGeometry.ts` (`canExpandNode`, `nodeIsFilled`, `nodeColor`,
+  `itemCountLabel`, `hoverInfoFor`) and used by every view. Clicking
+  anything selects exactly that object (the selection-scoping rule); in
+  the radial view a click also opens a closed node, the tree's gesture; in
+  the icicle a click opens a closed node and, when the node has children,
+  makes it the focus (the zoomable-icicle convention), while a leaf only
+  selects — enlarging one of 422 Collections to full width shows nothing.
+
+### Built and verified
+
+Chromium 1400 px, light and dark, against live catalogs: Planetary
+Computer's root is one row of 136 cells in the icicle and one full ring
+in the radial view; clicking the 3DEP Lidar cell selects it in the
+Inspector and the same node carries the ring in the radial view and the
+highlight in the outline; back in the tree the selection and expansion
+are intact. Capella after "Load all catalogs": the year → month → day
+catalogs read as a staircase with hatched "+N more" cells where the
+100-per-page child budget stopped, and the radial view shows the three
+facets as three arcs; clicking "By Product Type" focuses the icicle on its
+seven Collections with their known Item counts as text. Wheel zoom and
+drag pan work in the radial view; the phone layout is unchanged (no tab
+row). 96 unit tests, 23 smoke checks.
+
+A bug from the previous round surfaced while verifying and is fixed here:
+the dev-server middleware for the static pages redirected *every*
+extension-less path to a trailing slash, including Vite's `/@vite/client`,
+so `npm run dev` served a broken client after commit 4c744f4. The
+middleware now answers only the page paths it owns (`PAGE_PATHS`, pinned
+by a test) and passes everything else through.
+
+### Deferred, for the next round
+
+- **Time**: one lane per loaded Collection, its `extent.temporal`
+  intervals on a shared axis (open-ended as arrows), tree order — the
+  question "what years does this catalog cover, per Collection" that no
+  STAC tool answers today.
+- **Space**: a grid of small equirectangular maps, one per Collection,
+  each with all its declared bboxes (graticule for non-Earth bodies) —
+  small multiples rather than one map, because hundreds of bboxes on one
+  map are unreadable.
+- **Health**: rows = loaded Catalogs/Collections, columns = the rules in
+  `HEALTH-RULES.md` that are built or checkable from held data, cells =
+  invalid / warning / ok / n.a. Needs the five inline Inspector checks
+  extracted into a pure `health.ts` first — the "health summary" §94 named
+  as the next step for the positioning.
+- The chosen view in the URL; keeping the tree mounted across switches so
+  its pan and drag state survive.
+- Found while writing the smoke check: a `#href?query` arriving by hash
+  change for the Collection that is *already* selected does not apply the
+  query (`pendingInitialQuery` is consumed only when the Search panel
+  mounts). Pre-existing, narrow — a pasted link normally loads fresh —
+  but worth a fix in `CursorItemSetBrowser` (consume on `pendingInitialQuery`
+  change, not only on mount).
+
+## 109. Items in the overview views, and "Explore" as the name of the main view
+
+Two things the user raised after seeing the first views: the icicle and
+the radial tree stopped at Collections, and Items — the thing there are
+thousands to millions of — were the real design problem; and the tree,
+the one view that supports everything, had to read as the main tool.
+
+### The facts about Items
+
+- What the app can know about a Collection's Items without enumerating
+  them: a static catalog's link count (Capella's SLC: 2,286), an API's
+  `matched` after a search, and the page currently loaded. Nothing else.
+- The STAC API **Aggregation** extension is the only honest way to draw
+  millions: Earth Search answers one request for `sentinel-2-l2a` with
+  `total_count` 51,460,350 and a monthly `datetime_frequency` (checked
+  with curl). But of the landing list's 34 APIs only three declare it
+  (Earth Search, USGS Landsat, MISTEO); Planetary Computer, Copernicus
+  Data Space and NASA CMR do not.
+- The visualization literature's answer to very large hierarchies is
+  aggregation plus on-demand detail; there is no way to draw a million
+  leaves that is both readable and true.
+
+### Decisions
+
+- **A page, not the set.** In the icicle and the radial tree, Items
+  appear only for the Collection being browsed (`browsingHref`) — exactly
+  the one Collection that has an Item Set box in the tree — as the same
+  ten-at-a-time sliding window the phone outline uses (`usePhoneItems`
+  renamed `useItemWindow`; it now serves four views). The icicle draws
+  them as one extra row under that Collection's subtree, cells of equal
+  width in the server's or the link list's order, a hatched "+N more"
+  cell (N from the known count, "more…" when unknown) that loads the next
+  step, and a hatched "earlier" cell once the window has slid. The radial
+  tree draws them as dots on short concentric arcs just outside the node
+  (`packArc`: ≤ 0.7 rad per arc, so a hundred Items stay beside their
+  Collection) with a dashed "+N" marker. Clicking an Item selects it; the
+  loaded window is published as the visible set, so the Inspector's
+  Temporal and Spatial widgets plot it, as on the phone.
+- **API Collections get the minimum**, the user's call: the window asks
+  the server in its default order, nothing more. The tree is where an API
+  is explored properly (search, sort, bbox, paging); the other views do
+  not try to be a second search UI. An aggregation-gated "distribution"
+  layer — a monthly histogram under every Collection wherever the server
+  declares the extension — was designed and set aside: three servers is
+  not yet worth a fourth encoding, and how an API should be explored
+  outside the tree is still an open question (§96).
+- **The tree is "Explore".** Prior art (Finder, Google Maps, Baobab) does
+  not emphasize a default view beyond putting it first and pre-selected;
+  the user chose to keep the flat tab row and rename: the first tab is
+  *Explore* — the main exploration tool, the one view that supports
+  everything — and the other three keep their chart names. Grouping the
+  tabs (Tree | OVERVIEWS …) and a drawer over the tree were offered and
+  declined.
+
+### A server change found on the way
+
+Verifying against Planetary Computer failed before a single Item was
+drawn: every catalog open showed the root alone. Since the last check
+(2026-09-18) the server had started answering
+`/collections?limit=2000` with `400 {"error":"Collection limit must be
+between 1 and 1000."}` and paginating with a `cursor` `next` link — it
+used to return all ~138 Collections in one response whatever the limit
+(the assumption recorded on `COLLECTIONS_SAFETY_CAP`). The page size is
+now its own constant, 1000, the largest value a real server is known to
+accept; the safety cap on the total stays 2000 and the loop follows
+`next` as it already did. A reminder of the house rule in
+`CONTRIBUTING.md`: facts about servers come from requests, and they
+expire.
+
+### Verified
+
+Planetary Computer, icicle: clicking `landsat-c2-l2` loads ten Items as a
+row under it with a "more…" cell (count unknown until searched); "more"
+adds ten; clicking an Item selects it (tab title and Inspector follow,
+cell outlined). Radial: the same Items as dots on an arc beside the node
+with the dashed marker. Capella `SLC` (static, 2,286 links): ten cells and
+"+2,276 more". No console errors. 99 unit tests, smoke suite green.
+
+### Removed the same day: the radial tree
+
+Seen with Items on it, the radial view was judged "more confusing than
+useful" and removed — the tabs are Explore · Outline · Icicle. §5's
+original objection held after all: the ring shows breadth, but every
+other reading (which arc belongs to which parent, where an Item arc
+starts, what depth a ring is) needed a second look, and the icicle
+already answers "how wide, how deep" with none of that. `useSvgPanZoom`,
+`packArc` and the two radial components went with it; nothing else used
+them. The research and the reasoning above stay as the record of why it
+was tried.
+
+### A bug found by use: the box could not be dragged after a view switch
+
+Open a Collection in the tree, switch to Outline or Icicle, come back:
+the Item Set box was still there but would not move. Root cause in
+`useBoxDragHandles`: the d3-drag binding effect was keyed on
+`showItemSetBox` — "a box is expected" — and the handle was a plain ref.
+On a fresh load the flag flips after the portal layer exists, so the
+element is there when the effect runs. On return to the tree the flag is
+already true on the first render, the box waits one frame for its portal
+layer, the effect runs against a null element, and nothing ever re-runs
+it. The handles are now callback refs into state and the effect keys on
+the element itself — the same pattern `boxLayer` already used for the
+same reason. Reproduced before the fix (box moved 0 px after the switch),
+verified after (100 px both times), pinned in the smoke suite.
+
+## 110. The Items window — the Item Set leaves the tree and floats above every view
+
+The user, testing the new views, saw two things at once: a bug (the
+Item Set box could not be dragged after a trip through Outline or Icicle
+and back — fixed in §109's postscript) and a possibility: the Item Set
+panels — a static catalog's paged list, an API Collection's Search and
+Results — are useful in *every* view, not only in the tree. "我突然意识到它是
+跨 View 的." Asked to research before designing, and then to decide.
+
+### Research
+
+- Chrome DevTools has one Console instance; whether it shows in the main
+  panel or the bottom drawer, it is the same tool, and the drawer stays
+  open under Elements, Sources and the rest. QGIS's attribute table docks
+  or floats and follows the map selection in both directions. The
+  Lightning and Chakra floating-panel rules: a panel that must be read
+  alongside the canvas is a non-modal panel or drawer with a title bar to
+  drag, a corner grip to resize, a minimum size, a remembered placement,
+  and a clamp so a viewport change never loses it.
+- In the coordinated-multiple-views literature this is the ordinary
+  shape: selection, filter and paging are shared state; each view only
+  decides how to draw. The app already worked this way for the graph and
+  the selection; the Item Set was the one piece of state still locked
+  inside one view's component instances.
+- Three placements were put to the user: a docked drawer under the
+  overview views with the tree keeping its node-anchored boxes; one
+  floating window in every view including the tree; the Inspector column
+  (rejected in advance — an Item selection would replace the Collection's
+  panel there, the reason §38/§39 took it out of the Inspector). The user
+  chose **one floating window everywhere**, then **one window that
+  follows the browsed Collection** (not one per Collection) and **Search
+  above Results in the same window** (not two windows).
+
+### What this reverses, and why it is right now
+
+§27's connector and §79's two `foreignObject`s were built for a specific
+reading: the box hangs off its node, "data flows from Search into
+Results" like a node editor, and the tree's canvas is where you work. That
+reading was true while the tree was the only view. With three views over
+one graph, a box that exists only inside the tree's SVG is the thing that
+does not fit; the user's own §80 framing — "它就是一个画布中的两个 panel 嘛" —
+loses its canvas. A `position: fixed` window has no line to hang a
+connector on, and the two-box split without the line is just two things
+to manage, so the pair became one column with a divider: conditions
+above, what they produced below. §90's window-style title bar is exactly
+what a floating window wants and stays as it was, now with the collapse
+and close controls that §90 left out because "the box's lifetime is
+already the node selection's" — a lifetime the user now owns.
+
+### Built
+
+- `ItemsWindow`: portaled to `body`, `position: fixed`, z-index 50
+  (above tooltips, below the bbox modal). Title bar = drag handle
+  (`Drag to move this panel`, kept for the smoke suite), corner grip,
+  collapse to the title bar, ×. Pointer events through `usePointerDrag`
+  (taken from `BottomSheet`: capture, 4 px threshold, one up/cancel path);
+  no d3-drag, because screen pixels need no zoom correction. Buttons in
+  the title bar are excluded from the drag by DOM containment — capturing
+  the pointer on the bar retargeted their clicks and the collapse button
+  did nothing until that check existed. Geometry is pure
+  (`itemsWindowGeometry.ts`): first open at the bottom-right of the left
+  column, clamp so at least 80 px of title bar stays on screen and the
+  window never goes above the header; remembered per browser
+  (`persist`, geometry only, written when a drag ends). Measured in a
+  layout effect, not during render (the lint's rule about refs).
+- **Follows the browsed Collection.** `App` opens the window whenever
+  `browsingHref` reaches a Collection with Items; × closes it until the
+  next one, and the tab row grows an `Items ▸ <name>` button meanwhile.
+- **Sessions** (`store/itemSetSessions.ts`, a plain module Map, LRU of
+  20): the cursor buffer, the opaque `next` link (unrecoverable once
+  dropped), `matched`, the applied query and its draft, the page and
+  page size, the tab, the Search section's collapsed state; a static
+  Collection's page cache and position. The three hooks read a session
+  at mount and write as they go, so the panel unmounts freely — window
+  closed, another Collection browsed, a view switched — and comes back
+  where it was: Landsat searched and paged to 3, browse 3DEP, come back:
+  page 3, no new request (measured: 0 `/search` calls). Cleared when a
+  different catalog opens. A query from a shareable URL beats the
+  session.
+- **The deep-link edge is closed**: a `?query` arriving for the Collection
+  whose panel is already mounted is now applied (the panel subscribes to
+  `pendingInitialQuery` instead of reading it once at mount).
+- **The tree lost its boxes**: `ItemSetBox.tsx`, `boxGeometry.ts`,
+  `useBoxDragHandles.ts` deleted; six geometry Maps, the portal layer,
+  the box-aware auto-pan margins and ~44 lines of prop plumbing gone
+  from `StructureTree`; `TreeNodeView` keeps only a boolean, "its Items
+  are open", for the filled/hollow glyph and the badge.
+- **The overview views draw the window's page**: the icicle's Item row
+  and the desktop outline's rows read `visibleHrefs` from the store —
+  the page the window is on — and end with one cell/line that names the
+  window (and opens it when closed). The ten-at-a-time window
+  (`useItemWindow`) now serves the phone only, which has no Items
+  window.
+
+### Verified
+
+Chromium 1400 px, Planetary Computer: a deep link into Landsat opens the
+window at the left column's bottom-right; Search, page 2; switch to
+Icicle — same window, page 2, 40 cells in the row; Outline — 40 rows;
+back to Explore — page 2, and zero `foreignObject`s left in the tree.
+Drag −200/−75 px, resize −100/−80, collapse to 28 px and back, close
+(window gone, `Items ▸` button appears), reopen — page 2 again, no
+request; reload — same geometry; viewport 900×500 — still grabbable;
+dragged above the header — stops at its bottom edge. Dark theme with the
+Search section collapsed reads as one line. iPhone 13: no window, the
+outline's own rows as before. 106 unit tests, 28 smoke checks.
+
+### First corrections from use
+
+Two confusions, reported the same day, both from the window reacting
+only to *which* Collection is browsed:
+
+- Close the window, click the same Collection again: nothing. `browsingHref`
+  had not changed, so the effect that opens the window did not fire; the
+  only way back was to select something else first. A selection is an
+  act, not only a value — `store/selection.ts` now counts every `select`
+  call (`selectSeq`) and the window opens on the act.
+- Browse another Collection while the window is open: the content
+  swapped in place and "眼睛不知道看哪里" — nothing announced the change.
+  The window now re-appears on a subject change (a 420 ms fade with the
+  border flashing brand, two alternating identical keyframes so it
+  restarts every time) and expands if it was collapsed. Verified: the
+  title switches to the new Collection, the height goes from 28 to 760,
+  the animation runs; closing and clicking the same Collection reopens
+  it (pinned in the smoke suite).
+
+- Only the bottom-right corner resized. "拉哪条边都可以" — a professional
+  tool's window resizes from every edge and corner, with the top edge
+  the exception only because the title bar is the move handle. Now: eight
+  invisible 6 px handles (edges and corners, the top one a thin strip
+  above the title bar), each pinning the opposite edge past the minimum
+  as OS windows do (`applyResize`, pure and tested); the corner mark
+  stays as a hint. Collapsed to the title bar, only the width changes.
+  Verified handle by handle in Chromium, and the left edge pinned in the
+  smoke suite.
+
+- In the outline, opening a second Collection turned the first one's rows
+  into "Loading…" — nothing was loading; the rows only drew the window's
+  page, and the window had moved on. A contradiction between "the outline
+  keeps several Collections open" and "one window", resolved with what
+  already existed: a Collection that is open in the outline but not the
+  window's subject draws the page it *last showed* (`sessionPage`, from
+  its session) with a line saying so — "Page 1 as last seen in the Items
+  window (40) — select this Collection to browse it" — and the line
+  browses it again on click; never browsed says "Not loaded yet" or "Not
+  searched yet". Verified with two Capella Collections open at once.
+
+- The icicle then got the same: a dimmed row of the page last seen under
+  every visible Collection that has been browsed (its session), the live
+  row under the window's subject — the exploration so far stays on the
+  shape and two Collections' pages sit side by side. The user asked
+  whether this would be a problem; the one real one was found first: an
+  Item selected from another Collection's remembered row would have kept
+  browsing pinned to the current Collection (the selection store's rule
+  for cross-listed Items), so both views select the Collection first,
+  then the Item, and the window follows.
+
+- "Collapse to top level" and "Expand all catalogs" act on the structure
+  every view shares, so they left the tree canvas for the view switcher's
+  row (`StructureActions`), where they work from the outline and the
+  icicle too; the icicle's own "Load all catalogs" was the same action
+  under another name and is gone. The tree keeps "Reset layout", which
+  is about its own dragged positions. And the first tab is **Tree**
+  again: "Explore" was the name for the one view that had the Item Set;
+  with the window and the actions shared, it is a tree among views.
+
+- The outline had no hover card while the tree and the icicle did; the
+  three now share it — `hoverInfoFor` and `NodeTooltip` on every outline
+  row and Item row, desktop only (a phone has no hover, and a tap must
+  not leave a card behind).
+
+### Not done
+
+- The README's structure screenshot was retaken with the window open on
+  a searched Collection (dark theme, like the landing one).
+- The window is one; comparing two Collections side by side would need
+  the multi-window option the user declined for now.

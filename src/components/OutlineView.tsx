@@ -1,12 +1,18 @@
 import { useState } from 'react'
-import { useStructureTree, type TreeDatum } from '../hooks/useStructureTree'
-import { PHONE_ITEM_LIMIT, PHONE_ITEM_WINDOW, usePhoneItems } from '../hooks/usePhoneItems'
+import { useIsNarrow } from '../hooks/useMediaQuery'
+import { loader } from '../stac/loaderInstance'
+import { useItemSetStore } from '../store/itemSet'
+import { sessionPage } from '../store/itemSetSessions'
+import type { TreeDatum } from '../hooks/useStructureTree'
+import { useStructure } from '../hooks/useStructure'
+import { ITEM_WINDOW_STEP, ITEM_WINDOW_MAX, useItemWindow } from '../hooks/useItemWindow'
 import { describeTemporal } from '../stac/describe'
 import type { StacNode } from '../stac/types'
 import { useSelectionStore } from '../store/selection'
 import { Spinner } from './Spinner'
 import { TypeIcon } from './TypeIcon'
-import { hasDirectItems } from './tree/treeGeometry'
+import { NodeTooltip } from './tree/NodeTooltip'
+import { hasDirectItems, hoverInfoFor, type HoverInfo, type TooltipState } from './tree/treeGeometry'
 
 /** The phone's Structure view: the same Catalog → Collection graph as the
  *  desktop tree — the same hook, the same lazy expansion, the same
@@ -20,16 +26,26 @@ import { hasDirectItems } from './tree/treeGeometry'
  *  the phone: it is a second rendering of the same state.
  *
  *  Items are part of the document too: a Collection opens to its first
- *  ten Items as rows (`usePhoneItems`), then one line saying how many
+ *  ten Items as rows (`useItemWindow`), then one line saying how many
  *  there are and that the rest — search, paging, everything — is on the
  *  desktop. Functions complete, data truncated: tapping an Item shows its
  *  full Inspector; the Collection's Temporal and Spatial widgets plot
  *  those ten. */
-export function OutlineView({ rootHref }: { rootHref: string }) {
-  const { root, toggle, isLoading, rootError } = useStructureTree(rootHref)
+type HoverHandler = (info: HoverInfo | null, clientX: number, clientY: number) => void
+
+export function OutlineView() {
+  const { root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
+  // The same hover card as the tree and the icicle (`hoverInfoFor`): full
+  // title, description snippet, thumbnail. Desktop only — a phone has no
+  // hover, and a tap must not leave a card behind.
+  const narrow = useIsNarrow()
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const onHover: HoverHandler = narrow
+    ? () => {}
+    : (info, clientX, clientY) => setTooltip(info ? { ...info, x: clientX, y: clientY } : null)
 
   if (rootError) {
     return (
@@ -50,17 +66,21 @@ export function OutlineView({ rootHref }: { rootHref: string }) {
   }
 
   return (
-    <div role="tree" aria-label="Catalog structure" style={{ padding: '6px 8px 16px' }}>
-      <OutlineRow
-        datum={root}
-        depth={0}
-        toggle={toggle}
-        isLoading={isLoading}
-        selectedHref={selectedHref}
-        browsingHref={browsingHref}
-        onSelect={select}
-      />
-    </div>
+    <>
+      <div role="tree" aria-label="Catalog structure" style={{ padding: '6px 8px 16px' }}>
+        <OutlineRow
+          datum={root}
+          depth={0}
+          toggle={toggle}
+          isLoading={isLoading}
+          selectedHref={selectedHref}
+          browsingHref={browsingHref}
+          onSelect={select}
+          onHover={onHover}
+        />
+      </div>
+      {tooltip && <NodeTooltip tooltip={tooltip} />}
+    </>
   )
 }
 
@@ -72,6 +92,7 @@ function OutlineRow({
   selectedHref,
   browsingHref,
   onSelect,
+  onHover,
 }: {
   datum: TreeDatum
   depth: number
@@ -80,11 +101,13 @@ function OutlineRow({
   selectedHref: string | null
   browsingHref: string | null
   onSelect: (href: string) => void
+  onHover: HoverHandler
 }) {
   const { node } = datum
   const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
   const expanded = !!datum.children
   const hasItems = hasDirectItems(node)
+  const narrow = useIsNarrow()
   const loading = isLoading(datum.href)
   const selected = selectedHref === datum.href
   // Items open with the node: the selected node's Items show by default
@@ -183,6 +206,8 @@ function OutlineRow({
         <button
           type="button"
           onClick={onTitle}
+          onMouseMove={(e) => onHover(hoverInfoFor(node), e.clientX, e.clientY)}
+          onMouseLeave={(e) => onHover(null, e.clientX, e.clientY)}
           style={{
             flex: 1,
             minWidth: 0,
@@ -245,11 +270,129 @@ function OutlineRow({
             selectedHref={selectedHref}
             browsingHref={browsingHref}
             onSelect={onSelect}
+            onHover={onHover}
           />
         ))}
-      {hasItems && itemsOpen && (
-        <ItemRows node={node} depth={depth + 1} selectedHref={selectedHref} onSelect={onSelect} />
-      )}
+      {hasItems &&
+        itemsOpen &&
+        (narrow ? (
+          <ItemRows node={node} depth={depth + 1} selectedHref={selectedHref} onSelect={onSelect} />
+        ) : (
+          <WindowPageRows
+            node={node}
+            depth={depth + 1}
+            selectedHref={selectedHref}
+            onSelect={onSelect}
+            onHover={onHover}
+          />
+        ))}
+    </div>
+  )
+}
+
+/** On the desktop the rows under a Collection are the page the Items
+ *  window is showing — the same state, read from the store — or, for a
+ *  Collection that is open here but is not the one the window is on, the
+ *  page it last showed (its session), so opening a second Collection
+ *  never blanks the first. One line under the rows says which it is and
+ *  points at the window. The phone, which has no window, keeps its own
+ *  ten-at-a-time rows (`ItemRows`). */
+function WindowPageRows({
+  node,
+  depth,
+  selectedHref,
+  onSelect,
+  onHover,
+}: {
+  node: StacNode
+  depth: number
+  selectedHref: string | null
+  onSelect: (href: string) => void
+  onHover: HoverHandler
+}) {
+  const forHref = useItemSetStore((s) => s.forHref)
+  const visibleHrefs = useItemSetStore((s) => s.visibleHrefs)
+  const windowOpen = useItemSetStore((s) => s.windowOpen)
+  const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
+  const pad = 8 + depth * 18
+  const current = forHref === node.href
+  const remembered = current ? undefined : sessionPage(node)
+  const items = current
+    ? visibleHrefs.map((h) => loader.get(h)).filter((n): n is StacNode => !!n)
+    : (remembered?.items ?? [])
+  const isApi = node.items.kind === 'cursor'
+  const tail = current
+    ? !windowOpen
+      ? 'The Items window is closed — open it.'
+      : items.length === 0
+        ? isApi
+          ? 'No search run yet — search in the Items window.'
+          : 'Loading…'
+        : `This page of the Items window (${items.length}); page and search there.`
+    : remembered
+      ? `Page ${remembered.pageIndex + 1} as last seen in the Items window (${items.length}) — select this Collection to browse it.`
+      : isApi
+        ? 'Not searched yet — select this Collection to search in the Items window.'
+        : 'Not loaded yet — select this Collection to browse it in the Items window.'
+  // The line's click: for the current Collection, (re)open the window; for
+  // another, browse it — which moves the window there.
+  const onTail = () => (current ? setWindowOpen(true) : onSelect(node.href))
+  // An Item in another Collection's remembered rows: browse that Collection
+  // first, so the selection store pins browsing to it (an Item selection
+  // alone keeps the current Collection pinned), then the Item.
+  const selectItem = (href: string) => {
+    if (!current) onSelect(node.href)
+    onSelect(href)
+  }
+  return (
+    <div role="group" aria-label={`Items of ${node.title ?? node.id}`} style={{ opacity: current ? 1 : 0.6 }}>
+      {items.map((item) => {
+        const selected = selectedHref === item.href
+        const when = item.temporal ? describeTemporal(item.temporal) : undefined
+        return (
+          <div
+            key={item.href}
+            role="treeitem"
+            aria-selected={selected}
+            onClick={() => selectItem(item.href)}
+            onMouseMove={(e) => onHover(hoverInfoFor(item), e.clientX, e.clientY)}
+            onMouseLeave={(e) => onHover(null, e.clientX, e.clientY)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minHeight: 36,
+              paddingLeft: pad + 28,
+              paddingRight: 8,
+              borderRadius: 'var(--radius-sm)',
+              background: selected ? 'var(--color-selection-bg)' : 'none',
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            <TypeIcon type="Item" size={14} color="var(--color-node-item)" />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.title ?? item.id}
+            </span>
+            {when && <span style={{ marginLeft: 'auto', color: 'var(--color-text-faint)', fontSize: 11 }}>{when}</span>}
+          </div>
+        )
+      })}
+      <button
+        type="button"
+        onClick={onTail}
+        style={{
+          ...noteStyle,
+          paddingLeft: pad + 28,
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+        }}
+      >
+        {tail}
+      </button>
     </div>
   )
 }
@@ -267,7 +410,7 @@ function ItemRows({
   selectedHref: string | null
   onSelect: (href: string) => void
 }) {
-  const state = usePhoneItems(node)
+  const state = useItemWindow(node)
   const pad = 8 + depth * 18
   if (state.status === 'loading') {
     return (
@@ -293,7 +436,7 @@ function ItemRows({
     shown === 0
       ? 'No items.'
       : state.windowStart > 0
-        ? `Items ${first}–${last}${totalText ? ` of ${totalText}` : ''}; earlier rows unloaded to keep the phone light (${PHONE_ITEM_WINDOW} at a time).`
+        ? `Items ${first}–${last}${totalText ? ` of ${totalText}` : ''}; earlier rows unloaded to keep the list light (${ITEM_WINDOW_MAX} at a time).`
         : !state.hasMore
           ? isApi
             ? `All ${shown} item${shown === 1 ? '' : 's'} the API returned.`
@@ -371,7 +514,7 @@ function ItemRows({
             }}
           >
             {state.loadingMore && <Spinner size={10} color="var(--color-text-faint)" />}
-            {state.loadingMore ? 'Loading…' : `Load ${PHONE_ITEM_LIMIT} more`}
+            {state.loadingMore ? 'Loading…' : `Load ${ITEM_WINDOW_STEP} more`}
           </button>
         )}
       </div>

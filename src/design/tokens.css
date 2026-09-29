@@ -132,6 +132,39 @@ body {
  * needs a real UI with motion, everywhere the app loads something. One
  * keyframe, reused everywhere, rather than a
  * bespoke animation per component. */
+/* The Items window re-appearing when its subject changes (a different
+ * Collection was browsed while it was open): a fade and a flash of the
+ * border, so the swap is seen. Two identical keyframes — a component
+ * alternates between them to restart the animation on every change. */
+@keyframes stac-lens-window-a {
+  0% {
+    opacity: 0.35;
+    transform: translateY(6px);
+    border-color: var(--color-brand);
+  }
+  60% {
+    border-color: var(--color-brand);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes stac-lens-window-b {
+  0% {
+    opacity: 0.35;
+    transform: translateY(6px);
+    border-color: var(--color-brand);
+  }
+  60% {
+    border-color: var(--color-brand);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes stac-lens-spin {
   to {
     transform: rotate(360deg);

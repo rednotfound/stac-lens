@@ -1,29 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { select } from 'd3-selection'
 import { drag, type D3DragEvent } from 'd3-drag'
 import type { TreeDatum } from '../../hooks/useStructureTree'
-import { useBoxDragHandles } from '../../hooks/useBoxDragHandles'
-import { isInlinePreviewAsset } from '../../stac/assets'
-import type { StacNode } from '../../stac/types'
-import { CursorItemSetPanels } from '../CursorItemSetPanels'
-import { LinksItemSetBrowser } from '../LinksItemSetBrowser'
 import { Spinner } from '../Spinner'
-import { renderBox } from './ItemSetBox'
 import {
-  BOX_CONNECTOR_TARGET_INSET,
-  BOX_TOP_OFFSET,
-  ITEM_SET_BOX_GAP,
-  type BoxGeometry,
-  type BoxOffset,
-  type BoxSize,
-} from './boxGeometry'
-import {
+  canExpandNode,
   estimateTextWidth,
-  hasDirectItems,
+  hoverInfoFor,
+  itemCountLabel,
   LABEL_FONT_SIZE,
-  stripMarkdownLinks,
-  TOOLTIP_DESCRIPTION_MAX_CHARS,
+  nodeColor,
+  nodeIsFilled,
   truncateLabel,
   type HoverInfo,
 } from './treeGeometry'
@@ -41,11 +28,11 @@ export interface TreeNodeProps {
    *  so this dashed ring is the only way an Item selection shows in the
    *  tree. */
   containsSelection: boolean
-  /** Render this node's Item Set as an embedded box — only for the one node
-   *  being browsed, never every node with Items (that would be dozens of
-   *  concurrent fetches). The box is a floating overlay in the tree's
-   *  coordinate space, real HTML in a `<foreignObject>`. */
-  showItemSetBox: boolean
+  /** This node's Items are open in the Items window right now — the
+   *  window follows `browsingHref`, so at most one node has this. Drives
+   *  the filled/hollow glyph and hides the count badge, as the embedded
+   *  box used to. */
+  itemsOpen: boolean
   onToggle: () => void
   onSelect: () => void
   onHover: (info: HoverInfo | null, clientX: number, clientY: number) => void
@@ -55,31 +42,17 @@ export interface TreeNodeProps {
   /** Incremental local delta while this node is dragged; the parent applies
    *  it to the whole subtree. */
   onNodeDragBy: (dxLocal: number, dyLocal: number) => void
-  /** The static box's own drag offset and size, in plain `foreignObject`
-   *  (horizontal, vertical) terms — independent of the node's position. */
-  boxOffset: BoxOffset
-  onBoxDragBy: (dxLocal: number, dyLocal: number) => void
-  boxSize: BoxSize
-  onBoxResizeBy: (dxLocal: number, dyLocal: number) => void
-  /** Geometry of an API Collection's two boxes. Only used when
-   *  `node.items.kind === 'cursor'`; a static catalog's box is fully owned
-   *  by the four props above. */
-  searchBox: BoxGeometry
-  resultsBox: BoxGeometry
-  /** Where this node's boxes are portaled — a last-rendered `<g>` in the
-   *  canvas, so an open box always paints above other nodes. `null` for the
-   *  single render before that `<g>` exists; the box skips that frame. */
-  boxLayer: SVGGElement | null
 }
 
-/** One tree node: circle, label, badges, hover, and — for the node being
- *  browsed — its Item Set box(es). The label, not the circle, is the drag
- *  handle: the circle's one job is click-to-expand and a grab cursor on it
- *  muddied that signal; the label only ever selected, so drag fits there
- *  without conflict. d3-drag is the canonical composition with d3-zoom for
- *  "pannable canvas, draggable elements inside it"; the hand-rolled pointer
- *  handling it replaced let the canvas pan and the node move in the same
- *  gesture. */
+/** One tree node: circle, label, badges, hover. The node's Items are not
+ *  drawn here any more — they are in the Items window, which floats above
+ *  every view (`ItemsWindow`); this node only shows that they are open.
+ *  The label, not the circle, is the drag handle: the circle's one job is
+ *  click-to-expand and a grab cursor on it muddied that signal; the label
+ *  only ever selected, so drag fits there without conflict. d3-drag is the
+ *  canonical composition with d3-zoom for "pannable canvas, draggable
+ *  elements inside it"; the hand-rolled pointer handling it replaced let
+ *  the canvas pan and the node move in the same gesture. */
 export function TreeNodeView({
   datum,
   x,
@@ -89,34 +62,15 @@ export function TreeNodeView({
   loading,
   selected,
   containsSelection,
-  showItemSetBox,
+  itemsOpen,
   onToggle,
   onSelect,
   onHover,
   containerRef,
   onNodeDragBy,
-  boxOffset,
-  onBoxDragBy,
-  boxSize,
-  onBoxResizeBy,
-  searchBox,
-  resultsBox,
-  boxLayer,
 }: TreeNodeProps) {
-  const itemSetBoxRef = useRef<HTMLDivElement | null>(null)
-  // The Results box is a second independent box with its own ref, so
-  // hovering either box suppresses this node's tooltip (see
-  // `isInsideItemSetBox`).
-  const resultsBoxRef = useRef<HTMLDivElement | null>(null)
-  // Portal targets for the Search/Results *content*: `CursorItemSetPanels`
-  // (mounted once both exist) portals its two pieces into these, so one
-  // hook instance backs two physically separate `<foreignObject>`s. State,
-  // not refs — a ref read during another component's render isn't attached
-  // yet on the first pass; a callback ref into state triggers the retry.
-  const [searchTargetEl, setSearchTargetEl] = useState<HTMLDivElement | null>(null)
-  const [resultsTargetEl, setResultsTargetEl] = useState<HTMLDivElement | null>(null)
-  // Computed early — the resize-handle effect needs it to know which way the
-  // box grows. The root always labels to the right.
+  // The root always labels to the right; every other node labels left once
+  // its children are rendered, so the label never runs into them.
   const labelOnLeft = hasRenderedChildren && !isRoot
 
   const labelRef = useRef<SVGTextElement | null>(null)
@@ -147,33 +101,6 @@ export function TreeNodeView({
     }
   }, [containerRef])
 
-  // Which side the box sits on decides which edge is pinned during a resize
-  // (see `useBoxDragHandles`). A ref, so a handler bound once still sees
-  // the current side if it flips while the box is open. Shared by every box
-  // on this node.
-  const labelOnLeftRef = useRef(labelOnLeft)
-  useEffect(() => {
-    labelOnLeftRef.current = labelOnLeft
-  })
-
-  // All three called unconditionally (rules of Hooks); a static node's
-  // Search/Results handles simply never attach to a DOM element.
-  const mainBoxHandles = useBoxDragHandles(containerRef, showItemSetBox, onBoxDragBy, onBoxResizeBy, labelOnLeftRef)
-  const searchBoxHandles = useBoxDragHandles(
-    containerRef,
-    showItemSetBox,
-    searchBox.onDragBy,
-    searchBox.onResizeBy,
-    labelOnLeftRef,
-  )
-  const resultsBoxHandles = useBoxDragHandles(
-    containerRef,
-    showItemSetBox,
-    resultsBox.onDragBy,
-    resultsBox.onResizeBy,
-    labelOnLeftRef,
-  )
-
   if (datum.moreCount) {
     return (
       <g transform={`translate(${y}, ${x})`}>
@@ -187,43 +114,24 @@ export function TreeNodeView({
 
   const { node } = datum
   // Only sub-Catalogs/Collections are structural children; direct Items are
-  // reached through the Item Set box, shown below as a count. A node whose
+  // reached through the Items window, shown below as a count. A node whose
   // children come from a `/collections` or `/children` endpoint expands the
   // same way, just fetched differently.
-  const canExpand = node.childHrefs.length > 0 || !!node.collectionsEndpoint || !!node.childrenEndpoint
-  // Tidy-tree convention, extended: filled = something behind this circle
-  // is not yet open (tree children, or — for a node with Items and no
-  // children — its Item Set box); hollow = already open, or a genuine dead
-  // end. "Open" for the box half mirrors `showItemSetBox` rather than a
-  // sticky "ever opened" record: it reflects what is open right now.
-  const filled = (canExpand && !hasRenderedChildren) || (hasDirectItems(node) && !showItemSetBox)
+  const canExpand = canExpandNode(node)
+  // Filled/hollow per the shared convention (`nodeIsFilled`); "open" for
+  // the Items half mirrors `itemsOpen` rather than a sticky "ever opened"
+  // record: it reflects what is open right now.
+  const filled = nodeIsFilled(node, hasRenderedChildren, itemsOpen)
 
-  const color = node.type === 'Catalog' ? 'var(--color-node-catalog)' : 'var(--color-node-collection)'
+  const color = nodeColor(node)
   const radius = node.type === 'Catalog' ? 7 : 6
-  // A static link array has a known count; a cursor (API) node's count is
-  // unknown until queried and is labeled as such, never shown as a fake 0.
   const isApiSearched = node.items.kind === 'cursor'
-  const itemBadgeText =
-    node.items.kind === 'links'
-      ? node.items.hrefs.length > 0
-        ? `${node.items.hrefs.length} item${node.items.hrefs.length === 1 ? '' : 's'}`
-        : undefined
-      : undefined
+  // Never a fake 0 for an API node: `itemCountLabel` says nothing until a
+  // count is known.
+  const itemBadgeText = itemCountLabel(node)
   const labelDx = labelOnLeft ? -(radius + 6) : radius + 6
   const label = node.title ?? node.id
   const labelText = truncateLabel(label)
-  // The box's near edge (and the connector's target) sits past the label's
-  // rendered *end*, plus a gap, so the connector curve has room.
-  const labelWidth = estimateTextWidth(labelText, LABEL_FONT_SIZE)
-  const boxNearX = labelOnLeft ? labelDx - labelWidth - ITEM_SET_BOX_GAP : labelDx + labelWidth + ITEM_SET_BOX_GAP
-
-  // Boxes render at exactly their stored size and offset — no clamping to
-  // the visible column, default or resized. Two lighter clamps were tried
-  // and removed: recomputing from the current pan position made an open
-  // box visibly shrink while the user merely panned. The Inspector, a later
-  // DOM sibling, simply covers whatever overlaps it.
-  const searchBoxLeftX = (labelOnLeft ? boxNearX - searchBox.size.width : boxNearX) + searchBox.offset.dxHoriz
-  const resultsBoxLeftX = (labelOnLeft ? boxNearX - resultsBox.size.width : boxNearX) + resultsBox.offset.dxHoriz
   // The "API" tag is a small pill anchored the same side as the label — a
   // real signal, like STAC Browser's own tag, not gray subtext.
   const apiTagFontSize = 9
@@ -231,16 +139,7 @@ export function TreeNodeView({
   const apiTagHeight = 13
   const apiTagWidth = estimateTextWidth('API', apiTagFontSize) + apiTagPadX * 2
   const apiTagX = labelOnLeft ? labelDx - apiTagWidth : labelDx
-  const previewAsset = node.assets.find(isInlinePreviewAsset)
-  const hoverInfo: HoverInfo = {
-    type: node.type,
-    title: label,
-    description: node.description
-      ? truncateLabel(stripMarkdownLinks(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
-      : undefined,
-    note: isApiSearched ? 'API-searched — item count unknown until queried' : undefined,
-    thumbnailHref: previewAsset?.href,
-  }
+  const hoverInfo: HoverInfo = hoverInfoFor(node)
 
   // One handler for both the circle and the label, so "click here to select
   // and reveal what's next" means the same thing on every node — the label
@@ -253,21 +152,14 @@ export function TreeNodeView({
   }
 
   // Hover must belong to *this node*, not to something React merely
-  // considers a descendant. Two cases fail that test: the boxes (portaled
-  // into `boxLayer`, so a plain `.contains()` on their refs is the right
-  // check regardless of where they live in the DOM), and `BboxPickerModal`
-  // (portaled to `document.body`, yet still a React descendant of this
-  // `<g>`, so its mouse moves bubble here as synthetic events). Real DOM
-  // containment against this very `<g>` settles both. Never
-  // `stopPropagation()`: React's synthetic version also stops the native
-  // event, which the timeline's window-level drag and Leaflet's document-
-  // level drag both depend on.
-  function isInsideItemSetBox(target: Element): boolean {
-    return !!itemSetBoxRef.current?.contains(target) || !!resultsBoxRef.current?.contains(target)
-  }
+  // considers a descendant: `BboxPickerModal` is portaled to `document.body`
+  // yet still a React descendant of this `<g>`, so its mouse moves bubble
+  // here as synthetic events. Real DOM containment against this very `<g>`
+  // settles it. Never `stopPropagation()`: React's synthetic version also
+  // stops the native event, which the timeline's window-level drag and
+  // Leaflet's document-level drag both depend on.
   function isNotThisNode(e: React.MouseEvent): boolean {
-    const target = e.target as Element
-    return !(e.currentTarget as Node).contains(target) || isInsideItemSetBox(target)
+    return !(e.currentTarget as Node).contains(e.target as Element)
   }
   function handleEnter(e: React.MouseEvent) {
     if (isNotThisNode(e)) {
@@ -283,13 +175,6 @@ export function TreeNodeView({
   function handleLeave() {
     onHover(null, 0, 0)
   }
-
-  // Both portal targets need `display: flex` themselves: each is the direct
-  // parent the portaled content's `flex: 1 / minHeight: 0` sizing depends
-  // on. Without it the content laid out at its natural height — the results
-  // footer needed a scroll to reach and the Time & Space map collapsed to
-  // zero height.
-  const portalTargetStyle = { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } as const
 
   return (
     <g
@@ -358,7 +243,7 @@ export function TreeNodeView({
           </text>
         </>
       ) : (
-        !showItemSetBox &&
+        !itemsOpen &&
         (isApiSearched ? (
           // A tag only for the case that needs calling out — Items behind a
           // live query. The static case stays plain "N items" text, matching
@@ -397,102 +282,6 @@ export function TreeNodeView({
           )
         ))
       )}
-      {showItemSetBox &&
-        boxLayer &&
-        (isApiSearched ? (
-          <>
-            {createPortal(
-              // eslint-disable-next-line react-hooks/refs
-              renderBox({
-                key: 'search',
-                title: 'Search',
-                icon: 'search',
-                badge: 'API',
-                connectorSource: { x: 0, y: 0 },
-                connectorTarget: {
-                  x: BOX_TOP_OFFSET + searchBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET,
-                  y: boxNearX + searchBox.offset.dxHoriz,
-                },
-                foreignX: searchBoxLeftX,
-                foreignY: BOX_TOP_OFFSET + searchBox.offset.dyVert,
-                size: searchBox.size,
-                boxHandleRef: searchBoxHandles.boxHandleRef,
-                resizeHandleRef: searchBoxHandles.resizeHandleRef,
-                contentRef: itemSetBoxRef,
-                labelOnLeft,
-                nodeXY: { x, y },
-                children: <div ref={setSearchTargetEl} style={portalTargetStyle} />,
-              }),
-              boxLayer,
-            )}
-            {createPortal(
-              // eslint-disable-next-line react-hooks/refs
-              renderBox({
-                key: 'results',
-                title: 'Results',
-                icon: 'list',
-                badge: 'API',
-                // Drawn from the Search box's own current bottom edge, not
-                // from the node: the connector that reads as "data flows from
-                // Search into Results", the node-editor idea the two-box
-                // design comes from. Recomputed every render from both boxes'
-                // current geometry, so it survives either being dragged.
-                connectorSource: {
-                  x: BOX_TOP_OFFSET + searchBox.offset.dyVert + searchBox.size.height,
-                  y: searchBoxLeftX + searchBox.size.width / 2,
-                },
-                connectorTarget: {
-                  x: BOX_TOP_OFFSET + resultsBox.offset.dyVert + BOX_CONNECTOR_TARGET_INSET,
-                  y: resultsBoxLeftX + resultsBox.size.width / 2,
-                },
-                foreignX: resultsBoxLeftX,
-                foreignY: BOX_TOP_OFFSET + resultsBox.offset.dyVert,
-                size: resultsBox.size,
-                boxHandleRef: resultsBoxHandles.boxHandleRef,
-                resizeHandleRef: resultsBoxHandles.resizeHandleRef,
-                contentRef: resultsBoxRef,
-                labelOnLeft,
-                nodeXY: { x, y },
-                children: <div ref={setResultsTargetEl} style={portalTargetStyle} />,
-              }),
-              boxLayer,
-            )}
-            {searchTargetEl && resultsTargetEl && (
-              <CursorItemSetPanels
-                node={node as StacNode & { items: { kind: 'cursor' } }}
-                searchTarget={searchTargetEl}
-                resultsTarget={resultsTargetEl}
-              />
-            )}
-          </>
-        ) : (
-          createPortal(
-            // `renderBox` is a plain function, not a component; the `*Ref`
-            // properties forward whole ref objects into its JSX, never
-            // `.current` — the linter can't see through the call.
-            // eslint-disable-next-line react-hooks/refs
-            renderBox({
-              key: 'main',
-              title: 'Items',
-              icon: 'list',
-              connectorSource: { x: 0, y: 0 },
-              connectorTarget: {
-                x: BOX_TOP_OFFSET + boxOffset.dyVert + BOX_CONNECTOR_TARGET_INSET,
-                y: boxNearX + boxOffset.dxHoriz,
-              },
-              foreignX: (labelOnLeft ? boxNearX - boxSize.width : boxNearX) + boxOffset.dxHoriz,
-              foreignY: BOX_TOP_OFFSET + boxOffset.dyVert,
-              size: boxSize,
-              boxHandleRef: mainBoxHandles.boxHandleRef,
-              resizeHandleRef: mainBoxHandles.resizeHandleRef,
-              contentRef: itemSetBoxRef,
-              labelOnLeft,
-              nodeXY: { x, y },
-              children: <LinksItemSetBrowser node={node as StacNode & { items: { kind: 'links' } }} />,
-            }),
-            boxLayer,
-          )
-        ))}
     </g>
   )
 }

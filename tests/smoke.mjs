@@ -7,7 +7,9 @@
 //   node tests/smoke.mjs
 //
 // It covers the paths a contributor is most likely to break: the landing
-// page, opening an API root whose children come from /collections, a deep
+// page, opening an API root whose children come from /collections, the
+// desktop's view switcher (icicle and outline over the same graph), the
+// Items window that follows the browsed Collection across views, a deep
 // link into a Collection with an applied search, a rejected search shown
 // as an error, the Inspector's Spatial map fitting a Collection's bbox, the
 // phone layout (390px: Filters button, outline, bottom-sheet Inspector), and
@@ -86,12 +88,51 @@ const labels = await treeLabels()
 check('API root opens with its Collections as children', labels.length === 6, `labels: ${labels.join(' | ')}`)
 check('header shows the catalog title', (await text()).includes('Microsoft Planetary Computer STAC API'))
 
+// 2b. The desktop's view switcher: the same loaded graph and the same
+// selection rendered as an icicle and an outline. (Landsat here so the
+// next section's deep link into 3DEP is a fresh Collection.) The tree
+// is restored at the end so the checks below find their boxes.
+await page.getByRole('tab', { name: 'Icicle' }).click()
+await page.waitForSelector('g[data-href]')
+const icicleCells = await page.locator('g[data-href]').count()
+check('icicle: one cell per loaded node (root + 5 Collections)', icicleCells === 6, `cells: ${icicleCells}`)
+await page.locator('g[data-href$="/collections/landsat-c2-l2"]').click()
+await page.waitForFunction(() => document.body.innerText.includes('Landsat Collection 2 Level-2'), null, {
+  timeout: 5000,
+})
+check(
+  'icicle: clicking a cell selects it — Inspector follows, cell outlined',
+  (await page.locator('g[data-href$="landsat-c2-l2"] rect[stroke-width="2"]').count()) === 1,
+)
+// The Items window opens for it (search-first: idle until Search); after
+// a search its page — the recorded search page, 5 Items, served for any
+// collections= search — is also the row under the Collection's cell.
+await page.waitForSelector('[data-items-window]', { timeout: 10000 })
+await page.locator('[data-items-window]').getByRole('button', { name: 'Search', exact: true }).click()
+await page.waitForSelector('g[data-item-href]', { timeout: 10000 })
+check(
+  'icicle: the Items window opens for the browsed Collection and its page is the row under it',
+  (await page.locator('g[data-item-href]').count()) === 5,
+  `items: ${await page.locator('g[data-item-href]').count()}`,
+)
+await page.getByRole('tab', { name: 'Outline' }).click()
+await page.waitForSelector('[role="treeitem"]')
+check(
+  'outline on the desktop: rows for the loaded nodes, selection kept',
+  (await page.locator('[role="treeitem"]').count()) >= 6 &&
+    (await page.locator('[role="treeitem"][aria-selected="true"]').count()) === 1,
+)
+await page.getByRole('tab', { name: 'Tree' }).click()
+await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 5000 })
+
 // 3. Deep link into a Collection with an applied bbox search
 await page.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns?bbox=-75.5%2C39.5%2C-73.5%2C41.5`)
 await page.waitForFunction(() => /page \d+ of \d+/.test(document.body.innerText), null, { timeout: 15000 })
 check(
-  'Search and Results boxes open for the Collection',
-  (await titleBars()).join(',') === 'Search API,Results API',
+  'the Items window opens for the Collection, with Search above Results',
+  (await page.locator('[data-items-window]').count()) === 1 &&
+    /USGS 3DEP Lidar Returns.*API/s.test((await titleBars()).join(',')) &&
+    (await page.getByRole('button', { name: 'Hide the search conditions' }).count()) === 1,
   (await titleBars()).join(','),
 )
 check(
@@ -106,6 +147,70 @@ check(
 )
 check('Inspector flags the two-bbox extent as the spec does', (await text()).includes('exactly two spatial bboxes'))
 check('Inspector marks the deprecated license value', (await text()).includes('deprecated value since STAC 1.1'))
+
+// 3b. The Items window is the same window in every view: switching to
+// the icicle and back leaves it where it was, with its page; the title
+// bar still drags it (screen pixels now, not tree coordinates).
+await page.getByRole('tab', { name: 'Icicle' }).click()
+await page.waitForSelector('g[data-href]')
+check(
+  'Items window persists across a view switch with its page',
+  (await page.locator('[data-items-window]').count()) === 1 && /page 1 of 1 — 5 items total/.test(await text()),
+)
+check(
+  "icicle: the browsed Collection's row is the window's page; Landsat keeps its last page, dimmed",
+  (await page.locator('g[data-items-row="current"] g[data-item-href]').count()) === 5 &&
+    (await page.locator('g[data-items-row="remembered"] g[data-item-href]').count()) === 5,
+  `current: ${await page.locator('g[data-items-row="current"] g[data-item-href]').count()}, remembered: ${await page.locator('g[data-items-row="remembered"] g[data-item-href]').count()}`,
+)
+await page.getByRole('tab', { name: 'Tree' }).click()
+await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 5000 })
+{
+  const win = page.locator('[data-items-window]')
+  const bar = win.locator('[title="Drag to move this panel"]')
+  const before = await win.evaluate((el) => el.getBoundingClientRect().left)
+  const b = await bar.boundingBox()
+  await page.mouse.move(b.x + 40, b.y + b.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(b.x - 40, b.y + b.height / 2, { steps: 6 })
+  await page.mouse.up()
+  const after = await win.evaluate((el) => el.getBoundingClientRect().left)
+  check('Items window drags by its title bar', Math.abs(after - before + 80) < 0.5, `moved ${after - before}px`)
+  // Resizes from any edge: the left edge moves x and grows the width,
+  // keeping the right edge where it was.
+  const edge = page.locator('[data-resize="w"]')
+  const e = await edge.boundingBox()
+  const rectBefore = await win.evaluate((el) => el.getBoundingClientRect().toJSON())
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(e.x + e.width / 2 - 60, e.y + e.height / 2, { steps: 6 })
+  await page.mouse.up()
+  const rectAfter = await win.evaluate((el) => el.getBoundingClientRect().toJSON())
+  check(
+    'Items window resizes from its left edge with the right edge pinned',
+    Math.abs(rectAfter.width - rectBefore.width - 60) < 0.5 && Math.abs(rectAfter.right - rectBefore.right) < 0.5,
+    `width ${rectBefore.width} → ${rectAfter.width}, right ${rectBefore.right} → ${rectAfter.right}`,
+  )
+}
+// Close, reopen from the tab row: same page, no refetch (the session).
+await page.getByRole('button', { name: 'Close the Items window' }).click()
+check(
+  'closing the window leaves an Items button in the tab row',
+  (await page.locator('[data-items-window]').count()) === 0 &&
+    (await page.getByRole('button', { name: /^Items ▸/ }).count()) === 1,
+)
+await page.getByRole('button', { name: /^Items ▸/ }).click()
+await page.waitForSelector('[data-items-window]')
+check('reopening restores the search and its page from the session', /page 1 of 1 — 5 items total/.test(await text()))
+// Closing and clicking the *same* Collection again also reopens it — a
+// selection is an act, not only a value (a reported confusion).
+await page.getByRole('button', { name: 'Close the Items window' }).click()
+await page.locator('svg text', { hasText: 'USGS 3DEP Lidar Returns' }).first().click()
+await page.waitForSelector('[data-items-window]', { timeout: 5000 })
+check(
+  'clicking the already-selected Collection reopens the closed window',
+  (await page.locator('[data-items-window]').count()) === 1,
+)
 
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result
 await page.goto(`${BASE_URL}/#${PC}/`)

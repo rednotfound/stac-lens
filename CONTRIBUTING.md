@@ -55,6 +55,7 @@ This project has one hard rule about verification, learned the expensive way: **
    ```
 
    Read DOM state and computed styles rather than eyeballing where you can; take a screenshot where you can't. For behavior a public server won't trigger on demand (a POST pagination link, a `/children` endpoint), intercept with `page.route` and serve a recorded response.
+   The desktop has three views over one structure state (Tree, Outline, Icicle) and the Items window above them: a change to the structure, the selection or the Item Set is checked in every view and in the window (`tests/smoke.mjs` switches views and drags the window).
    The app has two layouts — desktop, and a phone layout below 720 px (`hooks/useMediaQuery.ts`: an outline instead of the tree, a bottom-sheet Inspector) — so a change to the landing page or the explorer is checked in both. Playwright's `devices['iPhone 13']` is the phone reference, and `tests/smoke.mjs` ends with three phone checks.
 
 4. **Pin what you verified.** A fact about the data layer (a link rule, a parameter format, a server behavior you worked around) gets a Vitest case in `src/stac/__tests__/`; a user-visible path gets a check in `tests/smoke.mjs`, driven by recorded responses in `tests/fixtures/` so it runs offline. Record a fixture with `curl`, trim it, and keep it byte-for-byte otherwise — the point is that it is what a real server sent.

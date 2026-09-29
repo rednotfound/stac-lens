@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/screenshot-structure.png" alt="STAC Lens exploring Microsoft Planetary Computer: the Structure Lens tree, a Collection's Search and Results boxes, and the Inspector" width="1000">
+  <img src="docs/images/screenshot-structure.png" alt="STAC Lens exploring Microsoft Planetary Computer: the tree, the floating Items window with a searched Collection's results on a timeline and a map, and the Inspector" width="1000">
 </p>
 
 STAC Lens is a client-side lens on [STAC](https://stacspec.org/) (SpatioTemporal Asset Catalog) catalogs and APIs. Point it at any catalog and it shows three things a field-by-field browser doesn't: the **shape** of the dataset (how the publisher actually organized it — deep, flat, wide), its **health** (where the metadata contradicts itself or the spec), and its **distance from the specification** (what an API declares it supports versus what it really does when asked). Structure, time, and space are coordinated views of the same data: select a node in one and the others follow.
@@ -54,10 +54,12 @@ If you publish a catalog and want visitors to read it, deploy STAC Browser. If y
 
 **Structure Lens** — a horizontal, curved node-link tree over the Catalog → Collection graph. Items are never tree nodes: a Collection with two million Items is one leaf, not a wall. Nothing loads until you expand it; the canvas pans and zooms by direct manipulation (drag, wheel), and nodes and panels can be rearranged by hand. Selecting an Item highlights the Collection it belongs to with a dashed ring, distinct from the solid ring of a direct selection.
 
-**Item Set, embedded in the tree** — selecting a Collection opens its Items right at that node, in window-style panels (title bar as drag handle, corner resize) rather than in a separate page. Static catalogs and API-backed Collections get genuinely different UI, because they are different things:
+**Other views of the same structure** — the tree is the entry; on a desktop two lighter views sit beside it over the same loaded graph and the same selection: an **Outline** (the structure as an indented document), an **Icicle** (space-filling layers — how wide and how deep the publisher's hierarchy is, at a glance; width is share of loaded leaves, never an invented Item count) and a **Radial** tree (breadth as a ring, depth as concentric rings). In each, the Collection being browsed shows the page its Items window is on. Click anything in any view and the Inspector follows.
+
+**The Items window** — selecting a Collection opens its Items in one floating window that follows the Collection you browse, above every view (tree, outline, icicle): drag it by its title bar, resize it, collapse it, close it and reopen it from the tab row. Each Collection's search, page and loaded buffer are remembered for the session, so browsing elsewhere and coming back finds it as it was. Static catalogs and API-backed Collections get genuinely different UI, because they are different things:
 
 - A static catalog's Item list is known up front, so it gets **real numbered pagination** with a per-page cache.
-- An API-backed Collection gets two independent, connected boxes: a **Search** box (date range, an area drawn on a real map, sort where the API declares support) feeding a **Results** box that presents the cursor's accumulated buffer as numbered pages. API mode is **search-first** — nothing is fetched until you ask.
+- An API-backed Collection gets a **Search** section (date range, an area drawn on a real map, sort where the API declares support) above its **Results**, paged from the cursor's accumulated buffer. API mode is **search-first** — nothing is fetched until you ask.
 
 Both share a **List / Time & Space** switcher: the same page of Items as a scrollable list, or as a zoomable timeline stacked over an interactive map. Already-visited pages stay faintly visible behind the current one.
 
@@ -158,7 +160,8 @@ src/
     catalogTags.ts   closed facet vocabularies: topic, region, publisher, access
     catalogFilters.ts pure text/facet filtering and faceted counts
   hooks/
-    useStructureTree.ts        lazy expand/collapse state -> tree datum for d3
+    useStructureTree.ts        lazy expand/collapse state -> tree datum for d3 (one instance per catalog, shared by every view)
+    useStructure.ts            reads that shared instance from StructureProvider
     useSelectedItems.ts        current selection -> what Inspector's Temporal/Spatial widgets plot
     useLinksPagedItemSet.ts    static catalogs: page-based browsing over a known href array
     useCursorQueriedItemSet.ts API Collections: cursor-following, search-first query state
@@ -166,23 +169,32 @@ src/
     useApiConformance.ts       reactive root-conformance resolution for gating UI
     useElementSize.ts          ResizeObserver -> real container size
     useShareableUrl.ts         URL hash <-> catalog / selection / applied search, both directions
-    useBoxDragHandles.ts       d3-drag wiring for an Item Set box's move and resize handles
+    useItemWindow.ts           the phone's ten-at-a-time Item rows (sliding window)
+    useDocumentTitle.ts        the tab title follows the open catalog and selection
+    usePointerDrag.ts          pointer-capture drag for the Items window's title bar and grip
     useStickySidebar.ts        a sidebar that stays in view with one page scroll, no nested scrolling
   store/
     selection.ts     the shared selection (selected vs. browsed node)
-    itemSet.ts       what Item Set has loaded/visible and its applied query
+    itemSet.ts       what the Items window has in view, its applied query, the window's open state and remembered geometry
+    itemSetSessions.ts  per-Collection memory (cursor buffer, next link, query, page, tab) so the window can close and come back
     landingPrefs.ts  favorites and recently opened catalogs, persisted per browser
   components/
     LandingPage.tsx          hero field (search or open a URL) + faceted catalog browser
-    StructureTree.tsx        Structure Lens canvas: d3 layout, pan/zoom, node/box offsets, auto-pan
-    tree/                    the tree's parts: TreeNodeView, ItemSetBox (renderBox), NodeTooltip,
-                             Legend, boxGeometry (sizes, makeBoxGeometry), treeGeometry (spacing, links)
+    StructureProvider.tsx    the one structure state every view renders
+    views/                   the view switcher's other views: OutlineView is in components/, IcicleView + IcicleItems here,
+                             OverviewBar (loaded counts), StructureActions (Collapse / Expand all), explorerViews (names)
+    StructureTree.tsx        the Tree view's canvas: d3 layout, pan/zoom, node offsets, auto-pan
+    OutlineView.tsx          the structure as an indented document (the phone's only view; a desktop view too)
+    ItemsWindow.tsx          the floating Items window: follows the browsed Collection, every view, drag/resize/collapse
+    itemsWindowGeometry.ts   pure placement and clamping for it
+    tree/                    the tree's parts: TreeNodeView, NodeTooltip, Legend,
+                             treeGeometry (spacing, links, the node vocabulary every view shares)
     DetailPanel.tsx          Inspector (Human/JSON), embeds TimeLens/SpaceLens
     TimeLens.tsx / SpaceLens.tsx      Inspector's inline temporal / spatial widgets
     ItemsTimeline.tsx / ItemsMap.tsx  the pure timeline and map renderers, shared everywhere
     ItemSetBrowser.tsx       shared Item Set pieces (rows, tabs, pager styles)
-    LinksItemSetBrowser.tsx  static catalogs: one box over useLinksPagedItemSet
-    CursorItemSetPanels.tsx  API Collections: one hook behind the Search and Results boxes
+    LinksItemSetBrowser.tsx  static catalogs: paged list over useLinksPagedItemSet, inside the window
+    CursorItemSetPanels.tsx  API Collections: Search above Results, one hook, inside the window
     ItemSetSearchPanel.tsx   Date / Sort / Area condition rows
     ItemSetResultsPanel.tsx  numbered-page results, List / Time & Space
     BboxPickerModal.tsx      full-size map dialog: pan by default, explicit Draw-box tool
@@ -195,7 +207,7 @@ scripts/
   verify-catalogs.ts live re-verification of the known-catalog list; reports, never edits
 tests/
   smoke.mjs          offline browser smoke test; fixtures/pc holds the recorded responses
-                     (unit tests live next to their code: src/stac/__tests__, src/data/__tests__)
+                     (unit tests live next to their code: src/stac/__tests__, src/data/__tests__, src/store/__tests__, …)
 docker/
   nginx.conf         the container's nginx site config (same headers as netlify.toml)
 ```

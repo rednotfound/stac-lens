@@ -3,6 +3,7 @@ import { loader } from '../stac/loaderInstance'
 import { fetchSearchPage, type NextLink, type SearchFilter } from '../stac/apiSearch'
 import { resolveSearchTarget } from '../stac/conformance'
 import type { StacNode } from '../stac/types'
+import { itemSetSessions } from '../store/itemSetSessions'
 
 // A cursor-mode page costs one network round-trip regardless of how many
 // Items it returns — the response already embeds full Item JSON for each
@@ -74,20 +75,27 @@ export function useCursorQueriedItemSet(
 ): CursorItemSetState {
   const nodeHref = node?.href
 
-  const [items, setItems] = useState<StacNode[]>([])
+  // A session left by a previous mount for this Collection (the Items
+  // window closed and reopened, another Collection browsed in between)
+  // is picked up whole — buffer, cursor, query — so nothing is refetched
+  // and the page is where it was. A restored `initialQuery` (a shareable
+  // URL's query) is a new intent and wins over the session.
+  const restored = nodeHref && initialQuery === undefined ? itemSetSessions.getCursor(nodeHref) : undefined
+
+  const [items, setItems] = useState<StacNode[]>(restored?.items ?? [])
   const [loadingMore, setLoadingMore] = useState(false)
-  const [matched, setMatched] = useState<number | undefined>(undefined)
-  const [error, setError] = useState<string | undefined>(undefined)
-  const [appliedQuery, setAppliedQuery] = useState<CursorQuery>(initialQuery ?? EMPTY_QUERY)
+  const [matched, setMatched] = useState<number | undefined>(restored?.matched)
+  const [error, setError] = useState<string | undefined>(restored?.error)
+  const [appliedQuery, setAppliedQuery] = useState<CursorQuery>(initialQuery ?? restored?.appliedQuery ?? EMPTY_QUERY)
   // A restored `initialQuery` (from a shareable URL) counts as "already
   // searched" — it's replaying a real search someone actually ran, not
   // browsing the default unfiltered order.
-  const [hasSearched, setHasSearched] = useState(initialQuery !== undefined)
+  const [hasSearched, setHasSearched] = useState(initialQuery !== undefined || (restored?.hasSearched ?? false))
 
   const generationRef = useRef(0)
-  const nextRef = useRef<NextLink | undefined>(undefined)
-  const exhaustedRef = useRef(false)
-  const appliedQueryRef = useRef<CursorQuery>(initialQuery ?? EMPTY_QUERY)
+  const nextRef = useRef<NextLink | undefined>(restored?.next)
+  const exhaustedRef = useRef(restored?.exhausted ?? false)
+  const appliedQueryRef = useRef<CursorQuery>(initialQuery ?? restored?.appliedQuery ?? EMPTY_QUERY)
   // Synchronous companion to `loadingMore` state — closes the React
   // StrictMode double-invoke window the same way the old shared hook's
   // `loadingRef` did (see docs/DESIGN.md, `useItemSet`'s original comment).
@@ -110,6 +118,23 @@ export function useCursorQueriedItemSet(
   // the *default*, nothing-restored case must NOT auto-fetch at all
   // (search-first — see `CursorItemSetState.status`'s `idle` doc above).
   useEffect(() => {
+    const session = nodeHref && initialQuery === undefined ? itemSetSessions.getCursor(nodeHref) : undefined
+    if (session) {
+      // The state initializers above already hold this for a fresh mount;
+      // this branch is for a node change on a mounted instance.
+      generationRef.current += 1
+      loadingRef.current = false
+      nextRef.current = session.next
+      exhaustedRef.current = session.exhausted
+      appliedQueryRef.current = session.appliedQuery
+      setItems(session.items)
+      setLoadingMore(false)
+      setMatched(session.matched)
+      setError(session.error)
+      setAppliedQuery(session.appliedQuery)
+      setHasSearched(session.hasSearched)
+      return
+    }
     resetForNewQueryOrNode()
     appliedQueryRef.current = initialQuery ?? EMPTY_QUERY
     setAppliedQuery(initialQuery ?? EMPTY_QUERY)
@@ -117,6 +142,22 @@ export function useCursorQueriedItemSet(
     if (initialQuery !== undefined) void loadMore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeHref])
+
+  // Every change of the durable state goes to the session. The refs are
+  // read here rather than listed, because they are updated before the
+  // state that depends on them (`nextRef`/`exhaustedRef` before `setItems`).
+  useEffect(() => {
+    if (!nodeHref) return
+    itemSetSessions.setCursor(nodeHref, {
+      items,
+      next: nextRef.current,
+      exhausted: exhaustedRef.current,
+      matched,
+      appliedQuery,
+      hasSearched,
+      error,
+    })
+  }, [nodeHref, items, matched, appliedQuery, hasSearched, error])
 
   async function fetchOneCursorPage(cursorNode: StacNode & { items: { kind: 'cursor' } }, generation: number) {
     // The root's `/search` scoped to this Collection when the API has one,

@@ -7,10 +7,24 @@
  *  var(--color-border)' }}>` — the bar itself isn't part of this component
  *  since its own margin/spacing needs already differ slightly between the
  *  two call sites. */
-export function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+export function TabButton({
+  label,
+  active,
+  onClick,
+  title,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+  /** A one-line explanation on hover, for tabs whose label alone is a name. */
+  title?: string
+}) {
   return (
     <button
       onClick={onClick}
+      title={title}
+      role="tab"
+      aria-selected={active}
       style={{
         padding: '6px 12px',
         fontSize: 12,

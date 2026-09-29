@@ -22,7 +22,8 @@ import { loader } from '../stac/loaderInstance'
 // order Inspector's own Temporal/Spatial fields already use — lets you
 // cross-reference one against the other without a tab switch, rather
 // than forcing a choice between them.
-export type ItemSetView = 'list' | 'time-space'
+import type { ItemSetView } from '../store/itemSetSessions'
+export type { ItemSetView }
 
 // The combined view's own internal split — timeline capped at this height
 // (its own scroll if there are enough lanes to exceed it) so the map
@@ -233,7 +234,7 @@ export function useScrollSelectedIntoView(selectedHref: string | null | undefine
 
 /** Reset `showOnLenses` back to off on every (re)mount — this component
  *  only ever exists while `browsingHref` points at this exact node
- *  (StructureTree.tsx's `showItemSetBox`), fully unmounting the moment
+ *  (the Items window's content, keyed by the browsed Collection), fully unmounting the moment
  *  browsing moves elsewhere. Browsing through a Collection with no items
  *  never calls `setVisible` at all, which left a stale `showOnLenses: true`
  *  surviving a round trip back to the same Collection (confirmed directly
