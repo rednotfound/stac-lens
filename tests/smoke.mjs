@@ -145,6 +145,12 @@ check(
   'URL round-trips the search',
   (await page.evaluate(() => decodeURIComponent(location.hash))).endsWith('?bbox=-75.5,39.5,-73.5,41.5'),
 )
+check(
+  "tree: the window's page appears as Item leaves under the Collection; Landsat's page last seen stays, dimmed",
+  (await page.locator('[data-item-leaf][opacity="1"]').count()) === 5 &&
+    (await page.locator('[data-item-leaf][opacity="0.55"]').count()) === 5,
+  `current: ${await page.locator('[data-item-leaf][opacity="1"]').count()}, remembered: ${await page.locator('[data-item-leaf][opacity="0.55"]').count()}`,
+)
 check('Inspector flags the two-bbox extent as the spec does', (await text()).includes('exactly two spatial bboxes'))
 check(
   'the Inspector map draws both declared bboxes',

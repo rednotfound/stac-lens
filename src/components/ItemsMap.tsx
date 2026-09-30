@@ -18,8 +18,8 @@ const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyrigh
 // the way our own `style={{ fill: 'var(...)' }}` SVG elements do elsewhere
 // in this app, so the palette is duplicated here rather than referenced.
 const PALETTE = {
-  light: { item: '#144e63', selection: '#2563eb', textFaint: '#a2b4b9', collection: '#0a7b77' },
-  dark: { item: '#6fb3d2', selection: '#60a5fa', textFaint: '#546a6f', collection: '#0eb4ae' },
+  light: { item: '#4d8d34', selection: '#2563eb', textFaint: '#a2b4b9', collection: '#0a7b77' },
+  dark: { item: '#8cd472', selection: '#60a5fa', textFaint: '#546a6f', collection: '#0eb4ae' },
 }
 
 /** A declared bbox narrower than this on screen is also marked with a dot

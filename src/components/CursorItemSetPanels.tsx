@@ -81,7 +81,7 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
 
   useResetShowOnLenses(node.href)
   const pageItems = state.status === 'empty' ? [] : state.pageItems
-  usePublishVisible(node.href, pageItems)
+  usePublishVisible(node.href, pageItems, state.status === 'empty' ? 0 : state.pageIndex)
   // `undefined` while `idle` too, not just `empty` — nothing has actually
   // been searched yet, so there's nothing to persist into the shareable
   // URL (an idle `appliedQuery` is just `{}`, a placeholder, not a real

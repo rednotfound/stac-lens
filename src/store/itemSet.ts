@@ -11,7 +11,10 @@ interface ItemSetStoreState {
    *  one render before its own Item Set catches up. */
   forHref: string | null
   visibleHrefs: string[]
-  setVisible: (forHref: string, hrefs: string[]) => void
+  /** 0-based page the window is on, published with `visibleHrefs`, for
+   *  views that name the page ("+30 more on this page · page 2"). */
+  pageIndex: number
+  setVisible: (forHref: string, hrefs: string[], pageIndex?: number) => void
   /** Whether the currently-visible items are also being shown on Time/Space
    *  Lens — a plain feature toggle, *not* a "selection" of Item Set as its
    *  own object (deliberately no `aggregateSelected` field and no synthetic
@@ -91,6 +94,7 @@ export const useItemSetStore = create<ItemSetStoreState>()(
     (set, get) => ({
       forHref: null,
       visibleHrefs: [],
+      pageIndex: 0,
       showOnLenses: false,
       appliedQuery: undefined,
       pendingInitialQuery: null,
@@ -98,10 +102,11 @@ export const useItemSetStore = create<ItemSetStoreState>()(
       windowGeometry: null,
       setWindowOpen: (open) => set({ windowOpen: open }),
       setWindowGeometry: (g) => set({ windowGeometry: g }),
-      setVisible: (forHref, hrefs) =>
+      setVisible: (forHref, hrefs, pageIndex = 0) =>
         set((state) => ({
           forHref,
           visibleHrefs: hrefs,
+          pageIndex,
           // Switching to a *different* box (a new `forHref`) must not let a
           // stale `appliedQuery` from the abandoned one survive — otherwise
           // switching from a just-searched API Collection to a plain static

@@ -44,7 +44,17 @@
    * fills with a dark outline". */
   --color-node-catalog: #2f7a99;
   --color-node-collection: #0eb4ae;
-  --color-node-item: #144e63;
+  /* The Item is the object the whole tool is about and wears STAC's own
+   * green (the stac-utils / stacspec.org brand green, hue ≈ 138°),
+   * weighted like the Collection's teal in OKLCH (L .58 C .14 against the
+   * teal's .70/.12) so the three tree colors read as one family — sky,
+   * teal, green — differing in hue alone. The logo's dark blue was the
+   * dullest of the three beside the teal; brightened it collided with the
+   * selection blue and the primary buttons; a rose outside the STAC
+   * palette was rejected as off-brand (all reported). Not blue
+   * (selection, primary), not amber (warning). 4.1:1 on the light
+   * surface. */
+  --color-node-item: #4d8d34;
   /* Not a tree-node type (Assets are never tree nodes) — a fourth hue for
    * Inspector's own type iconography only, alongside the three above —
    * an explicit request that each level (Collection, Catalog, Item, Asset)
@@ -103,7 +113,7 @@
      * a same-hue tint for Item — see the light-theme note above. */
     --color-node-catalog: #c4e2ef;
     --color-node-collection: #0eb4ae;
-    --color-node-item: #6fb3d2;
+    --color-node-item: #8cd472;
     --color-node-asset: #d199c4;
     --color-node-warning: #f0a253;
     --color-selection: #60a5fa;

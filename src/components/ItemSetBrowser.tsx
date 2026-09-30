@@ -257,14 +257,15 @@ export function useResetShowOnLenses(nodeHref: string) {
 /** Publishes "what's actually in view here" for Inspector's own "common to
  *  the currently browsed set" annotation on Declared extensions/Property
  *  namespaces (DetailPanel.tsx's `browsedItems`). */
-export function usePublishVisible(nodeHref: string, items: StacNode[]) {
+export function usePublishVisible(nodeHref: string, items: StacNode[], pageIndex = 0) {
   const setVisible = useItemSetStore((s) => s.setVisible)
   useEffect(() => {
     setVisible(
       nodeHref,
       items.map((i) => i.href),
+      pageIndex,
     )
-  }, [nodeHref, items, setVisible])
+  }, [nodeHref, items, pageIndex, setVisible])
 }
 
 export const TabBar = ({ view, setView }: { view: ItemSetView; setView: (v: ItemSetView) => void }) => (
