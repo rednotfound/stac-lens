@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { hierarchy, tree, type HierarchyPointNode } from 'd3-hierarchy'
 import { select } from 'd3-selection'
 import { zoom, zoomIdentity, type D3ZoomEvent } from 'd3-zoom'
-import type { TreeDatum } from '../hooks/useStructureTree'
 import { useStructure } from '../hooks/useStructure'
 import { useSelectionStore } from '../store/selection'
 import { loader } from '../stac/loaderInstance'
 import { useItemSetStore } from '../store/itemSet'
+import { sessionPage } from '../store/itemSetSessions'
+import { ItemLeafView } from './tree/ItemLeafView'
+import { withItemLeaves, type ViewDatum } from './tree/itemLeaves'
 import { Spinner } from './Spinner'
 import { Legend } from './tree/Legend'
 import { NodeTooltip } from './tree/NodeTooltip'
@@ -50,8 +52,14 @@ export function StructureTree() {
   // may point at one Item within it, which is never a tree node.
   const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
   const windowOpen = useItemSetStore((s) => s.windowOpen)
+  const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
   const itemsOpenHref =
     windowOpen && browsingHref && browsingNode && hasDirectItems(browsingNode) ? browsingHref : undefined
+  // The Items window's page, to draw as leaves under the browsed
+  // Collection (and the page last seen under other browsed ones).
+  const windowForHref = useItemSetStore((s) => s.forHref)
+  const windowHrefs = useItemSetStore((s) => s.visibleHrefs)
+  const windowPageIndex = useItemSetStore((s) => s.pageIndex)
 
   const svgRef = useRef<SVGSVGElement>(null)
   // The zoom-transformed group. Every d3-drag in the tree uses it as its
@@ -75,7 +83,7 @@ export function StructureTree() {
     setDragOffsets(new Map())
   }
 
-  function effectiveXY(n: HierarchyPointNode<TreeDatum>): { x: number; y: number } {
+  function effectiveXY(n: HierarchyPointNode<ViewDatum>): { x: number; y: number } {
     const off = dragOffsets.get(n.data.href)
     return { x: n.x + (off?.x ?? 0), y: n.y + (off?.y ?? 0) }
   }
@@ -116,23 +124,40 @@ export function StructureTree() {
     }
   }, [])
 
-  const layout = useMemo(() => {
+  // The structure plus Item leaves: the window's page under the browsed
+  // Collection, ten at most, then a "+N more" leaf; the page last seen,
+  // dimmed, under any other Collection that has been browsed. The same
+  // reading of the shared state the outline and the icicle make.
+  const viewRoot = useMemo<ViewDatum | undefined>(() => {
     if (!root) return undefined
-    const h = hierarchy(root, (d) => d.children)
+    return withItemLeaves(root, {
+      browsingHref,
+      windowPage: {
+        forHref: windowForHref,
+        items: windowHrefs.map((h) => loader.get(h)).filter((n): n is NonNullable<typeof n> => !!n),
+        pageIndex: windowPageIndex,
+      },
+      rememberedPage: sessionPage,
+    })
+  }, [root, browsingHref, windowForHref, windowHrefs, windowPageIndex])
+
+  const layout = useMemo(() => {
+    if (!viewRoot) return undefined
+    const h = hierarchy(viewRoot, (d) => d.children)
     // Default separation. The box used to reserve row space around its node,
     // so opening a different Collection reflowed the whole tree and left a
     // gap where the previous box had been. The box is a floating overlay
     // now, outside the row layout, so opening one never moves anyone else.
-    tree<TreeDatum>().nodeSize([ROW_HEIGHT, LEVEL_WIDTH])(h)
+    tree<ViewDatum>().nodeSize([ROW_HEIGHT, LEVEL_WIDTH])(h)
     return h
-  }, [root])
+  }, [viewRoot])
 
-  const nodes = useMemo(() => (layout?.descendants() ?? []) as HierarchyPointNode<TreeDatum>[], [layout])
+  const nodes = useMemo(() => (layout?.descendants() ?? []) as HierarchyPointNode<ViewDatum>[], [layout])
   const links = useMemo(
     () =>
       (layout?.links() ?? []) as {
-        source: HierarchyPointNode<TreeDatum>
-        target: HierarchyPointNode<TreeDatum>
+        source: HierarchyPointNode<ViewDatum>
+        target: HierarchyPointNode<ViewDatum>
       }[],
     [layout],
   )
@@ -223,24 +248,53 @@ export function StructureTree() {
         style={{ display: 'block', fontFamily: 'var(--font-sans)', cursor: dragging ? 'grabbing' : 'grab' }}
       >
         <g ref={zoomGRef} transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.k})`}>
-          {links.map((link) => (
-            <path
-              key={link.target.data.href}
-              d={linkGenerator({ source: effectiveXY(link.source), target: effectiveXY(link.target) }) ?? undefined}
-              fill="none"
-              style={{ stroke: 'var(--color-border)' }}
-              strokeWidth={1.5}
-            />
-          ))}
+          {links.map((link) => {
+            const leaf = link.target.data.itemLeaf ?? link.target.data.moreItems
+            return (
+              <path
+                key={link.target.data.href}
+                d={linkGenerator({ source: effectiveXY(link.source), target: effectiveXY(link.target) }) ?? undefined}
+                fill="none"
+                style={{ stroke: 'var(--color-border)' }}
+                strokeWidth={leaf ? 1 : 1.5}
+                strokeDasharray={leaf ? '3,3' : undefined}
+                opacity={leaf && !leaf.current ? 0.55 : 1}
+              />
+            )
+          })}
           {nodes.map((n) => {
             const pos = effectiveXY(n)
+            if (n.data.itemLeaf || n.data.moreItems) {
+              return (
+                <ItemLeafView
+                  key={n.data.href}
+                  datum={n.data}
+                  x={pos.x}
+                  y={pos.y}
+                  selected={selectedHref === n.data.node.href}
+                  onSelectItem={(itemHref, hostHref, current) => {
+                    // Another Collection's remembered page: browse it first
+                    // so the selection store pins browsing to it.
+                    if (!current) select_(hostHref)
+                    select_(itemHref)
+                  }}
+                  onOpenWindow={(hostHref, current) => {
+                    if (!current) select_(hostHref)
+                    setWindowOpen(true)
+                  }}
+                  onHover={(info, clientX, clientY) =>
+                    info ? setTooltip({ ...info, x: clientX, y: clientY }) : setTooltip(null)
+                  }
+                />
+              )
+            }
             return (
               <TreeNodeView
                 key={n.data.href}
                 datum={n.data}
                 x={pos.x}
                 y={pos.y}
-                hasRenderedChildren={!!n.children}
+                hasRenderedChildren={!!n.children?.some((c) => !c.data.itemLeaf && !c.data.moreItems)}
                 isRoot={n.depth === 0}
                 loading={isLoading(n.data.href)}
                 selected={selectedHref === n.data.href}

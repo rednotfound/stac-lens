@@ -58,6 +58,7 @@ export function Legend() {
       >
         <Dot color="var(--color-node-catalog)" />
         <Dot color="var(--color-node-collection)" />
+        <Square color="var(--color-node-item)" />
       </button>
     )
   }
@@ -96,17 +97,23 @@ export function Legend() {
       </button>
       <LegendRow icon="Catalog" color="var(--color-node-catalog)" label="Catalog" />
       <LegendRow icon="Collection" color="var(--color-node-collection)" label="Collection" />
-      {/* Items and Assets are never tree nodes, but this is the one place
-       * all four type icons are taught together — the same glyphs the
-       * Inspector uses for its title and its asset rows. No dot swatch for
-       * these two: a dot would imply a tree-node color that doesn't exist. */}
-      <LegendRow icon="Item" color="var(--color-node-item)" label="Item (Detail Panel only)" showDot={false} />
-      <LegendRow icon="Asset" color="var(--color-node-asset)" label="Asset (Detail Panel only)" showDot={false} />
+      {/* All four type icons are taught together here — the same glyphs
+       * the Inspector uses for its title and its asset rows. The swatch
+       * beside each is the mark the tree itself draws: a dot for the two
+       * node kinds, the small square for an Item leaf. Assets never appear
+       * in the tree, so no swatch. */}
+      <LegendRow
+        icon="Item"
+        color="var(--color-node-item)"
+        label="Item — the Items window's page, ten as small leaves"
+        swatch="square"
+      />
+      <LegendRow icon="Asset" color="var(--color-node-asset)" label="Asset (Detail Panel only)" swatch="none" />
       <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid var(--color-border)' }}>
         <div>● filled — has something to open (children or items)</div>
         <div>○ hollow — already open, or genuinely empty</div>
         <div>┄ dashed ring — your selected Item is inside</div>
-        <div>"N items" label — browse via Detail Panel, not the tree</div>
+        <div>"N items" label — the rest are in the Items window; dimmed leaves = a page last seen</div>
         <div>blue "API" tag — items are live-queried, not a static list</div>
         <div>drag a label to rearrange; the Items window floats above every view</div>
       </div>
@@ -118,30 +125,26 @@ function Dot({ color }: { color: string }) {
   return <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
 }
 
+/** The Item leaf's mark, same 8px and corner radius as `ItemLeafView`. */
+function Square({ color }: { color: string }) {
+  return <span style={{ width: 8, height: 8, borderRadius: 1, background: color, display: 'inline-block' }} />
+}
+
 function LegendRow({
   icon,
   color,
   label,
-  showDot = true,
+  swatch = 'dot',
 }: {
   icon: StacObjectKind
   color: string
   label: string
-  showDot?: boolean
+  swatch?: 'dot' | 'square' | 'none'
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      {showDot && (
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: color,
-            display: 'inline-block',
-          }}
-        />
-      )}
+      {swatch === 'dot' && <Dot color={color} />}
+      {swatch === 'square' && <Square color={color} />}
       <TypeIcon type={icon} size={12} color={color} />
       {label}
     </div>

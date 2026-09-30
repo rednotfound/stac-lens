@@ -7237,3 +7237,91 @@ portaled to `body` because the window animates with a transform, which
 would re-anchor a fixed-position card to the window. Verified on a
 Landsat search: hovering a row shows the card with the Item's own
 thumbnail.
+
+## 113. The tree gets the Items window's page as leaves — a sketch, ten at most
+
+The outline and the icicle draw the Items window's page under the
+browsed Collection; the tree, the main view, did not — a Collection was
+still one node with an "N items" label. The user asked for the views to
+be level: the tree should show the Items too, as a sketch, with the work
+staying in the window.
+
+History mattered here. Items were tree leaves once and were removed
+(§21) for two reasons: two different paths to "find an Item" that
+disagreed, and a confirmed bug where selecting an Item re-triggered the
+ancestor auto-expansion. Neither holds now — every view draws one shared
+page, published by the window, and the tree's expansion state is
+Catalog/Collection-only and untouched by Items. What remained was the
+question of a wall: a page is 40 to 200 Items. Three drawings were put
+to the user — ten leaves plus a "+N more" leaf, the whole page as leaves,
+a one-row strip of squares — and the first was chosen: the phone
+outline's scale, the tree's own vocabulary, no wall.
+
+Built as a pure augmentation of the structure's datum tree
+(`withItemLeaves`): under the browsed Collection, the window's page as up
+to ten Item leaves (small Item-colored square, title, date) and one leaf
+"+30 more on this page · page 1 · Items window"; under any other browsed
+Collection, the page it last showed, dimmed, "as last seen". Items are
+appended after structural children and are not part of expansion (a
+collapsed Collection still shows its page). Clicking a leaf selects the
+Item — through its Collection first when it is a remembered page, so
+the window follows (the same rule as the outline and the icicle);
+clicking "+N more" opens the window. Links to Item leaves are thin and
+dashed. The window now publishes its page index with its page, so the
+leaf can say which page. `hasRenderedChildren` counts structural children
+only, so a Collection's glyph and label side do not change because its
+Items are drawn.
+
+Verified on Capella: SLC browsed — ten leaves and "+30 more on this page
+· page 1 · Items window"; GEO browsed next — GEO's ten full, SLC's ten
+dimmed; clicking a dimmed SLC leaf moves the window to SLC, selects the
+Item (tab title, ring on the leaf). Planetary Computer's Landsat after a
+search: the same. Pinned in the smoke suite (five leaves for the fixture
+page). README's "Items are never tree nodes" sentence rewritten.
+
+### The Item color: STAC's own green, weighted like the teal
+
+Seen with Item leaves in the tree, the user found the Item color the
+dullest of the three while the Item is the object the tool is about
+("既然 item 是最重要的对象…"). Four rounds:
+
+1. Keep §8's rule — the logo's dark square as the hue — and brighten it
+   (`#0f8fd9` / `#4fc1ff`). Rejected on sight: a vivid blue Item is the
+   same family as the selection ring, the primary Search button and the
+   selected label, so it gained no identity.
+2. Leave the blues: magenta (`#c4318f` / `#ff6fd0`), the one hue nothing
+   else used. Rejected as too far from everything — "差距又太大".
+3. Research, then choose by rule. Categorical colors that should read as
+   one family are picked in OKLCH at equal lightness and chroma, differing
+   in hue alone (Datawrapper's and Carbon's practice); a categorical set
+   excludes the semantic colors — the interactive blue, the warning amber
+   (Carbon). Okabe–Ito's colorblind-safe "reddish purple" has almost
+   exactly the Collection teal's OKLCH weight, and a rose at that weight
+   (`#bc598c` / `#fc9ac9`) was applied. Rejected the next morning on
+   brand grounds, and rightly: "从官方的…整个 STAC 的颜色架构和品牌塑造来
+   说，没有一个红色这个色系的东西，都是绿色的，只不过是在绿色里面变出变化
+   来" — STAC's palette is the logo's sky, teal and navy plus
+   stacspec.org's green; nothing warm. A rose would be this app's
+   invention.
+4. So the hue comes from STAC and the weight from rule 3: the stacspec.org
+   brand green (`#6cc24a`, hue ≈ 138°) at the teal's OKLCH weight —
+   `#4d8d34` light (4.1:1 on the surface), `#8cd472` dark. Fifty degrees
+   from the teal, far from the selection blue and the warning amber, and
+   the three tree colors now read as one family, sky → teal → green,
+   differing in hue alone.
+
+The rule of §8 now reads: Catalog and Collection wear the logo's outer
+and middle squares; the Item wears STAC's green, weighted like the teal.
+The map's duplicated palette moved with it.
+
+### The legend teaches the square
+
+The user's second point the same morning: if the tree draws an Item as a
+small square, the legend must show that square, and the collapsed legend
+pill — two dots for the two node kinds — must gain it too. Done: the
+Item row's swatch is the 8px square `ItemLeafView` draws (same corner
+radius), the pill is now ● ● ■, and the legend's earlier reasoning ("no
+dot swatch for Item: a dot would imply a tree-node color that doesn't
+exist") is retired, since an Item now does have a mark in the tree. The
+outline, icicle, Items window and Inspector keep the type icon for
+Items: those rows have the room for it, the tree does not.
