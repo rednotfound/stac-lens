@@ -87,11 +87,12 @@ STAC Lens reads STAC 1.0 and 1.1 static catalogs and STAC APIs, and follows the 
 | Children extension | `rel:children` → `/children`, preferred over one fetch per `child` link when a server offers it |
 | STAC 1.1 | common `bands` / `data_type` (with `raster:bands` fallback), Link `method`/`body`, deprecated `license` values flagged in the Inspector |
 | Spatial extents | every declared `extent.spatial.bbox` drawn in the Collection's hue (not only the first); a sub-extent too small to see at the current zoom is marked with a dot; the spec's overall-extent rule checked and its two-bbox case flagged; malformed bboxes dropped |
-| Previews | a `thumbnail` or `overview` asset with a browser image type, or a `rel: preview` link with one, shown in the hover card (tree, outline, icicle, the Items window's list) and in the Inspector |
+| Previews | a `thumbnail` or `overview` asset with a browser image type, or a `rel: preview` link with one, shown in the hover card (tree, outline, icicle, the Items window's list) and in the Inspector, fetched through asset access (signed when the source requires it) |
+| Asset access | an asset's declared `href` is kept as STAC states it; when a source's storage refuses direct requests, an access method obtains a usable link only when one is needed (opening an asset, showing its preview) and the Inspector shows it beside the declared one with its expiry. First method: Planetary Computer's public SAS signing (`/api/sas/v1/sign`); everything else is direct and unchanged |
 | Solar System extension | `ssys:targets` / `ssys:target_class` read on Catalogs, Collections and Items and resolved up the parent chain; a non-Earth body's extents are drawn on a plain lon/lat graticule with the body named, never on Earth tiles (Rosetta's comet 67P, Cassini's Titan) |
 | Real-world behavior | verified against live servers — Earth Search, Microsoft Planetary Computer, Copernicus Data Space, NASA CMR and others — and worked around only where a server contradicts the spec (documented in `docs/DESIGN.md`) |
 
-Not yet: CQL2 filtering and free-text search, arbitrary-field sort, `overview`/`visual` asset rendering, authenticated APIs, and in-browser COG display. The current list is kept in the last section of `docs/DESIGN.md`.
+Not yet: CQL2 filtering and free-text search, arbitrary-field sort, `overview`/`visual` asset rendering, authenticated APIs, the Authentication extension's `auth:schemes`, and in-browser COG display. The current list is kept in the last section of `docs/DESIGN.md`.
 
 What "health" means here is not a score but a list of rules, each cited to the STAC spec, its best-practices document, the community linters (`stac-check`, `stac-api-validator`) or a verified observation against a live server, and tiered as *invalid* / *warning* / *behavior* / *observation*. The full list, with what is built and what isn't, is [`docs/HEALTH-RULES.md`](docs/HEALTH-RULES.md).
 
@@ -155,6 +156,8 @@ src/
     conformance.ts   a node's governing API root's conformsTo (sort gating); resolveSearchTarget()
                      picks the root's GET /search?collections=<id> over the Collection's rel:items
     searchQueryUrl.ts encode/decode an applied search into the URL hash's ?query suffix
+    assetAccess.ts   declared asset href -> a usable one, lazily: the ordered access-method list, the cache
+    access/          one file per access method; planetaryComputer.ts = PC's SAS signing (/api/sas/v1/sign)
   data/
     catalogs.json    the landing page's known-catalog list — data with rules (docs/CATALOGS.md)
     knownCatalogs.ts typed accessor for it
@@ -183,14 +186,17 @@ src/
     LandingPage.tsx          hero field (search or open a URL) + faceted catalog browser
     StructureProvider.tsx    the one structure state every view renders
     views/                   the view switcher's other views: OutlineView is in components/, IcicleView + IcicleItems here,
-                             OverviewBar (loaded counts), StructureActions (Collapse / Expand all), explorerViews (names)
+                             OverviewBar (loaded counts), StructureActions (Collapse / Expand all), explorerViews (names),
+                             selectedItem (the selected Item drawn even when the window's page lacks it)
     StructureTree.tsx        the Tree view's canvas: d3 layout, pan/zoom, node offsets, auto-pan
     OutlineView.tsx          the structure as an indented document (the phone's only view; a desktop view too)
     ItemsWindow.tsx          the floating Items window: follows the browsed Collection, every view, drag/resize/collapse
     itemsWindowGeometry.ts   pure placement and clamping for it
-    tree/                    the tree's parts: TreeNodeView, NodeTooltip, Legend,
+    tree/                    the tree's parts: TreeNodeView, NodeTooltip, Legend, ItemLeafView + itemLeaves (Item leaves),
                              treeGeometry (spacing, links, the node vocabulary every view shares)
     DetailPanel.tsx          Inspector (Human/JSON), embeds TimeLens/SpaceLens
+    AssetList.tsx            the Inspector's asset list: one row per asset, opens in place to STAC href vs. access link
+    AccessImage.tsx          a preview <img> fetched through asset access, one element per src, loading placeholder
     TimeLens.tsx / SpaceLens.tsx      Inspector's inline temporal / spatial widgets
     ItemsTimeline.tsx / ItemsMap.tsx  the pure timeline and map renderers, shared everywhere
     ItemSetBrowser.tsx       shared Item Set pieces (rows, tabs, pager styles)

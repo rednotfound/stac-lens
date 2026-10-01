@@ -1,4 +1,4 @@
-import type { ResolvedAsset } from './types'
+import type { StacAsset } from './types'
 
 // The Asset Object spec's own text on the `thumbnail` role: it should be
 // "typically RGB/grayscale, low resolution, displayable in a web browser
@@ -14,7 +14,7 @@ const INLINE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'ima
  *  `overview` — asset whose media type is a browser image. `overview`
  *  assets are usually COGs, which is why the type check, not the role,
  *  decides; a PNG overview is as good as a thumbnail. */
-export function isInlinePreviewAsset(asset: ResolvedAsset): boolean {
+export function isInlinePreviewAsset(asset: StacAsset): boolean {
   const roles = asset.roles ?? []
   return (
     (roles.includes('thumbnail') || roles.includes('overview')) && !!asset.type && INLINE_IMAGE_TYPES.has(asset.type)
@@ -30,7 +30,7 @@ export function isInlineImageType(type: string | undefined): boolean {
  *  image, then a `rel: preview` link with an image type (the link-level
  *  convention STAC Browser also honors). Nothing else — an asset that
  *  merely *looks* like a picture by name is not loaded on speculation. */
-export function previewImageHref(node: { assets: ResolvedAsset[]; previewHref?: string }): string | undefined {
+export function previewImageHref(node: { assets: StacAsset[]; previewHref?: string }): string | undefined {
   const thumb = node.assets.find((a) => a.roles?.includes('thumbnail') && isInlineImageType(a.type))
   if (thumb) return thumb.href
   const overview = node.assets.find((a) => a.roles?.includes('overview') && isInlineImageType(a.type))

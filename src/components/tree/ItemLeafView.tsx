@@ -2,6 +2,7 @@ import type { HoverInfo } from './treeGeometry'
 import { hoverInfoFor, LABEL_FONT_SIZE, truncateLabel } from './treeGeometry'
 import type { ViewDatum } from './itemLeaves'
 import { describeTemporal } from '../../stac/describe'
+import { OFF_PAGE_NOTE } from '../views/selectedItem'
 
 /** One Item leaf in the tree, or the trailing "+N more" leaf: a sketch of
  *  where the Items window's page sits in the structure. A small square in
@@ -61,6 +62,7 @@ export function ItemLeafView({
     <g
       transform={`translate(${y}, ${x})`}
       data-item-leaf={node.href}
+      data-off-page={leaf.offPage ? '' : undefined}
       opacity={leaf.current ? 1 : 0.55}
       onClick={() => onSelectItem(node.href, leaf.hostHref, leaf.current)}
       onMouseEnter={(e) => onHover(hoverInfoFor(node), e.clientX, e.clientY)}
@@ -80,10 +82,16 @@ export function ItemLeafView({
       >
         {truncateLabel(title)}
       </text>
-      {when && (
-        <text dx={11} dy={18} fontSize={10} style={{ fill: 'var(--color-text-faint)' }}>
-          {when}
+      {leaf.offPage ? (
+        <text dx={11} dy={18} fontSize={10} style={{ fill: 'var(--color-selection)' }}>
+          {OFF_PAGE_NOTE}
         </text>
+      ) : (
+        when && (
+          <text dx={11} dy={18} fontSize={10} style={{ fill: 'var(--color-text-faint)' }}>
+            {when}
+          </text>
+        )
       )}
     </g>
   )

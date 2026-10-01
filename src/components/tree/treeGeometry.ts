@@ -1,5 +1,6 @@
 import { linkHorizontal } from 'd3-shape'
 import { previewImageHref } from '../../stac/assets'
+import { accessSourceOf, type AccessSource } from '../../stac/assetAccess'
 import { classifyNodeShape, type StacNode } from '../../stac/types'
 import type { StacObjectKind } from '../TypeIcon'
 
@@ -76,6 +77,9 @@ export interface HoverInfo {
    *  both places agree on what counts. Planetary Computer's Collections
    *  carry exactly this. */
   thumbnailHref?: string
+  /** Where the thumbnail was found, so the card fetches it through asset
+   *  access (stac/assetAccess.ts) like every other consumer. */
+  thumbnailSource?: AccessSource
 }
 
 export interface TooltipState extends HoverInfo {
@@ -139,5 +143,6 @@ export function hoverInfoFor(node: StacNode): HoverInfo {
       : undefined,
     note: node.items.kind === 'cursor' ? 'API-searched — item count unknown until queried' : undefined,
     thumbnailHref: previewImageHref(node),
+    thumbnailSource: accessSourceOf(node),
   }
 }

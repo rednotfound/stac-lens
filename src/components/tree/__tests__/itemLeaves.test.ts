@@ -69,4 +69,40 @@ describe('withItemLeaves', () => {
     })
     expect(out.children![0].children).toBeUndefined()
   })
+
+  describe('the selected Item', () => {
+    const selected = item('sel')
+    const ctx = (pageItems: StacNode[]) => ({
+      browsingHref: 'a',
+      windowPage: { forHref: 'a', items: pageItems, pageIndex: 0 },
+      rememberedPage: () => undefined,
+      selectedItem: { node: selected, hostHref: 'a' },
+    })
+
+    it('is drawn first, marked, when the window has no page (an unsearched API Collection after a reload)', () => {
+      const a = withItemLeaves(root, ctx([])).children![0]
+      expect(a.children).toHaveLength(1)
+      expect(a.children![0].node).toBe(selected)
+      expect(a.children![0].itemLeaf).toEqual({ current: true, hostHref: 'a', offPage: true })
+    })
+
+    it('is not drawn twice when it is among the leaves', () => {
+      const a = withItemLeaves(root, ctx([item('a-0'), selected, item('a-2')])).children![0]
+      expect(a.children!.map((c) => c.node.href)).toEqual(['a-0', 'sel', 'a-2'])
+      expect(a.children!.some((c) => c.itemLeaf?.offPage)).toBe(false)
+    })
+
+    it('is drawn when it is on the page but past the leaves shown', () => {
+      const page = [...items(TREE_ITEM_LEAVES + 5, 'a-'), selected]
+      const a = withItemLeaves(root, ctx(page)).children![0]
+      expect(a.children![0].itemLeaf?.offPage).toBe(true)
+      expect(a.children).toHaveLength(1 + TREE_ITEM_LEAVES + 1)
+    })
+
+    it('is drawn only under its own Collection', () => {
+      const out = withItemLeaves(root, ctx([]))
+      expect(out.children![1].children).toBeUndefined()
+      expect(out.children![2].children).toBeUndefined()
+    })
+  })
 })

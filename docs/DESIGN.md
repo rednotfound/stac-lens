@@ -5436,6 +5436,19 @@ server omits — both loosened to match what matters, not the accident.
 
 ## 96. What's deliberately deferred (not forgotten)
 
+- **Asset access, next steps (§114).** The Authentication extension's
+  `signedUrl` scheme as a generic access method, once catalogs declare
+  it (Planetary Computer would then become data, not code); Planetary
+  Computer's `/token/{account}/{container}` in place of `/sign` when a
+  viewer needs many assets at once; an in-browser COG viewer consuming
+  `AssetAccess`.
+- **The Items window's empty search and page in the URL (§115).** A
+  link to an Item would then also restore the page it was found on —
+  never guaranteed, since API result order drifts.
+- **The phone Inspector's timeline still scrolls inside the sheet
+  (§114, "No scroll inside the Inspector").** Plotting a Collection's
+  first 10–100 Items can stack more than 240px of lanes; needs a lane
+  limit with a "+N more" lane, or no cap.
 - **Done (agreed 2026-09-16; steps 1–3 and 4 on 2026-09-17, see §95;
   steps 5–6 the same day, see §97): making the codebase contributor-ready
   before the repo goes public.** Kept here as the record of what was
@@ -7325,3 +7338,287 @@ dot swatch for Item: a dot would imply a tree-node color that doesn't
 exist") is retired, since an Item now does have a mark in the tree. The
 outline, icicle, Items window and Inspector keep the type icon for
 Items: those rows have the room for it, the tree does not.
+
+## 114. Asset access: the declared href is not always the one you can use
+
+A Planetary Computer user reported that its assets often cannot be
+reached from the `href` STAC declares. Measured on 2026-10-01: a Landsat
+C2 L2 band's declared href answers `409 Public access is not permitted on
+this storage account`; the Inspector's Open and Copy link handed out
+exactly that. Planetary Computer requires a short-lived SAS token, which
+its public Data Authentication API issues to anyone — no account, no key.
+
+The user's brief set the frame, and it is the decision: *we are not
+adding Planetary Computer support to the viewer; we are adding a generic
+asset-access mechanism, with Planetary Computer as its first non-trivial
+implementation* — and no framework for requirements that do not exist yet.
+
+### The model
+
+```text
+STAC metadata → StacAsset → asset access → AssetAccess → consumer
+```
+
+`StacAsset` (renamed from `ResolvedAsset`) describes the resource as the
+publisher declared it. In this codebase "resolved" means one thing — a
+relative path made absolute — and the old name would have collided with
+the new concept. `AssetAccess` describes how STAC Lens can reach that
+resource at this moment: `href`, `originalHref`, `method`, `expiresAt`,
+`failure`. For a public asset it is `originalHref → direct → same href`;
+for Planetary Computer, `originalHref → SAS signing → temporary href`.
+
+- **Where it sits.** Between a node's `assets` and the only three places
+  that consume an asset's URL: the Inspector's asset list (Copy, Open),
+  the Inspector preview, the hover card preview. Not in `graph.ts`:
+  parsing is synchronous, eager and per node, and the asset must not be
+  rewritten.
+- **Lazy.** Browsing, crawling, searching and opening the Inspector sign
+  nothing. A preview is signed when it is shown; an asset link when the
+  user opens it or asks for it. Direct access costs nothing and is
+  synchronous, so every catalog without an access method behaves exactly
+  as before (the Earth Search check: no access lines, plain links, no
+  signing requests).
+- **Methods.** A plain ordered list in `stac/assetAccess.ts`; the first
+  whose synchronous, network-free `appliesTo(href, source)` matches wins;
+  none is direct. No registry, no plugins.
+- **Cache.** Per href until a minute before expiry (the margin Planetary
+  Computer's own SDK uses); concurrent requests share one call; failures
+  are not cached.
+- **Failure.** `href` falls back to the declared one and `failure` says
+  why; the metadata, the tree and every view are untouched. One consumer
+  deliberately does not use the fallback: a preview whose access failed
+  shows "could not be loaded" instead of requesting the declared href,
+  which for a signed-only blob is a known 409.
+
+### Declared link and access link stay distinct (user's decision)
+
+Copying an asset's link keeps meaning *the URL described by STAC*. The
+access link is a separate value with its own copy button, its method
+and its expiry; Open is a consumer, so it goes through access (the tab
+opens inside the click, so no popup blocker, and is pointed at the
+access link when it arrives). How this is laid out is the subsection
+"The asset list" below.
+The user's reason: STAC Lens is meant to show how a catalog and its
+assets actually work, and the difference between the declared and the
+usable URL is part of that.
+
+### Planetary Computer, all of it in one file
+
+`stac/access/planetaryComputer.ts`. Facts measured from a browser origin
+on 2026-10-01:
+
+| | |
+|---|---|
+| `/api/sas/v1/sign` and `/token` | CORS `*`, preflight 204 |
+| signed blob | 206 to a Range request, CORS open — a future COG viewer can read it |
+| anonymous expiry (`msft:expiry`) | about 45 minutes |
+| a non-blob href | echoed back unchanged, `msft:expiry: null` |
+| the public thumbnail account | the signer rejects it |
+
+- **Detection.** The asset URL alone is not enough — any publisher can
+  host on Azure, and their URLs must never be sent to Microsoft's
+  signer. The method applies when the source is Planetary Computer (the
+  node's `rel: root` is its STAC API, which every PC Item and Collection
+  carries; else the node's own href) *and* the href passes the SDK's own
+  eligibility rules (`sign_url` in planetary_computer/sas.py): an Azure
+  blob URL, not `ai4edatasetspublicassets`, no `st`/`se`/`sp` already in
+  the query. Rejected as primary signals: a substring match on the asset
+  URL; the Collection's `msft:` fields and `ms-azure` storage scheme
+  (only on the Collection, not on Items).
+- **`/sign`, not `/token` (user's decision).** One call per href, a
+  finished URL plus its expiry, no URL composition, and the same shape
+  as the Authentication extension's example. The SDK's
+  `/token/{account}/{container}` (one call per container) is the
+  internal optimization to take when a viewer needs many assets at once;
+  callers would not change.
+- **Rate limits.** Anonymous requests are rate limited, the numbers are
+  not published. Lazy access plus the cache keeps it to one call per
+  asset actually opened or previewed per expiry window. No subscription
+  key: in a client-side app it would be a published secret.
+- **A preview it fixes.** USGS 3DEP Items' `thumbnail` is a PNG on
+  non-public storage, so their preview was a broken image (409); it is
+  now signed when shown and renders, in the Inspector and the hover card.
+  Planetary Computer's Collection thumbnails (public account) and
+  `rendered_preview` (its data API) need nothing and stay direct.
+
+### The standards-based path (not built)
+
+The STAC Authentication extension lets a catalog declare exactly this:
+`auth:schemes` with `type: "signedUrl"` (an `authorizationApi`, its
+parameters and the `responseField`), referenced from assets by
+`auth:refs`. Its README uses Planetary Computer's `/sign` as the
+example. Planetary Computer's catalogs do not declare it, none of the
+103 landing-page roots do, and STAC Browser does not support `signedUrl`
+yet — so it is not built now. When catalogs declare it, a generic
+`signedUrl` method goes in the same list ahead of the built-in one, and
+Planetary Computer becomes data — a scheme for a source that does not
+declare its own — instead of code. Requester-pays S3 or private
+catalogs would be methods that return a `failure` with the reason;
+a proxy would be a method that rewrites the href.
+
+### Checks
+
+Vitest: detection (PC source vs. another Azure publisher, a look-alike
+host), the SDK rules, `/sign` request and response, cache reuse and the
+expiry margin, failure not cached. Smoke (offline, signer mocked):
+browsing signs nothing; a 3DEP Item has two assets needing access and
+only its preview was signed; "Copy STAC href" is the declared href; "Get
+access link" shows the access link with method and expiry. Live, against
+Planetary Computer: the signed band reads 206 from the browser where the
+declared href reads 409; Open lands on the signed URL; a mocked 503
+leaves the metadata in place. The smoke run caught one bug on the way:
+an expiry far in the future overflowed `setTimeout` and marked the link
+expired at once.
+
+### No scroll inside the Inspector
+
+The user, testing this round: the asset list scrolled inside the
+Inspector, which scrolls itself — "外面有滚动，里面还有滚动，这个就让人绝望了".
+It broke the house rule from the landing page's sidebar (§100: never nest
+a scroll region inside a scrolling page; truncate and disclose instead),
+and two more boxes did the same. Fixed:
+
+- **Assets** grow with the page (first with a "Show all N" disclosure
+  past eight; then, at the user's request, all of them from the start —
+  see "The asset list").
+- **JSON** has no scroll box: long lines wrap (`pre-wrap`, break
+  anywhere), and the Inspector's own scroll is the only one.
+- **Temporal** keeps its 240px cap for now. On desktop it never reaches
+  it (a node's own extent, or one Item: under 100px); on a phone, where
+  the Collection's first 10–100 Items are plotted, overlapping intervals
+  stack one 20px lane each and can pass it. Removing the cap there needs
+  its own decision (a lane limit with a "+N more" lane, or no cap), so
+  it is listed in §96.
+
+Verified on Earth Search Sentinel-2 (38 assets) and Planetary Computer
+Landsat (16): no element inside the Inspector scrolls vertically, with
+the list collapsed or every row open, and none in the JSON tab.
+
+### The asset list
+
+The first version stacked a bordered card per asset, a second line under
+each ("Needs Planetary Computer signing to open") and a button on that
+line — "非常不整体". The user wanted a list, everything shown at once,
+and asked for prior art first:
+
+- **STAC Browser** — an accordion: one header line per asset (title,
+  role and format badges), its actions inside when opened; an asset that
+  needs authorization trades its Open for a lock button.
+- **AWS S3 console** — the closest precedent for declared vs. access: an
+  object shows its permanent Object URL and S3 URI side by side; a
+  time-limited presigned URL is a separate action with its expiry.
+- **Carbon / Primer list and table rows** — frequent actions at the end
+  of the row, secondary ones behind a menu, never hover-only (a touch
+  screen has no hover).
+
+Three options were drawn; the user chose the compact list with rows that
+open in place (over a table with an Access column, and over single rows
+with a two-item Copy menu). `components/AssetList.tsx`:
+
+- One bordered list, one line per asset, every asset shown; rows divided
+  by hairlines. A line: chevron, Asset icon, title, short format and
+  facts (COG · 30m · uint16), then — at the end, always visible — a key
+  when the asset needs an access method (faint; brand teal once a valid
+  access link is held; amber after a failure), Copy (the STAC href) and
+  Open.
+- The note "14 of 16 need Planetary Computer signing to open" is said
+  once, above the list, not on every row.
+- The title area is the row's toggle (a real button with
+  `aria-expanded`); the rest of the row toggles too for a mouse, except
+  on its own controls — DOM containment, not `stopPropagation`.
+- Opened, a row shows label/value pairs: STAC href (whole, wrapped, its
+  own copy), Access (needs → Get access link; pending; method · valid
+  until 23:39 with the link, clamped to three lines, and its own copy;
+  expired → Get a new one; failed → the server's words and Retry), Roles,
+  Media type (in full), Key (when a title hides it), Description. A
+  catalog with no access method shows no key and no Access row.
+- A failed copy opens the row and puts a selected field under the value.
+- Glyphs are hand-drawn SVG (copy, open, key, chevron), no icon library.
+
+Checked on Planetary Computer Landsat (16 assets, 14 needing signing; no
+signing request until asked; copy and open never toggle the row; Enter
+on a focused title does) and Earth Search Sentinel-2 (38 assets: no key,
+no note, plain links), light and dark, with nothing inside the Inspector
+scrolling on its own.
+
+### A preview never shows the previous Item
+
+Reported: after selecting another Item, the Inspector kept showing the
+last Item's thumbnail until the new one arrived. Cause: React reused the
+same `<img>` and only changed its `src`, and a browser keeps painting the
+old picture until the new one has decoded. `AccessImage` now mounts one
+element per src (keyed by it), hides it until `load`, and shows a
+placeholder of the picture's footprint meanwhile ("Loading preview…",
+with the spinner) — also while a signed preview is still being signed.
+If the picture fails, the Inspector says "The preview image could not be
+loaded."; the hover card shows nothing. Checked with every preview
+delayed by 2 s: 150 ms after selecting the next Item the placeholder is
+up and no picture is visible; then the new Item's picture appears.
+
+## 115. A selected Item is always drawn
+
+Reported: opening an Item by its URL (or reloading on one) showed it in
+the Inspector but nowhere in the Tree. The tree draws Items only as the
+Items window's page, and after a reload an API Collection's window is
+unsearched (search-first, §79) — its page is empty. The URL keeps an
+applied search's conditions but not an empty search, and never the page
+number; API result order also drifts as data arrives. So no amount of
+URL state guarantees the Item is on the page.
+
+The rule instead: a selection must show exactly that object (the
+selection-scoping rule), so every view draws the selected Item under its
+Collection whenever the Items it draws there do not include it, marked
+"selected · not on the Items window's page". `views/selectedItem.ts`
+decides it — the selection is an Item, its Collection is the one
+browsed, and it is that Item's own parent (browsing can lag behind a
+selection made elsewhere, so the parent is checked, not assumed) — and
+the tree's leaf builder tests it against the leaves it actually draws.
+
+- **Tree** — a leaf first among the Item leaves, in the selection color;
+  also when the Item is on the page but past the ten leaves drawn. The
+  pan-to-selection targets this leaf (with room for its label) instead of
+  only its Collection.
+- **Outline** — a row first among the Collection's rows (desktop and
+  phone); a Collection's rows now open by default when the selection is
+  inside it, not only when the Collection itself is selected.
+- **Icicle** — the first cell of the Collection's Items row, outlined as
+  selected, its title saying why it is there.
+- When the Item is on the drawn page, nothing extra is drawn (no
+  duplicate). Checked live on the reported gNATSGO Item in all three
+  views and on a phone (whose first ten rows held it — so no mark), and
+  offline in the smoke suite.
+
+Not done: putting "searched with no conditions" and the page number into
+the URL, so that a shared link also restores the window's page (§96).
+
+### Review before the pull request
+
+An independent read of the whole change (§114–§115) found nothing
+severe and these, all fixed:
+
+- **An Item drawn under the wrong Collection.** The off-page check
+  trusted `browsingHref`, which keeps the Collection already browsed when
+  an Item is selected; an Item selected from elsewhere (a future map or
+  link entry point) would have been drawn under the wrong parent. It now
+  also requires the Item's own `parentHref` to be that Collection.
+- **A late failure removing a newer cache entry.** A failed signing
+  request deleted the cache entry for its href even when a newer request
+  had replaced it; it now deletes only its own entry (unit test).
+- **Accessibility.** Every asset row's buttons had the same names; they
+  now carry the asset's title ("Copy STAC href of COG data", "Open COG
+  data"). The key glyph's state was color only; it now has a spoken
+  label for each state.
+- **Docs out of step with the code** (this file and ARCHITECTURE):
+  corrected.
+- **Tests added**: `selectedItemUnder`/`selectedItemOffPage` unit tests;
+  the smoke suite finds the asset row by title instead of position and
+  checks the off-page Item in the outline and the icicle as well as the
+  tree.
+
+Left as is, on purpose: two callers meeting the same stale cache entry
+may both refetch (one extra signing call; documented in the code); a
+failed copy keeps its "Copy failed" label and the field to copy from
+until the next copy; turning the window's page away from a selected
+Item makes it an off-page leaf, which pans the tree only if that leaf is
+off-screen.
+

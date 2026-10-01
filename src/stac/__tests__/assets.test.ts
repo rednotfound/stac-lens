@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { isInlinePreviewAsset, previewImageHref } from '../assets'
-import type { ResolvedAsset } from '../types'
+import type { StacAsset } from '../types'
 
-const asset = (key: string, type: string | undefined, roles: string[]): ResolvedAsset => ({
+const asset = (key: string, type: string | undefined, roles: string[]): StacAsset => ({
   key,
   href: `https://x/${key}`,
   type,
