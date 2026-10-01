@@ -64,6 +64,13 @@ const handleRoute = async (route) => {
     if (path === '/' || path === '') return reply('root.json')
     if (path.startsWith('/collections?')) return reply('collections.json')
     if (path === '/collections/3dep-lidar-returns') return reply('collection-3dep.json')
+    // One Item by its own URL: the feature from the search fixture.
+    if (path.startsWith('/collections/3dep-lidar-returns/items/')) {
+      const id = decodeURIComponent(path.split('/').pop())
+      const feature = JSON.parse(fixture('search-3dep-nj.json')).features.find((f) => f.id === id)
+      if (feature)
+        return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(feature) })
+    }
     if (path.startsWith('/search?')) {
       const q = new URL(url).searchParams
       if (!q.get('collections')) return reply('search-422.txt', 'text/plain', 422)
@@ -292,6 +299,42 @@ await page.waitForFunction(
     (await page.locator('[data-access-href]').first().textContent()) === `${declared}?st=a&se=b&sp=rl&sig=fixture` &&
       /Planetary Computer signing · valid until/.test(await page.locator('[data-asset-access="ready"]').textContent()),
   )
+}
+
+// 3d. An Item opened by its own URL — a reload, a shared link. The API
+// Collection's window starts unsearched, so its page is empty; the tree
+// still draws the selected Item under its Collection, marked off the page.
+{
+  const fresh = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
+  await fresh.route('**/*', handleRoute)
+  const id = 'NJ_South_Jersey_FEMA_2018-returns-5m-2-3'
+  await fresh.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns/items/${id}`)
+  await fresh.waitForSelector('[data-item-leaf][data-off-page]', { timeout: 15000 }).catch(() => {})
+  const leaf = fresh.locator('[data-item-leaf][data-off-page]')
+  check(
+    'an Item opened by its URL is drawn in the tree under its Collection, marked off the page',
+    (await leaf.count()) === 1 &&
+      (await leaf.getAttribute('data-item-leaf')).endsWith(`/items/${id}`) &&
+      /not on the Items window's page/.test(await leaf.textContent()),
+  )
+  await fresh.getByRole('tab', { name: 'Outline' }).click()
+  await fresh.waitForSelector('[role="treeitem"][data-off-page]', { timeout: 5000 }).catch(() => {})
+  const outlineRow = fresh.locator('[role="treeitem"][data-off-page]')
+  await fresh.getByRole('tab', { name: 'Icicle' }).click()
+  await fresh.waitForSelector('g[data-item-href][data-off-page]', { timeout: 5000 }).catch(() => {})
+  check(
+    '…and in the outline and the icicle too',
+    (await fresh.locator('g[data-item-href][data-off-page]').count()) === 1 &&
+      (await fresh.locator('g[data-item-href][data-off-page]').getAttribute('data-item-href')).endsWith(`/items/${id}`),
+    `icicle cells: ${await fresh.locator('g[data-item-href][data-off-page]').count()}`,
+  )
+  await fresh.getByRole('tab', { name: 'Outline' }).click()
+  await fresh.waitForSelector('[role="treeitem"][data-off-page]', { timeout: 5000 }).catch(() => {})
+  check(
+    'the outline opens the Collection the selection is in and shows the Item as its first row',
+    (await outlineRow.count()) === 1 && (await outlineRow.textContent()).includes(id),
+  )
+  await fresh.close()
 }
 
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result

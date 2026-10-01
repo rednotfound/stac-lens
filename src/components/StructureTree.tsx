@@ -9,6 +9,7 @@ import { useItemSetStore } from '../store/itemSet'
 import { sessionPage } from '../store/itemSetSessions'
 import { ItemLeafView } from './tree/ItemLeafView'
 import { withItemLeaves, type ViewDatum } from './tree/itemLeaves'
+import { selectedItemUnder } from './views/selectedItem'
 import { Spinner } from './Spinner'
 import { Legend } from './tree/Legend'
 import { NodeTooltip } from './tree/NodeTooltip'
@@ -128,6 +129,9 @@ export function StructureTree() {
   // Collection, ten at most, then a "+N more" leaf; the page last seen,
   // dimmed, under any other Collection that has been browsed. The same
   // reading of the shared state the outline and the icicle make.
+  // The selected Item, when it belongs under the browsed Collection: drawn
+  // as a leaf there even when the window's page does not hold it.
+  const selectedItemNode = browsingHref ? selectedItemUnder(selectedHref, browsingHref, browsingHref) : undefined
   const viewRoot = useMemo<ViewDatum | undefined>(() => {
     if (!root) return undefined
     return withItemLeaves(root, {
@@ -138,8 +142,9 @@ export function StructureTree() {
         pageIndex: windowPageIndex,
       },
       rememberedPage: sessionPage,
+      selectedItem: selectedItemNode && browsingHref ? { node: selectedItemNode, hostHref: browsingHref } : undefined,
     })
-  }, [root, browsingHref, windowForHref, windowHrefs, windowPageIndex])
+  }, [root, browsingHref, windowForHref, windowHrefs, windowPageIndex, selectedItemNode])
 
   const layout = useMemo(() => {
     if (!viewRoot) return undefined
@@ -172,7 +177,13 @@ export function StructureTree() {
   // through the current transform and checked against the viewport first.
   useEffect(() => {
     if (!selectedHref) return
-    const panHref = browsingHref ?? selectedHref
+    // A selected Item drawn off the window's page (a reload, a link) is the
+    // thing to bring into view, label and all — not just its Collection.
+    // Turning the window's page away from a selected Item also makes it an
+    // off-page leaf; that pans only if the leaf is off-screen, and it sits
+    // first under its Collection, so it rarely is.
+    const offPageLeaf = nodes.find((n) => n.data.itemLeaf?.offPage)
+    const panHref = offPageLeaf?.data.href ?? browsingHref ?? selectedHref
     if (panHref === lastCenteredRef.current) return
     const target = nodes.find((n) => n.data.href === panHref)
     const svgSel = svgSelRef.current
@@ -187,7 +198,8 @@ export function StructureTree() {
     const VISIBILITY_MARGIN = 100
 
     const leftMargin = VISIBILITY_MARGIN
-    const rightMargin = VISIBILITY_MARGIN
+    // A leaf's label runs to the right of its mark.
+    const rightMargin = offPageLeaf ? VISIBILITY_MARGIN + 220 : VISIBILITY_MARGIN
 
     const alreadyVisible =
       currentScreenX >= leftMargin &&

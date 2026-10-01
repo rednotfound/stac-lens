@@ -15,7 +15,7 @@ export interface ViewDatum extends TreeDatum {
   children?: ViewDatum[]
   /** This leaf is one Item of a page; `current` when that page is the
    *  one the Items window shows, false for a page last seen. */
-  itemLeaf?: { current: boolean; hostHref: string }
+  itemLeaf?: { current: boolean; hostHref: string; offPage?: boolean }
   /** The trailing leaf: how much of the page is not drawn. */
   moreItems?: { current: boolean; hostHref: string; remaining: number; pageIndex: number; pageTotal: number }
 }
@@ -27,6 +27,9 @@ export interface ItemLeafContext {
   windowPage: { forHref: string | null; items: StacNode[]; pageIndex: number }
   /** The page a Collection last showed, from its session. */
   rememberedPage: (node: StacNode) => { items: StacNode[]; pageIndex: number } | undefined
+  /** The selected Item, if it is one, and the Collection it is browsed
+   *  under; drawn as a leaf there whenever the leaves do not include it. */
+  selectedItem?: { node: StacNode; hostHref: string }
 }
 
 /** The structure's datum tree with Item leaves added under every
@@ -46,14 +49,23 @@ export function withItemLeaves(root: TreeDatum, ctx: ItemLeafContext): ViewDatum
         ? { items: ctx.windowPage.items, pageIndex: ctx.windowPage.pageIndex }
         : undefined
       : ctx.rememberedPage(datum.node)
-    if (!page || page.items.length === 0) return { ...datum, children }
-    const shown = page.items.slice(0, TREE_ITEM_LEAVES)
+    const shown = page ? page.items.slice(0, TREE_ITEM_LEAVES) : []
     const leaves: ViewDatum[] = shown.map((item) => ({
       href: `${datum.href}#item:${item.href}`,
       node: item,
       itemLeaf: { current, hostHref: datum.href },
     }))
-    if (page.items.length > shown.length) {
+    // The selected Item, when none of the leaves is it (a reload, a link,
+    // a search that moved on, a page turned): first, marked off the page.
+    const sel = ctx.selectedItem
+    if (sel && sel.hostHref === datum.href && !shown.some((i) => i.href === sel.node.href)) {
+      leaves.unshift({
+        href: `${datum.href}#item:${sel.node.href}`,
+        node: sel.node,
+        itemLeaf: { current: true, hostHref: datum.href, offPage: true },
+      })
+    }
+    if (page && page.items.length > shown.length) {
       leaves.push({
         href: `${datum.href}#more-items`,
         node: datum.node,
@@ -66,6 +78,7 @@ export function withItemLeaves(root: TreeDatum, ctx: ItemLeafContext): ViewDatum
         },
       })
     }
+    if (leaves.length === 0) return { ...datum, children }
     return { ...datum, children: [...(children ?? []), ...leaves] }
   }
   return visit(root)

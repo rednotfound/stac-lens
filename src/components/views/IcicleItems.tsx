@@ -2,6 +2,7 @@ import { loader } from '../../stac/loaderInstance'
 import type { StacNode } from '../../stac/types'
 import { useItemSetStore } from '../../store/itemSet'
 import { sessionPage } from '../../store/itemSetSessions'
+import { OFF_PAGE_NOTE, selectedItemOffPage } from './selectedItem'
 import { estimateTextWidth, hoverInfoFor, knownItemCount, type HoverInfo } from '../tree/treeGeometry'
 
 /** The Item row under a browsed Collection: for the Items window's
@@ -45,6 +46,10 @@ export function IcicleItems({
       ? visibleHrefs.map((h) => loader.get(h)).filter((n): n is StacNode => !!n)
       : []
     : (remembered?.items ?? [])
+  // The selected Item when the page does not hold it: the first cell,
+  // marked (outlined as selected, its title says why it is there).
+  const offPage = selectedItemOffPage(selectedHref, node.href, current ? node.href : null, items)
+  const drawn = offPage ? [offPage, ...items] : items
   const total = knownItemCount(node)
   const tailText = !current
     ? `Page ${(remembered?.pageIndex ?? 0) + 1} as last seen · select to browse`
@@ -64,8 +69,8 @@ export function IcicleItems({
     if (!current) onSelect(node.href)
     onSelect(href)
   }
-  const tailWidth = Math.min(Math.max(estimateTextWidth(tailText, 10.5) + 14, 60), items.length ? width * 0.35 : width)
-  const cellWidth = items.length ? Math.max(1, (width - tailWidth) / items.length) : 0
+  const tailWidth = Math.min(Math.max(estimateTextWidth(tailText, 10.5) + 14, 60), drawn.length ? width * 0.35 : width)
+  const cellWidth = drawn.length ? Math.max(1, (width - tailWidth) / drawn.length) : 0
 
   return (
     <g
@@ -73,7 +78,7 @@ export function IcicleItems({
       opacity={current ? 1 : 0.5}
       data-items-row={current ? 'current' : 'remembered'}
     >
-      {items.map((item, i) => {
+      {drawn.map((item, i) => {
         const cx = i * cellWidth
         const w = Math.max(1, cellWidth - 1)
         const selected = selectedHref === item.href
@@ -82,6 +87,7 @@ export function IcicleItems({
           <g
             key={item.href}
             data-item-href={item.href}
+            data-off-page={item === offPage ? '' : undefined}
             transform={`translate(${cx}, 0)`}
             onClick={() => selectItem(item.href)}
             onMouseMove={(e) => onHover(hoverInfoFor(item), e.clientX, e.clientY)}
@@ -97,6 +103,7 @@ export function IcicleItems({
               stroke={selected ? 'var(--color-selection)' : 'var(--color-surface)'}
               strokeWidth={selected ? 2 : 1}
             />
+            {item === offPage && <title>{`${item.title ?? item.id} — ${OFF_PAGE_NOTE}`}</title>}
             {text && (
               <text x={4} y={height / 2 + 4} fontSize={10.5} style={{ fill: 'var(--color-text)' }}>
                 {text}

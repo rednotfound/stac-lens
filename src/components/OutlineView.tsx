@@ -10,6 +10,7 @@ import { describeTemporal } from '../stac/describe'
 import type { StacNode } from '../stac/types'
 import { useSelectionStore } from '../store/selection'
 import { Spinner } from './Spinner'
+import { OFF_PAGE_NOTE, selectedItemOffPage } from './views/selectedItem'
 import { TypeIcon } from './TypeIcon'
 import { NodeTooltip } from './tree/NodeTooltip'
 import { hasDirectItems, hoverInfoFor, type HoverInfo, type TooltipState } from './tree/treeGeometry'
@@ -117,7 +118,10 @@ function OutlineRow({
   // "open a Collection, see its Items" in one gesture. `manual` records a
   // choice made by hand; until then the default follows the selection.
   const [manual, setManual] = useState<boolean | null>(null)
-  const itemsOpen = manual ?? selected
+  // Open by default also when the selection is inside this Collection (an
+  // Item opened from a link or after a reload): the selected Item must be
+  // visible, and it is drawn among these rows.
+  const itemsOpen = manual ?? (selected || browsingHref === datum.href)
   const openable = canExpand || hasItems
   const isOpen = (canExpand && expanded) || (hasItems && itemsOpen)
   function onChevron() {
@@ -314,12 +318,14 @@ function WindowPageRows({
   const visibleHrefs = useItemSetStore((s) => s.visibleHrefs)
   const windowOpen = useItemSetStore((s) => s.windowOpen)
   const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
+  const browsingHref = useSelectionStore((s) => s.browsingHref)
   const pad = 8 + depth * 18
   const current = forHref === node.href
   const remembered = current ? undefined : sessionPage(node)
   const items = current
     ? visibleHrefs.map((h) => loader.get(h)).filter((n): n is StacNode => !!n)
     : (remembered?.items ?? [])
+  const offPage = selectedItemOffPage(selectedHref, node.href, browsingHref, items)
   const isApi = node.items.kind === 'cursor'
   const tail = current
     ? !windowOpen
@@ -346,14 +352,16 @@ function WindowPageRows({
   }
   return (
     <div role="group" aria-label={`Items of ${node.title ?? node.id}`} style={{ opacity: current ? 1 : 0.6 }}>
-      {items.map((item) => {
+      {[...(offPage ? [offPage] : []), ...items].map((item) => {
         const selected = selectedHref === item.href
-        const when = item.temporal ? describeTemporal(item.temporal) : undefined
+        const off = item === offPage
+        const when = off ? OFF_PAGE_NOTE : item.temporal ? describeTemporal(item.temporal) : undefined
         return (
           <div
             key={item.href}
             role="treeitem"
             aria-selected={selected}
+            data-off-page={off ? '' : undefined}
             onClick={() => selectItem(item.href)}
             onMouseMove={(e) => onHover(hoverInfoFor(item), e.clientX, e.clientY)}
             onMouseLeave={(e) => onHover(null, e.clientX, e.clientY)}
@@ -374,7 +382,18 @@ function WindowPageRows({
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.title ?? item.id}
             </span>
-            {when && <span style={{ marginLeft: 'auto', color: 'var(--color-text-faint)', fontSize: 11 }}>{when}</span>}
+            {when && (
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  flexShrink: 0,
+                  color: off ? 'var(--color-selection)' : 'var(--color-text-faint)',
+                  fontSize: 11,
+                }}
+              >
+                {when}
+              </span>
+            )}
           </div>
         )
       })}
@@ -410,6 +429,7 @@ function ItemRows({
   selectedHref: string | null
   onSelect: (href: string) => void
 }) {
+  const browsingHref = useSelectionStore((s) => s.browsingHref)
   const state = useItemWindow(node)
   const pad = 8 + depth * 18
   if (state.status === 'loading') {
@@ -444,13 +464,15 @@ function ItemRows({
           : totalText
             ? `Showing ${shown} of ${totalText} items.`
             : `First ${shown} items in the API's default order.`
+  const offPage = selectedItemOffPage(selectedHref, node.href, browsingHref, state.items)
   return (
     <div role="group">
-      {state.items.map((item) => {
+      {[...(offPage ? [offPage] : []), ...state.items].map((item) => {
         const selected = selectedHref === item.href
-        const when = item.temporal ? describeTemporal(item.temporal) : undefined
+        const off = item === offPage
+        const when = off ? OFF_PAGE_NOTE : item.temporal ? describeTemporal(item.temporal) : undefined
         return (
-          <div key={item.href} role="treeitem" aria-selected={selected}>
+          <div key={item.href} role="treeitem" aria-selected={selected} data-off-page={off ? '' : undefined}>
             <button
               type="button"
               onClick={() => onSelect(item.href)}
@@ -486,7 +508,11 @@ function ItemRows({
                 >
                   {item.title ?? item.id}
                 </span>
-                {when && <span style={{ fontSize: 11, color: 'var(--color-text-faint)' }}>{when}</span>}
+                {when && (
+                  <span style={{ fontSize: 11, color: off ? 'var(--color-selection)' : 'var(--color-text-faint)' }}>
+                    {when}
+                  </span>
+                )}
               </span>
             </button>
           </div>

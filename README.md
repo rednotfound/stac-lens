@@ -186,7 +186,8 @@ src/
     LandingPage.tsx          hero field (search or open a URL) + faceted catalog browser
     StructureProvider.tsx    the one structure state every view renders
     views/                   the view switcher's other views: OutlineView is in components/, IcicleView + IcicleItems here,
-                             OverviewBar (loaded counts), StructureActions (Collapse / Expand all), explorerViews (names)
+                             OverviewBar (loaded counts), StructureActions (Collapse / Expand all), explorerViews (names),
+                             selectedItem (the selected Item drawn even when the window's page lacks it)
     StructureTree.tsx        the Tree view's canvas: d3 layout, pan/zoom, node offsets, auto-pan
     OutlineView.tsx          the structure as an indented document (the phone's only view; a desktop view too)
     ItemsWindow.tsx          the floating Items window: follows the browsed Collection, every view, drag/resize/collapse

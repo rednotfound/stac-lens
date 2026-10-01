@@ -5442,6 +5442,9 @@ server omits — both loosened to match what matters, not the accident.
   Computer's `/token/{account}/{container}` in place of `/sign` when a
   viewer needs many assets at once; an in-browser COG viewer consuming
   `AssetAccess`.
+- **The Items window's empty search and page in the URL (§115).** A
+  link to an Item would then also restore the page it was found on —
+  never guaranteed, since API result order drifts.
 - **The phone Inspector's timeline still scrolls inside the sheet
   (§114, "No scroll inside the Inspector").** Plotting a Collection's
   first 10–100 Items can stack more than 240px of lanes; needs a lane
@@ -7551,3 +7554,71 @@ If the picture fails, the Inspector says "The preview image could not be
 loaded."; the hover card shows nothing. Checked with every preview
 delayed by 2 s: 150 ms after selecting the next Item the placeholder is
 up and no picture is visible; then the new Item's picture appears.
+
+## 115. A selected Item is always drawn
+
+Reported: opening an Item by its URL (or reloading on one) showed it in
+the Inspector but nowhere in the Tree. The tree draws Items only as the
+Items window's page, and after a reload an API Collection's window is
+unsearched (search-first, §79) — its page is empty. The URL keeps an
+applied search's conditions but not an empty search, and never the page
+number; API result order also drifts as data arrives. So no amount of
+URL state guarantees the Item is on the page.
+
+The rule instead: a selection must show exactly that object (the
+selection-scoping rule), so every view draws the selected Item under its
+Collection whenever the Items it draws there do not include it, marked
+"selected · not on the Items window's page". `views/selectedItem.ts`
+decides it — the selection is an Item, its Collection is the one
+browsed, and it is that Item's own parent (browsing can lag behind a
+selection made elsewhere, so the parent is checked, not assumed) — and
+the tree's leaf builder tests it against the leaves it actually draws.
+
+- **Tree** — a leaf first among the Item leaves, in the selection color;
+  also when the Item is on the page but past the ten leaves drawn. The
+  pan-to-selection targets this leaf (with room for its label) instead of
+  only its Collection.
+- **Outline** — a row first among the Collection's rows (desktop and
+  phone); a Collection's rows now open by default when the selection is
+  inside it, not only when the Collection itself is selected.
+- **Icicle** — the first cell of the Collection's Items row, outlined as
+  selected, its title saying why it is there.
+- When the Item is on the drawn page, nothing extra is drawn (no
+  duplicate). Checked live on the reported gNATSGO Item in all three
+  views and on a phone (whose first ten rows held it — so no mark), and
+  offline in the smoke suite.
+
+Not done: putting "searched with no conditions" and the page number into
+the URL, so that a shared link also restores the window's page (§96).
+
+### Review before the pull request
+
+An independent read of the whole change (§114–§115) found nothing
+severe and these, all fixed:
+
+- **An Item drawn under the wrong Collection.** The off-page check
+  trusted `browsingHref`, which keeps the Collection already browsed when
+  an Item is selected; an Item selected from elsewhere (a future map or
+  link entry point) would have been drawn under the wrong parent. It now
+  also requires the Item's own `parentHref` to be that Collection.
+- **A late failure removing a newer cache entry.** A failed signing
+  request deleted the cache entry for its href even when a newer request
+  had replaced it; it now deletes only its own entry (unit test).
+- **Accessibility.** Every asset row's buttons had the same names; they
+  now carry the asset's title ("Copy STAC href of COG data", "Open COG
+  data"). The key glyph's state was color only; it now has a spoken
+  label for each state.
+- **Docs out of step with the code** (this file and ARCHITECTURE):
+  corrected.
+- **Tests added**: `selectedItemUnder`/`selectedItemOffPage` unit tests;
+  the smoke suite finds the asset row by title instead of position and
+  checks the off-page Item in the outline and the icicle as well as the
+  tree.
+
+Left as is, on purpose: two callers meeting the same stale cache entry
+may both refetch (one extra signing call; documented in the code); a
+failed copy keeps its "Copy failed" label and the field to copy from
+until the next copy; turning the window's page away from a selected
+Item makes it an off-page leaf, which pans the tree only if that leaf is
+off-screen.
+
