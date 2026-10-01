@@ -1,3 +1,4 @@
+import { AccessImage } from '../AccessImage'
 import { TypeIcon } from '../TypeIcon'
 import type { TooltipState } from './treeGeometry'
 
@@ -63,10 +64,12 @@ export function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
         <div style={{ marginTop: 3, opacity: 0.85, fontSize: 11, lineHeight: 1.4 }}>{tooltip.description}</div>
       )}
       {tooltip.note && <div style={{ marginTop: 3, opacity: 0.75, fontSize: 11 }}>{tooltip.note}</div>}
-      {tooltip.thumbnailHref && (
-        <img
-          src={tooltip.thumbnailHref}
+      {tooltip.thumbnailHref && tooltip.thumbnailSource && (
+        <AccessImage
+          href={tooltip.thumbnailHref}
+          source={tooltip.thumbnailSource}
           alt=""
+          placeholderHeight={TOOLTIP_THUMBNAIL_HEIGHT}
           style={{
             display: 'block',
             marginTop: 6,

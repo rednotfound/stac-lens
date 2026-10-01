@@ -1,6 +1,6 @@
 import type {
   ItemEnumeration,
-  ResolvedAsset,
+  StacAsset,
   SchemaHints,
   SpatialExtent,
   StacNode,
@@ -111,7 +111,7 @@ function normalizeProviders(raw: unknown): StacProvider[] | undefined {
  *  the raw JSON value is never safe to show or copy verbatim. Same
  *  resolution `childHrefs`/`rel:item`/etc. already get; assets just never
  *  went through it before because nothing rendered them yet. */
-function buildAssets(href: string, raw: RawStacObject): ResolvedAsset[] {
+function buildAssets(href: string, raw: RawStacObject): StacAsset[] {
   if (!raw.assets) return []
   return Object.entries(raw.assets).map(([key, asset]) => {
     // STAC 1.1 moved band metadata into common metadata: a plain `bands`

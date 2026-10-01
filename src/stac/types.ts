@@ -55,8 +55,13 @@ export interface SchemaHints {
   itemAssets?: Record<string, unknown>
 }
 
-/** A STAC Asset Object, normalized — critically, `href` here is always
- *  already resolved to an absolute URL, never the raw JSON value. The
+/** A STAC Asset Object as the publisher declared it, normalized —
+ *  critically, `href` here is always already resolved to an absolute URL,
+ *  never the raw JSON value. It describes the resource; it says nothing
+ *  about whether this browser can fetch it right now — that is
+ *  `AssetAccess` (stac/assetAccess.ts), obtained lazily and never written
+ *  back here. ("Resolved" in this codebase means one thing: a relative
+ *  path made absolute.) The
  *  Asset Object spec permits a relative href (resolved against the STAC
  *  entity's own location, same as any `links` entry), and real catalogs
  *  use both forms — a UI that ever shows or copies the raw, unresolved
@@ -64,7 +69,7 @@ export interface SchemaHints {
  *  pasted somewhere else. This was a reported problem, not a guess: a lot
  *  of assets give a relative path rather than a full one, so the app has
  *  to account for that so whatever the user pastes actually works. */
-export interface ResolvedAsset {
+export interface StacAsset {
   key: string
   href: string
   title?: string
@@ -200,11 +205,11 @@ export interface StacNode {
   created?: string
   updated?: string
   /** This node's own `assets` object, normalized — every `href` already
-   *  resolved to an absolute URL (see `ResolvedAsset`). Present on Items
+   *  resolved to an absolute URL (see `StacAsset`). Present on Items
    *  (their real data/thumbnail files) and occasionally Collections
    *  (shared/representative assets, per the Collection spec's own
    *  optional `assets` field) — empty array when the source has none. */
-  assets: ResolvedAsset[]
+  assets: StacAsset[]
   /** A `rel: preview` link with a browser image type, resolved — the
    *  link-level way to offer a picture of a Catalog, Collection or Item. */
   previewHref?: string

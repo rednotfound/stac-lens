@@ -41,9 +41,22 @@ page.on('pageerror', (e) => pageErrors.push(e.message))
 
 // Everything Planetary Computer is served from fixtures; anything else
 // external (map tiles, other catalogs) is refused so the run is offline.
+// Planetary Computer's signer, mocked: it answers with the href plus a
+// fixture SAS query, and records what it was asked to sign.
+const SIGN = 'https://planetarycomputer.microsoft.com/api/sas/v1/sign'
+const signRequests = []
 const handleRoute = async (route) => {
   const url = route.request().url()
   if (url.startsWith(BASE_URL)) return route.continue()
+  if (url.startsWith(SIGN)) {
+    const href = new URL(url).searchParams.get('href')
+    signRequests.push(href)
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ href: `${href}?st=a&se=b&sp=rl&sig=fixture`, 'msft:expiry': '2099-01-01T00:00:00Z' }),
+    })
+  }
   if (url.startsWith(PC)) {
     const path = url.slice(PC.length)
     const reply = (name, contentType = 'application/json', status = 200) =>
@@ -57,6 +70,18 @@ const handleRoute = async (route) => {
       return reply('search-3dep-nj.json', 'application/geo+json')
     }
     return route.fulfill({ status: 404, body: 'no fixture for ' + path })
+  }
+  // A signed blob (the mocked signer's output) answers with a 1×1 PNG, so a
+  // signed preview really loads.
+  if (url.includes('.blob.core.windows.net/') && url.includes('sig=fixture')) {
+    return route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    })
   }
   return route.abort()
 }
@@ -222,6 +247,52 @@ check(
   'clicking the already-selected Collection reopens the closed window',
   (await page.locator('[data-items-window]').count()) === 1,
 )
+
+// 3c. Asset access. Browsing never signs anything; selecting an Item
+// signs only what is about to be shown (its thumbnail lives in storage
+// that refuses unsigned requests), the declared hrefs stay what STAC says,
+// and an access link is obtained only when asked for.
+check('browsing a catalog signs nothing', signRequests.length === 0, `${signRequests.length} sign request(s)`)
+await page.locator('[data-items-window]').getByText('NJ_South_Jersey_FEMA_2018-returns-5m-2-3').first().click()
+await page.waitForSelector('[data-asset-access]', { timeout: 10000 })
+await page.waitForFunction(
+  () => {
+    const img = document.querySelector('img[alt="preview"]')
+    return !!img && /sig=fixture/.test(img.src) && img.complete && img.naturalWidth > 0
+  },
+  null,
+  { timeout: 10000 },
+)
+{
+  const nj = JSON.parse(fixture('search-3dep-nj.json')).features.find(
+    (f) => f.id === 'NJ_South_Jersey_FEMA_2018-returns-5m-2-3',
+  )
+  const declared = nj.assets.data.href
+  check(
+    'an Item: blob assets need access, the rest stay direct, only the preview was signed',
+    (await page.locator('[data-asset-access="needed"]').count()) === 2 &&
+      signRequests.length === 1 &&
+      signRequests[0] === nj.assets.thumbnail.href,
+    `needed: ${await page.locator('[data-asset-access="needed"]').count()}, signed: ${JSON.stringify(signRequests)}`,
+  )
+  const dataTitle = nj.assets.data.title
+  const dataRow = page.locator('[role="listitem"]').filter({ hasText: dataTitle })
+  check(
+    'the asset list: one row per asset, all shown, and Copy means the STAC href',
+    (await page.locator('[role="listitem"]').count()) === Object.keys(nj.assets).length &&
+      (await dataRow
+        .getByRole('button', { name: `Copy STAC href of ${dataTitle}`, exact: true })
+        .getAttribute('title')) === `Copy the STAC href — ${declared}`,
+  )
+  await dataRow.locator('button[aria-expanded]').click()
+  await dataRow.getByRole('button', { name: 'Get access link' }).click()
+  await page.waitForSelector('[data-asset-access="ready"]', { timeout: 10000 })
+  check(
+    'an access link is shown beside the declared one, with its method and expiry',
+    (await page.locator('[data-access-href]').first().textContent()) === `${declared}?st=a&se=b&sp=rl&sig=fixture` &&
+      /Planetary Computer signing · valid until/.test(await page.locator('[data-asset-access="ready"]').textContent()),
+  )
+}
 
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result
 await page.goto(`${BASE_URL}/#${PC}/`)

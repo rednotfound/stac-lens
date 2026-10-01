@@ -6,14 +6,16 @@ import { useSelectionStore } from '../store/selection'
 import { useItemSetStore } from '../store/itemSet'
 import { KNOWN_EXTENSION_PREFIXES } from '../stac/namespaces'
 import { interpretExtensionFacts, interpretCommonMetadataFacts } from '../stac/extensionFacts'
-import { describeAssetType, previewImageHref } from '../stac/assets'
+import { previewImageHref } from '../stac/assets'
 import { summarizeItemSet } from '../stac/itemSetSummary'
 import { TimeLens } from './TimeLens'
 import { SpaceLens } from './SpaceLens'
 import { TypeIcon } from './TypeIcon'
 import { LoadingState } from './LoadingState'
 import { TabButton } from './TabButton'
-import type { ResolvedAsset } from '../stac/types'
+import { accessSourceOf } from '../stac/assetAccess'
+import { AssetList } from './AssetList'
+import { AccessImage } from './AccessImage'
 
 type Tab = 'human' | 'json'
 
@@ -161,8 +163,13 @@ export function DetailPanel() {
             padding: 8,
             fontSize: 11,
             fontFamily: 'var(--font-mono)',
-            maxHeight: 600,
-            overflow: 'auto',
+            // No scroll box of its own: the Inspector already scrolls, and a
+            // scroll inside a scroll is a trap (house rule, see
+            // docs/DESIGN.md, "No scroll inside the Inspector"). Long lines
+            // — hrefs, geometry — wrap instead of scrolling sideways.
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+            margin: 0,
           }}
         >
           {JSON.stringify(node.raw, null, 2)}
@@ -173,9 +180,12 @@ export function DetailPanel() {
 
           {previewHref && (
             <div style={{ marginBottom: 12 }}>
-              <img
-                src={previewHref}
+              <AccessImage
+                href={previewHref}
+                source={accessSourceOf(node)}
                 alt="preview"
+                placeholderHeight={140}
+                errorText="The preview image could not be loaded."
                 style={{
                   maxWidth: '100%',
                   maxHeight: 220,
@@ -348,7 +358,7 @@ export function DetailPanel() {
 
           {node.assets.length > 0 && (
             <Field label={`Assets (${node.assets.length})`}>
-              <AssetList assets={node.assets} />
+              <AssetList key={node.href} assets={node.assets} source={accessSourceOf(node)} />
             </Field>
           )}
 
@@ -424,168 +434,4 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
       <div>{children}</div>
     </div>
   )
-}
-
-/** Compact rows, not a full metadata dump — each asset's actual job here is
- *  "give me a link I can trust and copy," not re-displaying every field
- *  already visible in the JSON tab. `href` is always the already-resolved
- *  absolute URL (`ResolvedAsset` — see stac/graph.ts's `buildAssets`), never
- *  the raw, possibly-relative JSON value — an explicit requirement: the
- *  relative case has to be handled so that whatever the user pastes
- *  actually works. */
-function AssetList({ assets }: { assets: ResolvedAsset[] }) {
-  const [copyState, setCopyState] = useState<{ key: string; ok: boolean } | null>(null)
-
-  async function handleCopy(asset: ResolvedAsset) {
-    const ok = await copyToClipboard(asset.href)
-    setCopyState({ key: asset.key, ok })
-    setTimeout(() => setCopyState((s) => (s?.key === asset.key ? null : s)), 1500)
-  }
-
-  if (assets.length === 0) return <em style={{ color: 'var(--color-text-faint)' }}>none</em>
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflow: 'auto' }}>
-      {assets.map((asset) => (
-        <div key={asset.key}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 6px',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-border)',
-              fontSize: 12,
-            }}
-          >
-            <TypeIcon type="Asset" size={13} color="var(--color-node-asset)" />
-            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {asset.title ?? asset.key}
-            </span>
-            <span
-              style={{
-                flexShrink: 0,
-                fontSize: 10,
-                padding: '1px 6px',
-                borderRadius: 999,
-                background: 'var(--color-bg)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              {describeAssetType(asset.type)}
-            </span>
-            {/* Compact, not a full band table — `gsd`/`raster:bands` are
-             * per-asset fields (a 10m visible band vs. a 20m SWIR band on
-             * the same Item, confirmed against real Earth Search assets),
-             * genuinely useful at a glance without needing to expand
-             * anything. */}
-            {(asset.gsd != null || asset.dataType) && (
-              <span style={{ flexShrink: 0, fontSize: 10, color: 'var(--color-text-faint)' }}>
-                {[asset.gsd != null ? `${asset.gsd}m` : null, asset.dataType].filter(Boolean).join(' · ')}
-              </span>
-            )}
-            <button
-              onClick={() => handleCopy(asset)}
-              title={asset.href}
-              style={{
-                flexShrink: 0,
-                fontSize: 11,
-                padding: '2px 8px',
-                borderRadius: 999,
-                border: `1px solid ${copyState?.key === asset.key && !copyState.ok ? 'var(--color-node-warning)' : 'var(--color-border)'}`,
-                background: 'var(--color-surface)',
-                color:
-                  copyState?.key === asset.key && !copyState.ok
-                    ? 'var(--color-node-warning)'
-                    : 'var(--color-text-muted)',
-                cursor: 'pointer',
-              }}
-            >
-              {copyState?.key === asset.key ? (copyState.ok ? 'Copied' : 'Copy failed — select below') : 'Copy link'}
-            </button>
-            <a
-              href={asset.href}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                flexShrink: 0,
-                fontSize: 11,
-                padding: '2px 8px',
-                borderRadius: 999,
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text-muted)',
-                textDecoration: 'none',
-              }}
-            >
-              Open
-            </a>
-          </div>
-          {/* Only appears when both the modern Clipboard API and the legacy
-           * execCommand fallback failed (see `copyToClipboard` below) — a
-           * real, focused-and-selected, read-only input the user can copy
-           * from with a plain Ctrl/Cmd+C, not just a promise that a button
-           * "did something." This was a reported problem, not a guess:
-           * clicking Copy link seemed to do nothing, with no way to tell
-           * whether it actually copied — an empty `catch {}` gives no
-           * feedback either way. */}
-          {copyState?.key === asset.key && !copyState.ok && (
-            <input
-              readOnly
-              autoFocus
-              value={asset.href}
-              onFocus={(e) => e.currentTarget.select()}
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                marginTop: 3,
-                padding: '3px 6px',
-                fontSize: 11,
-                fontFamily: 'var(--font-mono)',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-node-warning)',
-                background: 'var(--color-bg)',
-                color: 'var(--color-text)',
-              }}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** Tries the modern Clipboard API first (works in any secure context —
- *  `https://` or `localhost`), then falls back to the legacy
- *  `execCommand('copy')` technique, which still works over a plain `http://`
- *  origin (e.g. testing over a LAN IP like `http://192.168.x.x:5173`,
- *  a real, reported scenario this session — `navigator.clipboard` is
- *  often unavailable entirely in that kind of insecure context, and the
- *  previous version's empty `catch {}` swallowed that failure silently).
- *  Returns whether it actually succeeded, so the caller can show real
- *  feedback instead of assuming. */
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      // fall through to the legacy fallback below
-    }
-  }
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
-  } catch {
-    return false
-  }
 }
