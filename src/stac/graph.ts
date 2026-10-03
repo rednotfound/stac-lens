@@ -1,6 +1,9 @@
 import type {
   ItemEnumeration,
   StacAsset,
+  StacAssetAlternate,
+  AuthScheme,
+  StorageScheme,
   SchemaHints,
   SpatialExtent,
   StacNode,
@@ -134,8 +137,74 @@ function buildAssets(href: string, raw: RawStacObject): StacAsset[] {
       roles: Array.isArray(asset.roles) ? (asset.roles as string[]) : undefined,
       gsd: typeof asset.gsd === 'number' ? asset.gsd : undefined,
       dataType,
+      authRefs: strArrayField(asset, 'auth:refs'),
+      storageRefs: strArrayField(asset, 'storage:refs'),
+      alternateName: strField(asset, 'alternate:name'),
+      alternates: buildAlternates(href, asset.alternate),
     }
   })
+}
+
+/** Alternate Assets extension: `alternate` is a map of key → Alternate
+ *  Asset Object (`href` required). Hrefs resolved like the asset's own. */
+function buildAlternates(base: string, raw: unknown): StacAssetAlternate[] | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out = Object.entries(raw as Record<string, unknown>).flatMap(([key, value]) => {
+    if (!value || typeof value !== 'object') return []
+    const alt = value as Record<string, unknown>
+    if (typeof alt.href !== 'string' || !alt.href) return []
+    return [
+      {
+        key,
+        href: resolveHref(base, alt.href),
+        name: strField(alt, 'alternate:name') ?? strField(alt, 'title'),
+        description: strField(alt, 'description'),
+        authRefs: strArrayField(alt, 'auth:refs'),
+        storageRefs: strArrayField(alt, 'storage:refs'),
+      },
+    ]
+  })
+  return out.length > 0 ? out : undefined
+}
+
+/** Authentication extension `auth:schemes`, as declared. */
+function buildAuthSchemes(raw: unknown): Record<string, AuthScheme> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, AuthScheme> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue
+    const v = value as Record<string, unknown>
+    if (typeof v.type !== 'string') continue
+    out[key] = {
+      type: v.type,
+      description: strField(v, 'description'),
+      openIdConnectUrl: strField(v, 'openIdConnectUrl'),
+      scheme: strField(v, 'scheme'),
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** Storage extension v2 `storage:schemes`, as declared. */
+function buildStorageSchemes(raw: unknown): Record<string, StorageScheme> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, StorageScheme> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue
+    const v = value as Record<string, unknown>
+    if (typeof v.type !== 'string') continue
+    const fields: Record<string, string> = {}
+    for (const [f, fv] of Object.entries(v)) if (typeof fv === 'string') fields[f] = fv
+    out[key] = {
+      type: v.type,
+      platform: strField(v, 'platform'),
+      region: strField(v, 'region'),
+      requesterPays: v.requester_pays === true,
+      title: strField(v, 'title'),
+      fields,
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /** Builds a normalized StacNode from raw fetched JSON. `href` must already
@@ -247,6 +316,13 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
 
     schemaHints: type === 'Collection' ? buildSchemaHints(raw) : undefined,
     assets: buildAssets(href, raw),
+    // Declared top level on a Catalog/Collection, in `properties` on an Item.
+    authSchemes: buildAuthSchemes(
+      type === 'Item' ? raw.properties?.['auth:schemes'] : (raw as Record<string, unknown>)['auth:schemes'],
+    ),
+    storageSchemes: buildStorageSchemes(
+      type === 'Item' ? raw.properties?.['storage:schemes'] : (raw as Record<string, unknown>)['storage:schemes'],
+    ),
     previewHref: (() => {
       const preview = links.find((l) => l.rel === 'preview' && l.href && isInlineImageType(l.type))
       return preview ? resolveHref(href, preview.href!) : undefined

@@ -1,4 +1,7 @@
+import { awsS3PublicUrl } from './access/awsS3'
 import { planetaryComputerSigning } from './access/planetaryComputer'
+import { resolveStorageScheme } from './schemes'
+import type { StacNode, StorageScheme } from './types'
 
 // Discovery and access are separate concerns. A `StacAsset` (types.ts) is
 // the resource as the publisher declared it; an `AssetAccess` is how this
@@ -24,15 +27,41 @@ import { planetaryComputerSigning } from './access/planetaryComputer'
 // scheme for a source that doesn't declare its own) rather than code.
 // See docs/DESIGN.md, "Asset access".
 
-/** Where an asset was found — what an access method may use to decide
- *  whether it applies. The node's own href and its `rel: root` link. */
+/** Where an href was found — what an access method may use to decide
+ *  whether it applies: the node's own href and its `rel: root` link, and,
+ *  for an asset or alternate, what the catalog declares about that href —
+ *  the credentials it needs (`auth:refs`) and the storage it lives in. */
 export interface AccessSource {
   nodeHref: string
   rootHref?: string
+  /** Authentication extension: the href needs one of these schemes. Any
+   *  declared credential means no anonymous access method applies. */
+  authRefs?: readonly string[]
+  /** Storage extension: the storage scheme the href lives in, resolved. */
+  storage?: StorageScheme
 }
 
 export function accessSourceOf(node: { href: string; declaredRootHref?: string }): AccessSource {
   return { nodeHref: node.href, rootHref: node.declaredRootHref }
+}
+
+interface NodeLookup {
+  get(href: string): StacNode | undefined
+}
+
+/** The source of one asset or alternate href on `node`: the node, plus the
+ *  entry's `auth:refs` and its storage scheme (resolved up the parent
+ *  chain through `lookup`, cache only). */
+export function accessSourceFor(
+  node: StacNode,
+  entry: { href: string; authRefs?: readonly string[]; storageRefs?: readonly string[] },
+  lookup: NodeLookup,
+): AccessSource {
+  return {
+    ...accessSourceOf(node),
+    authRefs: entry.authRefs,
+    storage: resolveStorageScheme(node, entry.href, entry.storageRefs, lookup),
+  }
 }
 
 /** How STAC Lens can reach an asset right now. `href` is what to open or
@@ -47,6 +76,9 @@ export interface AssetAccess {
   /** Human label of the method, e.g. "Planetary Computer signing". */
   methodLabel?: string
   expiresAt?: Date
+  /** What the method wants the user to know about the result, e.g. an
+   *  assumption it had to make. */
+  note?: string
   failure?: string
 }
 
@@ -58,12 +90,12 @@ export interface AccessMethod {
   /** Synchronous and network-free: may this method handle this href from
    *  this source? Called while rendering, so it must stay cheap. */
   appliesTo(href: string, source: AccessSource): boolean
-  access(href: string): Promise<{ href: string; expiresAt?: Date }>
+  access(href: string, source: AccessSource): Promise<{ href: string; expiresAt?: Date; note?: string }>
 }
 
 /** Ordered; the first method that applies wins, and no match is direct.
  *  A plain list, not a registry — add a method by adding it here. */
-const METHODS: readonly AccessMethod[] = [planetaryComputerSigning]
+const METHODS: readonly AccessMethod[] = [planetaryComputerSigning, awsS3PublicUrl]
 
 /** A cached access is reused until this long before it expires — the
  *  same one-minute margin Planetary Computer's own Python SDK uses. */
@@ -105,13 +137,14 @@ export function accessAsset(
   return refetch()
 
   function refetch(): Promise<AssetAccess> {
-    const pending: Promise<AssetAccess> = method!.access(href).then(
+    const pending: Promise<AssetAccess> = method!.access(href, source).then(
       (r) => ({
         href: r.href,
         originalHref: href,
         method: method!.id,
         methodLabel: method!.label,
         expiresAt: r.expiresAt,
+        note: r.note,
       }),
       (err: unknown) => {
         // Only our own entry: a newer request may have replaced it.

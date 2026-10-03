@@ -45,9 +45,62 @@ page.on('pageerror', (e) => pageErrors.push(e.message))
 // fixture SAS query, and records what it was asked to sign.
 const SIGN = 'https://planetarycomputer.microsoft.com/api/sas/v1/sign'
 const signRequests = []
+// A made-up static Item for the asset-location checks: a credentialed
+// s3:// href with an HTTPS alternate, an undeclared s3:// href, an https
+// href with an empty path segment, and a plain https href.
+const FIXTURE_ROOT = 'https://fixtures.stac-lens.test/catalog.json'
+const FIXTURE_ITEM = 'https://fixtures.stac-lens.test/item.json'
+const fixtureRoot = {
+  type: 'Catalog',
+  stac_version: '1.1.0',
+  id: 'fixtures',
+  description: 'Asset-location fixtures',
+  links: [
+    { rel: 'self', href: FIXTURE_ROOT },
+    { rel: 'root', href: FIXTURE_ROOT },
+    { rel: 'item', href: FIXTURE_ITEM },
+  ],
+}
+const fixtureItem = {
+  type: 'Feature',
+  stac_version: '1.1.0',
+  id: 'fixture-item',
+  geometry: null,
+  properties: {
+    datetime: '2026-01-01T00:00:00Z',
+    'auth:schemes': {
+      s3: { type: 's3' },
+      oidc: { type: 'openIdConnect', openIdConnectUrl: 'https://identity.example/.well-known/openid-configuration' },
+    },
+  },
+  links: [
+    { rel: 'self', href: FIXTURE_ITEM },
+    { rel: 'root', href: FIXTURE_ROOT },
+    { rel: 'parent', href: FIXTURE_ROOT },
+  ],
+  assets: {
+    keyed: {
+      title: 'Keyed band',
+      href: 's3://private-bucket/a/b.tif',
+      'auth:refs': ['s3'],
+      alternate: {
+        https: { href: 'https://download.example/b.tif', 'auth:refs': ['oidc'], 'alternate:name': 'HTTPS' },
+      },
+    },
+    open: { title: 'Open band', href: 's3://open-bucket/c/d.tif' },
+    doubled: { title: 'Doubled path', href: 'https://files.example//e/f.tif' },
+    plain: { title: 'Plain file', href: 'https://files.example/g.tif' },
+  },
+}
 const handleRoute = async (route) => {
   const url = route.request().url()
   if (url.startsWith(BASE_URL)) return route.continue()
+  if (url === FIXTURE_ITEM) {
+    return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(fixtureItem) })
+  }
+  if (url === FIXTURE_ROOT) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixtureRoot) })
+  }
   if (url.startsWith(SIGN)) {
     const href = new URL(url).searchParams.get('href')
     signRequests.push(href)
@@ -335,6 +388,47 @@ await page.waitForFunction(
     (await outlineRow.count()) === 1 && (await outlineRow.textContent()).includes(id),
   )
   await fresh.close()
+}
+
+// 3e. Where an asset lives and what it needs, as the catalog declares it.
+{
+  const fx = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
+  await fx.route('**/*', handleRoute)
+  await fx.goto(`${BASE_URL}/#${FIXTURE_ITEM}`)
+  await fx.waitForSelector('[role="listitem"]', { timeout: 15000 })
+  const notes = (await fx.locator('[role="list"]').locator('xpath=preceding-sibling::div').allTextContents()).join(
+    ' | ',
+  )
+  check(
+    'asset notes: declared credentials, an S3 address to open through, an empty path segment',
+    /1 of 4 needs S3 credentials/.test(notes) &&
+      /1 of 4 opens through its public AWS S3 HTTPS address/.test(notes) &&
+      /1 of 4 has an empty segment/.test(notes),
+    notes,
+  )
+  const keyed = fx.locator('[role="listitem"]').filter({ hasText: 'Keyed band' })
+  check(
+    "an s3:// href that needs credentials can't be opened from here, and says why",
+    (await keyed.locator('button[disabled][aria-label="Open Keyed band"]').count()) === 1,
+  )
+  await keyed.locator('button[aria-expanded]').click()
+  const keyedText = await keyed.textContent()
+  check(
+    'the opened row names the credentials and lists the alternate with what it needs',
+    /RequiresS3 credentials/.test(keyedText) &&
+      (await keyed.locator('[data-alternate="https"]').count()) === 1 &&
+      /needs sign-in \(OpenID Connect\) · identity\.example/.test(keyedText),
+  )
+  const open = fx.locator('[role="listitem"]').filter({ hasText: 'Open band' })
+  await open.locator('button[aria-expanded]').click()
+  await open.getByRole('button', { name: 'Get access link' }).click()
+  await open.locator('[data-access-href]').waitFor({ timeout: 5000 })
+  check(
+    'an undeclared s3:// href gets its AWS HTTPS address, with the assumption said',
+    (await open.locator('[data-access-href]').textContent()) === 'https://open-bucket.s3.amazonaws.com/c/d.tif' &&
+      /AWS is assumed/.test(await open.textContent()),
+  )
+  await fx.close()
 }
 
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result

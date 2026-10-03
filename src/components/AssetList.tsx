@@ -1,13 +1,16 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
-import { describeAssetType } from '../stac/assets'
+import { browserCanOpen, describeAssetType, hasEmptyPathSegment } from '../stac/assets'
 import {
   accessAsset,
   accessMethodFor,
+  accessSourceFor,
   type AccessMethod,
   type AccessSource,
   type AssetAccess,
 } from '../stac/assetAccess'
-import type { StacAsset } from '../stac/types'
+import { loader } from '../stac/loaderInstance'
+import { describeAuthScheme, describeStorageScheme, resolveAuthScheme } from '../stac/schemes'
+import type { StacAsset, StacAssetAlternate, StacNode } from '../stac/types'
 import { TypeIcon } from './TypeIcon'
 
 // The Inspector's asset list: one list, every asset, one line each — the
@@ -24,33 +27,68 @@ import { TypeIcon } from './TypeIcon'
 /** The largest delay `setTimeout` honors (2^31 − 1 ms). */
 const MAX_TIMEOUT_MS = 2_147_483_647
 
-export function AssetList({ assets, source }: { assets: StacAsset[]; source: AccessSource }) {
+/** "S3 credentials or sign-in (OpenID Connect) · identity.dataspace…",
+ *  from an entry's `auth:refs`, schemes resolved up the parent chain. */
+function describeAuthRefs(node: StacNode, refs: readonly string[]): string {
+  return refs
+    .map((ref) => {
+      const scheme = resolveAuthScheme(node, ref, loader)
+      return scheme ? describeAuthScheme(scheme) : `"${ref}" (not declared)`
+    })
+    .join(' or ')
+}
+
+export function AssetList({ assets, node }: { assets: StacAsset[]; node: StacNode }) {
   if (assets.length === 0) return <em style={{ color: 'var(--color-text-faint)' }}>none</em>
 
-  // Said once for the list, not on every row: how many assets need which
-  // access method. Synchronous, network-free.
-  const needs = new Map<string, number>()
-  for (const a of assets) {
-    const m = accessMethodFor(a.href, source)
-    if (m) needs.set(m.label, (needs.get(m.label) ?? 0) + 1)
-  }
+  // Said once for the list, not on every row: how many assets open through
+  // which access method, how many need credentials the catalog declares,
+  // how many hrefs look broken. Synchronous, network-free.
+  const sources = assets.map((a) => accessSourceFor(node, a, loader))
+  // Each note in a singular and a plural form ("It has …" / "3 of 5 have …").
+  const notes = new Map<string, { n: number; one: string; icon: 'key' | 'warn' }>()
+  const add = (many: string, one: string, icon: 'key' | 'warn') =>
+    notes.set(many, { n: (notes.get(many)?.n ?? 0) + 1, one, icon })
+  assets.forEach((a, i) => {
+    const m = accessMethodFor(a.href, sources[i])
+    if (m) add(`open through ${m.label}`, `opens through ${m.label}`, 'key')
+    else if (a.authRefs?.length) {
+      const needs = describeAuthRefs(node, a.authRefs)
+      add(`need ${needs}`, `needs ${needs}`, 'key')
+    }
+    if (hasEmptyPathSegment(a.href)) {
+      add(
+        'have an empty segment (//) in the path and may not open',
+        'has an empty segment (//) in the path and may not open',
+        'warn',
+      )
+    }
+  })
+  const sentence = (n: number, many: string, one: string) =>
+    n === assets.length
+      ? n === 1
+        ? `It ${one}`
+        : `All ${many}`
+      : n === 1
+        ? `1 of ${assets.length} ${one}`
+        : `${n} of ${assets.length} ${many}`
 
   return (
     <div>
-      {[...needs].map(([label, n]) => (
+      {[...notes].map(([text, { n, one, icon }]) => (
         <div
-          key={label}
+          key={text}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 5,
             margin: '2px 0 5px',
             fontSize: 11,
-            color: 'var(--color-text-muted)',
+            color: icon === 'warn' ? 'var(--color-node-warning)' : 'var(--color-text-muted)',
           }}
         >
-          <KeyIcon />
-          {n === assets.length ? 'All' : `${n} of ${assets.length}`} need {label} to open
+          {icon === 'warn' ? <WarnIcon /> : <KeyIcon />}
+          {sentence(n, text, one)}
         </div>
       ))}
       <div
@@ -58,18 +96,30 @@ export function AssetList({ assets, source }: { assets: StacAsset[]; source: Acc
         style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}
       >
         {assets.map((asset, i) => (
-          <AssetRow key={asset.key} asset={asset} source={source} first={i === 0} />
+          <AssetRow key={asset.key} asset={asset} node={node} source={sources[i]} first={i === 0} />
         ))}
       </div>
     </div>
   )
 }
 
-function AssetRow({ asset, source, first }: { asset: StacAsset; source: AccessSource; first: boolean }) {
+function AssetRow({
+  asset,
+  node,
+  source,
+  first,
+}: {
+  asset: StacAsset
+  node: StacNode
+  source: AccessSource
+  first: boolean
+}) {
   const method = accessMethodFor(asset.href, source)
+  const brokenPath = hasEmptyPathSegment(asset.href)
+  const needsCredentials = !method && !!asset.authRefs?.length
   const [expanded, setExpanded] = useState(false)
   const [access, setAccess] = useState<AssetAccess | 'pending'>()
-  const [copied, setCopied] = useState<{ what: 'declared' | 'access'; ok: boolean; text: string }>()
+  const [copied, setCopied] = useState<Copied>()
   const [expiredHref, setExpiredHref] = useState<string>()
 
   const ready = typeof access === 'object' && !access.failure ? access : undefined
@@ -85,7 +135,7 @@ function AssetRow({ asset, source, first }: { asset: StacAsset; source: AccessSo
     return () => clearTimeout(t)
   }, [ready])
 
-  async function copy(what: 'declared' | 'access', text: string) {
+  async function copy(what: string, text: string) {
     const ok = await copyToClipboard(text)
     setCopied({ what, ok, text })
     // A failed copy opens the row, where a selected field to copy from waits.
@@ -139,14 +189,16 @@ function AssetRow({ asset, source, first }: { asset: StacAsset; source: AccessSo
   const until = ready?.expiresAt?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   // The key's state in words, not only in color.
   const keyLabel = !method
-    ? ''
+    ? needsCredentials
+      ? `Needs ${describeAuthRefs(node, asset.authRefs!)}`
+      : ''
     : state === 'ready'
       ? `Access link ready (${method.label})${until ? ` · valid until ${until}` : ''}`
       : state === 'failed'
         ? `${method.label} failed — open the row for details`
         : state === 'expired'
           ? `The access link from ${method.label} has expired`
-          : `Needs ${method.label} to open`
+          : `Opens through ${method.label}`
 
   return (
     <div
@@ -194,7 +246,17 @@ function AssetRow({ asset, source, first }: { asset: StacAsset; source: AccessSo
             {[describeAssetType(asset.type), facts].filter(Boolean).join(' · ')}
           </span>
         </button>
-        {method && (
+        {brokenPath && (
+          <span
+            role="img"
+            aria-label="The path has an empty segment (//) — this link may not open"
+            title="The path has an empty segment (//) — this link may not open"
+            style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--color-node-warning)' }}
+          >
+            <WarnIcon />
+          </span>
+        )}
+        {(method || needsCredentials) && (
           <span
             role="img"
             aria-label={keyLabel}
@@ -220,26 +282,14 @@ function AssetRow({ asset, source, first }: { asset: StacAsset; source: AccessSo
         >
           {copied?.what === 'declared' && copied.ok ? <CheckIcon /> : <CopyIcon />}
         </IconButton>
-        {method ? (
-          <IconButton label={`Open ${name}`} title={`Open through ${method.label}`} onClick={() => void open()}>
-            <OpenIcon />
-          </IconButton>
-        ) : (
-          <a
-            href={asset.href}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={`Open ${name}`}
-            title={`Open ${asset.href}`}
-            style={iconButtonStyle}
-          >
-            <OpenIcon />
-          </a>
-        )}
+        <OpenControl name={name} href={asset.href} method={method} onOpen={() => void open()} />
       </div>
       {expanded && (
         <AssetDetails
           asset={asset}
+          node={node}
+          source={source}
+          brokenPath={brokenPath}
           method={method}
           state={state}
           access={typeof access === 'object' ? access : undefined}
@@ -255,6 +305,9 @@ function AssetRow({ asset, source, first }: { asset: StacAsset; source: AccessSo
 
 function AssetDetails({
   asset,
+  node,
+  source,
+  brokenPath,
   method,
   state,
   access,
@@ -264,12 +317,15 @@ function AssetDetails({
   onGet,
 }: {
   asset: StacAsset
+  node: StacNode
+  source: AccessSource
+  brokenPath: boolean
   method: AccessMethod | undefined
   state: string | undefined
   access: AssetAccess | undefined
   until: string | undefined
-  copied: { what: 'declared' | 'access'; ok: boolean; text: string } | undefined
-  onCopy: (what: 'declared' | 'access', text: string) => void
+  copied: Copied | undefined
+  onCopy: (what: string, text: string) => void
   onGet: () => void
 }) {
   const textButton: CSSProperties = {
@@ -292,13 +348,34 @@ function AssetDetails({
         background: 'var(--color-bg)',
       }}
     >
-      <DetailLabel>STAC href</DetailLabel>
+      <DetailLabel>{asset.alternateName ? `STAC href (${asset.alternateName})` : 'STAC href'}</DetailLabel>
       <LinkValue
         href={asset.href}
         copyLabel="Copy STAC href"
         copied={copied?.what === 'declared' ? copied : undefined}
         onCopy={() => onCopy('declared', asset.href)}
       />
+      {brokenPath && (
+        <>
+          <DetailLabel>Check</DetailLabel>
+          <span style={{ color: 'var(--color-node-warning)' }}>
+            ⚠ The path has an empty segment (<code>//</code>). Object stores read <code>a//b</code> and <code>a/b</code>{' '}
+            as different files, so this link usually fails — a publisher error (health rule A-06).
+          </span>
+        </>
+      )}
+      {asset.authRefs && asset.authRefs.length > 0 && (
+        <>
+          <DetailLabel>Requires</DetailLabel>
+          <span>{describeAuthRefs(node, asset.authRefs)} — declared by the catalog (Authentication extension)</span>
+        </>
+      )}
+      {source.storage && (
+        <>
+          <DetailLabel>Storage</DetailLabel>
+          <span>{describeStorageScheme(source.storage)}</span>
+        </>
+      )}
 
       {method && (
         <>
@@ -306,7 +383,7 @@ function AssetDetails({
           <div data-access-state={state} style={{ minWidth: 0 }}>
             {state === 'needed' && (
               <span style={{ color: 'var(--color-text-muted)' }}>
-                Needs {method.label} ·{' '}
+                Opens through {method.label} ·{' '}
                 <button onClick={onGet} style={textButton}>
                   Get access link
                 </button>
@@ -337,6 +414,7 @@ function AssetDetails({
                   {method.label}
                   {until ? ` · valid until ${until}` : ''}
                 </div>
+                {access.note && <div style={{ color: 'var(--color-text-faint)', marginBottom: 2 }}>{access.note}</div>}
                 <LinkValue
                   href={access.href}
                   copyLabel="Copy access link"
@@ -350,6 +428,16 @@ function AssetDetails({
           </div>
         </>
       )}
+
+      {asset.alternates?.map((alt) => (
+        <AlternateLink
+          key={alt.key}
+          alt={alt}
+          node={node}
+          copied={copied?.what === `alt ${alt.key}` ? copied : undefined}
+          onCopy={() => onCopy(`alt ${alt.key}`, alt.href)}
+        />
+      ))}
 
       {asset.roles && asset.roles.length > 0 && (
         <>
@@ -376,6 +464,103 @@ function AssetDetails({
         </>
       )}
     </div>
+  )
+}
+
+type Copied = { what: string; ok: boolean; text: string }
+
+/** The row's Open: through the access method when one applies; a plain
+ *  link when the browser can open the href itself; otherwise disabled,
+ *  saying why — an `s3://` or `gs://` URI is for other tools. */
+function OpenControl({
+  name,
+  href,
+  method,
+  onOpen,
+}: {
+  name: string
+  href: string
+  method: AccessMethod | undefined
+  onOpen: () => void
+}) {
+  if (method) {
+    return (
+      <IconButton label={`Open ${name}`} title={`Open through ${method.label}`} onClick={onOpen}>
+        <OpenIcon />
+      </IconButton>
+    )
+  }
+  if (browserCanOpen(href)) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Open ${name}`}
+        title={`Open ${href}`}
+        style={iconButtonStyle}
+      >
+        <OpenIcon />
+      </a>
+    )
+  }
+  const scheme = href.split(':', 1)[0]
+  return (
+    <button
+      disabled
+      aria-label={`Open ${name}`}
+      title={`A browser can't open ${scheme}:// links — copy it for a tool that can`}
+      style={{ ...iconButtonStyle, cursor: 'default', opacity: 0.35 }}
+    >
+      <OpenIcon />
+    </button>
+  )
+}
+
+/** One Alternate Asset Object: the same file at another location, with
+ *  what the catalog says it needs and where it is stored, its own copy and
+ *  its own Open (through an access method when one applies). */
+function AlternateLink({
+  alt,
+  node,
+  copied,
+  onCopy,
+}: {
+  alt: StacAssetAlternate
+  node: StacNode
+  copied: Copied | undefined
+  onCopy: () => void
+}) {
+  const source = accessSourceFor(node, alt, loader)
+  const method = accessMethodFor(alt.href, source)
+  const label = alt.name ?? alt.key
+  async function open() {
+    const win = window.open('about:blank', '_blank')
+    const a = await accessAsset(alt.href, source)
+    if (!win) return
+    if (a.failure) return win.close()
+    win.opener = null
+    win.location.href = a.href
+  }
+  const facts = [
+    alt.authRefs?.length ? `needs ${describeAuthRefs(node, alt.authRefs)}` : undefined,
+    source.storage ? describeStorageScheme(source.storage) : undefined,
+    method ? `opens through ${method.label}` : undefined,
+    alt.description,
+  ].filter(Boolean)
+  return (
+    <>
+      <DetailLabel>Alternate ({label})</DetailLabel>
+      <div data-alternate={alt.key} style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <LinkValue href={alt.href} copyLabel={`Copy the ${label} href`} copied={copied} onCopy={onCopy} />
+          </div>
+          <OpenControl name={label} href={alt.href} method={method} onOpen={() => void open()} />
+        </div>
+        {facts.length > 0 && <div style={{ color: 'var(--color-text-faint)' }}>{facts.join(' · ')}</div>}
+      </div>
+    </>
   )
 }
 
@@ -532,6 +717,14 @@ function OpenIcon() {
     <svg {...glyph}>
       <path d="M9 2.5h4.5V7M13.5 2.5L7 9" />
       <path d="M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" />
+    </svg>
+  )
+}
+function WarnIcon() {
+  return (
+    <svg {...glyph} width={13} height={13}>
+      <path d="M8 2.2L14.2 13.3H1.8z" />
+      <path d="M8 6.5v3.2M8 11.6v.1" />
     </svg>
   )
 }

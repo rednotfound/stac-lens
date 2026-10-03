@@ -46,7 +46,7 @@ function needsSigning(href: string): boolean {
 export const planetaryComputerSigning: AccessMethod = {
   id: 'planetary-computer',
   label: 'Planetary Computer signing',
-  appliesTo: (href, source) => fromPlanetaryComputer(source) && needsSigning(href),
+  appliesTo: (href, source) => !source.authRefs?.length && fromPlanetaryComputer(source) && needsSigning(href),
   async access(href) {
     // `/sign` (one call per href) rather than the SDK's `/token/{account}/
     // {container}` (one call per container): access is per click today,
@@ -55,6 +55,12 @@ export const planetaryComputerSigning: AccessMethod = {
     // don't change.
     const res = await fetch(`${SIGN_ENDPOINT}?href=${encodeURIComponent(href)}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
+    }).catch((err: unknown) => {
+      // The service is usually sub-second but has its slow moments.
+      if (err instanceof DOMException && err.name === 'TimeoutError') {
+        throw new Error(`Planetary Computer signing did not answer within ${TIMEOUT_MS / 1000} seconds`)
+      }
+      throw err
     })
     const body: unknown = await res.json().catch(() => undefined)
     if (!res.ok) {

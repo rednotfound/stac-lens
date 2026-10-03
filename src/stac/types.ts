@@ -80,11 +80,63 @@ export interface StacAsset {
    *  overridden per-asset (a 10m visible band vs. a 20m SWIR band on the
    *  same Item, confirmed against real Earth Search Sentinel-2 assets). */
   gsd?: number
+  /** Authentication extension: keys of the `auth:schemes` (declared on
+   *  this node or an ancestor) of which any one grants access. Present
+   *  means "a credential is needed" — no anonymous access method applies. */
+  authRefs?: string[]
+  /** Storage extension v2: keys of the `storage:schemes` this href lives
+   *  in (platform, region, requester pays). */
+  storageRefs?: string[]
+  /** Alternate Assets extension: `alternate:name`, the main location's own
+   *  short name (e.g. "HTTPS") beside its alternates. */
+  alternateName?: string
+  /** Alternate Assets extension: other locations of the same file (e.g.
+   *  an `s3://` URI beside an `https://` URL), hrefs already resolved. */
+  alternates?: StacAssetAlternate[]
   /** The pixel data type from this asset's own `raster:bands[0].data_type`
    *  (e.g. "uint16", "float32") — only the first band's type, not a full
    *  band table; every real per-asset band file checked in this project's
    *  fixtures is single-band. */
   dataType?: string
+}
+
+/** One Alternate Asset Object: the same file at another location. */
+export interface StacAssetAlternate {
+  /** The key in the asset's `alternate` map (e.g. "s3", "https"). */
+  key: string
+  href: string
+  /** `alternate:name`, else `title`, when declared. */
+  name?: string
+  description?: string
+  authRefs?: string[]
+  storageRefs?: string[]
+}
+
+/** Authentication extension: one entry of `auth:schemes`, as declared —
+ *  only what the Inspector names; the rest stays in the raw JSON. */
+export interface AuthScheme {
+  /** `http`, `s3`, `signedUrl`, `oauth2`, `apiKey`, `openIdConnect`, or custom. */
+  type: string
+  description?: string
+  /** `openIdConnect`: the discovery document. */
+  openIdConnectUrl?: string
+  /** `http`: e.g. "basic", "bearer". */
+  scheme?: string
+}
+
+/** Storage extension v2: one entry of `storage:schemes`, as declared. */
+export interface StorageScheme {
+  /** `aws-s3`, `custom-s3`, `ms-azure`, or another platform id. */
+  type: string
+  /** The provider's endpoint, as a URI or URI template, e.g.
+   *  `https://{bucket}.s3.{region}.amazonaws.com`. */
+  platform?: string
+  region?: string
+  requesterPays?: boolean
+  title?: string
+  /** Platform-specific fields (`bucket`, `account`, `container`, …), as
+   *  strings — what a platform template's variables are filled from. */
+  fields: Record<string, string>
 }
 
 /** STAC Provider Object (Collection spec) — `name` is the only required
@@ -210,6 +262,13 @@ export interface StacNode {
    *  (shared/representative assets, per the Collection spec's own
    *  optional `assets` field) — empty array when the source has none. */
   assets: StacAsset[]
+  /** Authentication extension `auth:schemes` declared on this node (top
+   *  level on a Catalog/Collection, in `properties` on an Item). Assets
+   *  refer to them by key, often from the Collection: `stac/schemes.ts`
+   *  resolves a key up the parent chain. */
+  authSchemes?: Record<string, AuthScheme>
+  /** Storage extension v2 `storage:schemes` declared on this node. */
+  storageSchemes?: Record<string, StorageScheme>
   /** A `rel: preview` link with a browser image type, resolved — the
    *  link-level way to offer a picture of a Catalog, Collection or Item. */
   previewHref?: string
