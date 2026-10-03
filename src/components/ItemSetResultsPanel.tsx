@@ -30,6 +30,9 @@ export interface ItemSetResultsPanelProps {
   /** Shown only while `status === 'idle'`. Required in that case, unused
    *  otherwise. */
   idleMessage?: string
+  /** A word on what produced these results, after the totals — e.g. that
+   *  the search had no conditions. */
+  queryNote?: string
   /** The failure, while `status === 'error'` — rendered in place of the
    *  list, in warning color, never as an empty-result message. */
   error?: string
@@ -84,6 +87,7 @@ export function ItemSetResultsPanel({
   setView,
   status,
   idleMessage,
+  queryNote,
   error,
   pageItems,
   dimmedItems,
@@ -262,6 +266,7 @@ export function ItemSetResultsPanel({
             page {pageIndex + 1} of {totalPages}
             {totalPagesIsLowerBound ? '+' : ''}
             {totalItems != null && ` — ${totalItems}${totalPagesIsLowerBound ? '+' : ''} items total`}
+            {queryNote && ` · ${queryNote}`}
           </>
         )}
       </div>

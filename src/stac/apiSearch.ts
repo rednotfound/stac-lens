@@ -196,11 +196,28 @@ export async function fetchSearchPage(
   endpoint: string,
   opts: { limit: number; next?: NextLink; filter?: SearchFilter; collections?: string[] },
 ): Promise<SearchPage> {
-  const url = opts.next?.href ?? withQuery(endpoint, buildFreshQueryParams(opts.limit, opts.filter, opts.collections))
+  const known = maxLimitByEndpoint.get(endpoint)
+  const limit = known !== undefined ? Math.min(opts.limit, known) : opts.limit
+  const url = opts.next?.href ?? withQuery(endpoint, buildFreshQueryParams(limit, opts.filter, opts.collections))
   const res = opts.next
-    ? await followNext(opts.next, buildPostBody(opts.limit, opts.filter, opts.collections))
+    ? await followNext(opts.next, buildPostBody(limit, opts.filter, opts.collections))
     : await fetch(url)
-  if (!res.ok) throw await httpError('Search request failed', res)
+  if (!res.ok) {
+    // OGC API - Features: a `limit` above the server's maximum "SHALL NOT
+    // result in an error" — the maximum is used instead. Some servers
+    // answer 400 anyway (Copernicus Data Space, 2026-10-03: "Limit of 250
+    // exceeds maximum of 200"). When the refusal is about the limit and
+    // names the maximum, ask again with it once, and remember it for this
+    // endpoint. Any other 400 is reported as it is.
+    if (!opts.next && res.status === 400) {
+      const max = maxLimitFrom(await res.clone().text())
+      if (max !== undefined && max > 0 && max < limit) {
+        maxLimitByEndpoint.set(endpoint, max)
+        return fetchSearchPage(endpoint, opts)
+      }
+    }
+    throw await httpError('Search request failed', res)
+  }
   const raw = (await res.json()) as RawSearchResponse
   const features = raw.features ?? []
 
@@ -222,6 +239,19 @@ export async function fetchSearchPage(
     next: findNextLink(raw.links, url),
     matched,
   }
+}
+
+/** The maximum `limit` a search endpoint turned out to accept, learned
+ *  from its own refusal (see `fetchSearchPage`). Session-long. */
+const maxLimitByEndpoint = new Map<string, number>()
+
+/** The maximum a server names when it refuses a `limit`: "Limit of 250
+ *  exceeds maximum of 200", "limit must be at most 100", "maximum limit
+ *  is 1000". Only read when the message is about the limit. */
+export function maxLimitFrom(body: string): number | undefined {
+  if (!/limit/i.test(body)) return undefined
+  const m = /(?:maximum(?: limit)?(?: of| is)?|at most|max(?:imum)?\s*[=:])\s*(\d+)/i.exec(body)
+  return m ? Number(m[1]) : undefined
 }
 
 export interface NodeListPage {

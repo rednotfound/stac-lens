@@ -1,3 +1,6 @@
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { drag } from 'd3-drag'
+import { select } from 'd3-selection'
 import type { HoverInfo } from './treeGeometry'
 import { hoverInfoFor, LABEL_FONT_SIZE, truncateLabel } from './treeGeometry'
 import type { ViewDatum } from './itemLeaves'
@@ -20,6 +23,8 @@ export function ItemLeafView({
   onSelectItem,
   onOpenWindow,
   onHover,
+  containerRef,
+  onGroupDragBy,
 }: {
   datum: ViewDatum
   x: number
@@ -28,16 +33,48 @@ export function ItemLeafView({
   onSelectItem: (itemHref: string, hostHref: string, current: boolean) => void
   onOpenWindow: (hostHref: string, current: boolean) => void
   onHover: (info: HoverInfo | null, clientX: number, clientY: number) => void
+  /** The zoomed `<g>`, as d3-drag's container (drag deltas in its space). */
+  containerRef: RefObject<SVGGElement | null>
+  /** Dragging any leaf moves its Collection's whole group of leaves. */
+  onGroupDragBy: (hostHref: string, dxLocal: number, dyLocal: number) => void
 }) {
+  const hostHref = (datum.itemLeaf ?? datum.moreItems)!.hostHref
+  const gRef = useRef<SVGGElement>(null)
+  const [dragging, setDragging] = useState(false)
+  const onGroupDragByRef = useRef(onGroupDragBy)
+  useEffect(() => {
+    onGroupDragByRef.current = onGroupDragBy
+  }, [onGroupDragBy])
+  // The same d3-drag composition as a node's label: a real drag moves the
+  // group (and d3-drag swallows the click that would end it); a click
+  // without movement still selects. The canvas does not pan meanwhile.
+  useEffect(() => {
+    const el = gRef.current
+    if (!el) return
+    const behavior = drag<SVGGElement, unknown>()
+      .container(() => containerRef.current as unknown as SVGGElement)
+      .on('start', () => setDragging(true))
+      .on('drag', (event) => onGroupDragByRef.current(hostHref, event.dx, event.dy))
+      .on('end', () => setDragging(false))
+    const sel = select(el)
+    sel.call(behavior)
+    return () => {
+      sel.on('.drag', null)
+    }
+  }, [containerRef, hostHref])
+  const cursor = dragging ? 'grabbing' : 'pointer'
+
   if (datum.moreItems) {
     const m = datum.moreItems
     return (
       <g
+        ref={gRef}
+        data-block-pan="true"
         transform={`translate(${y}, ${x})`}
         data-item-more-leaf
         opacity={m.current ? 1 : 0.55}
         onClick={() => onOpenWindow(m.hostHref, m.current)}
-        style={{ cursor: 'pointer' }}
+        style={{ cursor }}
       >
         <rect
           x={-4}
@@ -60,6 +97,8 @@ export function ItemLeafView({
   const when = node.temporal ? describeTemporal(node.temporal) : undefined
   return (
     <g
+      ref={gRef}
+      data-block-pan="true"
       transform={`translate(${y}, ${x})`}
       data-item-leaf={node.href}
       data-off-page={leaf.offPage ? '' : undefined}
@@ -68,7 +107,7 @@ export function ItemLeafView({
       onMouseEnter={(e) => onHover(hoverInfoFor(node), e.clientX, e.clientY)}
       onMouseMove={(e) => onHover(hoverInfoFor(node), e.clientX, e.clientY)}
       onMouseLeave={() => onHover(null, 0, 0)}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor }}
     >
       <circle r={12} fill="transparent" />
       {selected && <circle r={8} fill="none" strokeWidth={1.5} style={{ stroke: 'var(--color-selection)' }} />}

@@ -45,6 +45,9 @@ page.on('pageerror', (e) => pageErrors.push(e.message))
 // fixture SAS query, and records what it was asked to sign.
 const SIGN = 'https://planetarycomputer.microsoft.com/api/sas/v1/sign'
 const signRequests = []
+// Every /search request PC receives, for the default-search checks.
+const searchRequests = []
+const OFF_PAGE_ID = 'not-on-the-search-page'
 // A made-up static Item for the asset-location checks: a credentialed
 // s3:// href with an HTTPS alternate, an undeclared s3:// href, an https
 // href with an empty path segment, and a plain https href.
@@ -119,14 +122,25 @@ const handleRoute = async (route) => {
     if (path === '/' || path === '') return reply('root.json')
     if (path.startsWith('/collections?')) return reply('collections.json')
     if (path === '/collections/3dep-lidar-returns') return reply('collection-3dep.json')
-    // One Item by its own URL: the feature from the search fixture.
+    // One Item by its own URL: the feature from the search fixture — or,
+    // for OFF_PAGE_ID, a copy of one under another id, so it is an Item of
+    // the Collection that the (fixture) search page does not hold.
     if (path.startsWith('/collections/3dep-lidar-returns/items/')) {
       const id = decodeURIComponent(path.split('/').pop())
-      const feature = JSON.parse(fixture('search-3dep-nj.json')).features.find((f) => f.id === id)
+      const features = JSON.parse(fixture('search-3dep-nj.json')).features
+      const feature =
+        id === OFF_PAGE_ID
+          ? {
+              ...features[0],
+              id,
+              links: features[0].links.map((l) => (l.rel === 'self' ? { ...l, href: `${PC}${path}` } : l)),
+            }
+          : features.find((f) => f.id === id)
       if (feature)
         return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(feature) })
     }
     if (path.startsWith('/search?')) {
+      searchRequests.push(url)
       const q = new URL(url).searchParams
       if (!q.get('collections')) return reply('search-422.txt', 'text/plain', 422)
       return reply('search-3dep-nj.json', 'application/geo+json')
@@ -173,6 +187,21 @@ await page.goto(`${BASE_URL}/#${PC}/`)
 await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 15000 })
 const labels = await treeLabels()
 check('API root opens with its Collections as children', labels.length === 6, `labels: ${labels.join(' | ')}`)
+{
+  // The wheel zooms the canvas even with the pointer resting on a node's
+  // label (the label's own click and drag must not swallow it).
+  const scale = () =>
+    page.evaluate(() => Number(/scale\(([^)]+)\)/.exec(document.querySelector('svg > g').getAttribute('transform'))[1]))
+  const box = await page.locator('svg text[data-block-pan]').nth(1).boundingBox()
+  const before = await scale()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, -300)
+  await page.waitForTimeout(300)
+  const after = await scale()
+  check('tree: the wheel zooms with the pointer on a node', after > before, `${before} → ${after}`)
+  await page.mouse.wheel(0, 300)
+  await page.waitForTimeout(300)
+}
 check('header shows the catalog title', (await text()).includes('Microsoft Planetary Computer STAC API'))
 
 // 2b. The desktop's view switcher: the same loaded graph and the same
@@ -191,12 +220,21 @@ check(
   'icicle: clicking a cell selects it — Inspector follows, cell outlined',
   (await page.locator('g[data-href$="landsat-c2-l2"] rect[stroke-width="2"]').count()) === 1,
 )
-// The Items window opens for it (search-first: idle until Search); after
-// a search its page — the recorded search page, 5 Items, served for any
-// collections= search — is also the row under the Collection's cell.
+// The Items window opens for it with its default search already run (no
+// conditions — one request, the recorded page of 5 Items served for any
+// collections= search), and that page is the row under the Collection.
 await page.waitForSelector('[data-items-window]', { timeout: 10000 })
-await page.locator('[data-items-window]').getByRole('button', { name: 'Search', exact: true }).click()
 await page.waitForSelector('g[data-item-href]', { timeout: 10000 })
+{
+  const landsat = searchRequests.filter((u) => /collections=landsat-c2-l2/.test(u))
+  check(
+    'a Collection opens with its default, unconditioned search already run — once',
+    landsat.length === 1 &&
+      !/datetime|bbox|sortby/.test(landsat[0]) &&
+      /no conditions, the server's order/.test(await page.locator('[data-items-window]').textContent()),
+    JSON.stringify(landsat),
+  )
+}
 check(
   'icicle: the Items window opens for the browsed Collection and its page is the row under it',
   (await page.locator('g[data-item-href]').count()) === 5,
@@ -356,13 +394,51 @@ await page.waitForFunction(
   )
 }
 
-// 3d. An Item opened by its own URL — a reload, a shared link. The API
-// Collection's window starts unsearched, so its page is empty; the tree
-// still draws the selected Item under its Collection, marked off the page.
+{
+  // Dragging one Item leaf moves its Collection's whole group of leaves —
+  // (after the signing checks above: hovering a leaf shows its signed
+  // preview, by design) —
+  // the page's place in the tree — and the Collection itself stays put.
+  const rel = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-item-leaf][opacity="1"]')].map((g) => {
+        const r = g.getBoundingClientRect()
+        return [Math.round(r.x), Math.round(r.y)]
+      }),
+    )
+  // The window floats over the canvas; collapse it so the leaves are free.
+  const toggleWindow = () =>
+    page
+      .locator('[data-items-window]')
+      .getByRole('button', { name: /Collapse the Items window|Expand the Items window/ })
+      .click()
+  await toggleWindow()
+  await page.waitForTimeout(200)
+  const before = await rel()
+  const leaf = await page.locator('[data-item-leaf][opacity="1"]').nth(1).boundingBox()
+  await page.mouse.move(leaf.x + 6, leaf.y + leaf.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(leaf.x + 86, leaf.y + leaf.height / 2 + 40, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+  const after = await rel()
+  const moved = after.map((p, k) => [p[0] - before[k][0], p[1] - before[k][1]])
+  check(
+    'tree: dragging an Item leaf moves its whole group of leaves together',
+    moved.length === 5 && moved.every((m) => Math.abs(m[0] - 80) < 2 && Math.abs(m[1] - 40) < 2),
+    JSON.stringify(moved),
+  )
+  await page.getByRole('button', { name: 'Reset layout' }).click()
+  await toggleWindow()
+}
+
+// 3d. An Item opened by its own URL — a reload, a shared link — that the
+// Collection's default search page does not hold: the tree still draws the
+// selected Item under its Collection, marked off the page.
 {
   const fresh = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
   await fresh.route('**/*', handleRoute)
-  const id = 'NJ_South_Jersey_FEMA_2018-returns-5m-2-3'
+  const id = OFF_PAGE_ID
   await fresh.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns/items/${id}`)
   await fresh.waitForSelector('[data-item-leaf][data-off-page]', { timeout: 15000 }).catch(() => {})
   const leaf = fresh.locator('[data-item-leaf][data-off-page]')

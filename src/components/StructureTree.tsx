@@ -80,11 +80,28 @@ export function StructureTree() {
   // its whole subtree: the same delta is written into every descendant's
   // entry at drag time, so each node's effective position is one lookup.
   const [dragOffsets, setDragOffsets] = useState<Map<string, { x: number; y: number }>>(new Map())
+  // Item leaves are not stable nodes — they are the Items window's page,
+  // replaced whenever the page turns or a search runs — so they never get
+  // entries of their own. A Collection's leaves move as one group: their
+  // position is the Collection's own offset plus the group's, keyed by the
+  // Collection, so the next page appears where the last one was put
+  // (DESIGN §120).
+  const [leafGroupOffsets, setLeafGroupOffsets] = useState<Map<string, { x: number; y: number }>>(new Map())
   function resetLayout() {
     setDragOffsets(new Map())
+    setLeafGroupOffsets(new Map())
   }
 
   function effectiveXY(n: HierarchyPointNode<ViewDatum>): { x: number; y: number } {
+    const host = n.data.itemLeaf?.hostHref ?? n.data.moreItems?.hostHref
+    if (host) {
+      const hostOff = dragOffsets.get(host)
+      const groupOff = leafGroupOffsets.get(host)
+      return {
+        x: n.x + (hostOff?.x ?? 0) + (groupOff?.x ?? 0),
+        y: n.y + (hostOff?.y ?? 0) + (groupOff?.y ?? 0),
+      }
+    }
     const off = dragOffsets.get(n.data.href)
     return { x: n.x + (off?.x ?? 0), y: n.y + (off?.y ?? 0) }
   }
@@ -100,12 +117,15 @@ export function StructureTree() {
     const svgSel = select(svgEl)
     const behavior = zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.25, 4])
-      // d3-zoom's default filter, plus one rule: never start a pan/zoom from
-      // inside anything marked `data-block-pan`, decided here at the moment
-      // a gesture would begin, for whichever event type d3-zoom is checking.
+      // d3-zoom's default filter, plus one rule: never start a pan (or a
+      // double-click zoom) from inside anything marked `data-block-pan` — a
+      // node's circle and label, which have their own click and drag. The
+      // wheel is exempt: it is not a drag, and zooming with the pointer
+      // resting on a node is what a canvas is expected to do (reported:
+      // the wheel did nothing while hovering a node).
       .filter((event: Event) => {
         const target = event.target as Element | null
-        if (target?.closest(`[${BLOCK_PAN_ATTR}]`)) return false
+        if (event.type !== 'wheel' && target?.closest(`[${BLOCK_PAN_ATTR}]`)) return false
         const e = event as MouseEvent & { ctrlKey: boolean; button: number }
         return (!e.ctrlKey || event.type === 'wheel') && !e.button
       })
@@ -234,7 +254,7 @@ export function StructureTree() {
     )
   }
 
-  const layoutCustomized = dragOffsets.size > 0
+  const layoutCustomized = dragOffsets.size > 0 || leafGroupOffsets.size > 0
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: 'var(--color-bg)' }}>
@@ -297,6 +317,17 @@ export function StructureTree() {
                   onHover={(info, clientX, clientY) =>
                     info ? setTooltip({ ...info, x: clientX, y: clientY }) : setTooltip(null)
                   }
+                  containerRef={zoomGRef}
+                  onGroupDragBy={(hostHref, dxLocal, dyLocal) => {
+                    // The layout is transposed (layout x is screen y), as
+                    // for a node's own drag below.
+                    setLeafGroupOffsets((prev) => {
+                      const next = new Map(prev)
+                      const base = prev.get(hostHref) ?? { x: 0, y: 0 }
+                      next.set(hostHref, { x: base.x + dyLocal, y: base.y + dxLocal })
+                      return next
+                    })
+                  }}
                 />
               )
             }
@@ -319,7 +350,12 @@ export function StructureTree() {
                 }
                 containerRef={zoomGRef}
                 onNodeDragBy={(dxLocal, dyLocal) => {
-                  const descendantHrefs = n.descendants().map((d) => d.data.href)
+                  // Structural descendants only: Item leaves follow their
+                  // Collection through `effectiveXY`, whichever page shows.
+                  const descendantHrefs = n
+                    .descendants()
+                    .filter((d) => !d.data.itemLeaf && !d.data.moreItems)
+                    .map((d) => d.data.href)
                   setDragOffsets((prev) => {
                     const next = new Map(prev)
                     for (const href of descendantHrefs) {
