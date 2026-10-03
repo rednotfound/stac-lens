@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
@@ -12,14 +12,14 @@ import { StructureProvider } from './components/StructureProvider'
 import { TabButton } from './components/TabButton'
 import { EXPLORER_VIEWS, type ExplorerView } from './components/views/explorerViews'
 import { IcicleView } from './components/views/IcicleView'
-import { ItemsWindow } from './components/ItemsWindow'
-import { canvasButtonStyle } from './components/views/canvasButton'
+import { ItemsPanel } from './components/ItemsPanel'
+import { InspectorIcon, ItemSetIcon, PaneHeader, PaneSplitter, PaneToggle, SPLITTER_WIDTH } from './components/panes'
 import { StructureActions } from './components/views/StructureActions'
 import { itemSetSessions } from './store/itemSetSessions'
 import { hasDirectItems } from './components/tree/treeGeometry'
 import { TypeIcon } from './components/TypeIcon'
 import { useSelectionStore } from './store/selection'
-import { useItemSetStore } from './store/itemSet'
+import { DEFAULT_ITEMS_PANEL_WIDTH, useItemSetStore } from './store/itemSet'
 import { useElementSize } from './hooks/useElementSize'
 import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
 import { encodeSearchQuery } from './stac/searchQueryUrl'
@@ -30,18 +30,36 @@ import { loader } from './stac/loaderInstance'
 import { loadMarkdown } from './stac/markdownLoader'
 import type { StacNode } from './stac/types'
 
-// Inspector's width is a plain pixel number, not a boolean — 0 means fully
-// collapsed. Direct manipulation (drag the divider, the same "drag, not
-// sliders/buttons" language the tree's own pan/zoom already uses) is the
-// only control — there is no header show/hide button. This was an explicit
-// request: a button is unnecessary when the dividing line itself can be
-// dragged with the mouse, and dragging it to the edge should snap it away
-// on its own.
+// The two docked panes — the Items panel and the Inspector — follow one
+// rule set (docs/DESIGN.md §122): a default and a minimum width each; a
+// PaneSplitter to resize (double-click: the default); shown and hidden
+// from the header's toggles (or hidden by dragging a splitter past the
+// minimum, or Enter on it); widths remembered per browser. The views keep
+// MIN_CANVAS_WIDTH while the window is wide enough for it and both panes'
+// minimums (~960 px with both open); below that the panes keep their
+// minimums and the canvas narrows.
 const DEFAULT_INSPECTOR_WIDTH = 460
-// Below this, a drag snaps straight to fully collapsed instead of leaving
-// a barely-usable sliver.
-const MIN_INSPECTOR_WIDTH = 220
-const HANDLE_WIDTH = 8
+const MIN_INSPECTOR_WIDTH = 280
+const MIN_ITEMS_PANEL_WIDTH = 300
+const MIN_CANVAS_WIDTH = 360
+const INSPECTOR_PREFS_KEY = 'stac-lens.inspector'
+
+/** The Inspector's remembered width and whether the user hid it. A
+ *  throwing or empty `localStorage` falls back to the defaults. */
+function readInspectorPrefs(): { width: number; hidden: boolean } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(INSPECTOR_PREFS_KEY) ?? 'null') as {
+      width?: unknown
+      hidden?: unknown
+    } | null
+    return {
+      width: typeof raw?.width === 'number' && raw.width > 0 ? raw.width : DEFAULT_INSPECTOR_WIDTH,
+      hidden: raw?.hidden === true,
+    }
+  } catch {
+    return { width: DEFAULT_INSPECTOR_WIDTH, hidden: false }
+  }
+}
 
 function App() {
   const [rootHref, setRootHref] = useState<string | null>(null)
@@ -49,7 +67,7 @@ function App() {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   // Which Item Set's search (if any) belongs on the URL right now —
-  // scoped to `browsingHref` (the Collection the Items window shows),
+  // scoped to `browsingHref` (the Collection the Items panel shows),
   // not `selectedHref` (which can drill into an Item inside it): see
   // `store/itemSet.ts`. `itemSetForHref === browsingHref` guards against a
   // one-render-stale value from a just-abandoned box before its own
@@ -70,29 +88,51 @@ function App() {
   // entirely in the same pass, not folded in here either — see
   // DetailPanel.tsx/ItemSetBrowser.tsx.
   const [containerRef, { width: containerWidth }] = useElementSize<HTMLDivElement>()
-  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH)
+  const [inspectorPrefs, setInspectorPrefs] = useState(readInspectorPrefs)
+  useEffect(() => {
+    try {
+      localStorage.setItem(INSPECTOR_PREFS_KEY, JSON.stringify(inspectorPrefs))
+    } catch {
+      // per-viewer convenience only
+    }
+  }, [inspectorPrefs])
   // Phone layout: the Inspector is a bottom sheet over the canvas instead of
   // a second column. A new selection pops it from peek to half so the
   // detail appears without hiding the tree entirely.
   const narrow = useIsNarrow()
-  // The Items window: the browsed Collection's Item Set, floating above
-  // every view. It opens whenever browsing arrives at a Collection with
-  // Items and stays closed only until the next one (or the Items button).
+  // The Items panel: the browsed Collection's Item Set, docked as a column
+  // between the views and the Inspector. It appears whenever browsing is
+  // on a node with Items to list and gives the canvas its width back
+  // otherwise; hidden from its toggle, it stays hidden only until the next
+  // act of selecting.
   const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
   const itemsNode = browsingNode && hasDirectItems(browsingNode) ? browsingNode : undefined
-  const windowOpen = useItemSetStore((s) => s.windowOpen)
-  const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
+  const panelOpen = useItemSetStore((s) => s.panelOpen)
+  const setPanelOpen = useItemSetStore((s) => s.setPanelOpen)
   const itemsHref = itemsNode?.href
   // Keyed on the *act* of selecting (`selectSeq`), not only on which
   // Collection: clicking the same Collection again after closing the
-  // window must reopen it — with the href alone nothing changed and the
-  // window stayed shut, which read as broken.
+  // panel must reopen it — with the href alone nothing changed and the
+  // panel stayed shut, which read as broken.
   const selectSeq = useSelectionStore((s) => s.selectSeq)
+  // Opened only when there are Items to list: a static node's item links,
+  // or a Collection, whose default search runs on open. An API root's
+  // Items are a search across every Collection that waits for conditions
+  // — nothing to show yet — so browsing it closes the panel; its toggle
+  // still opens it for that search (reported: an empty panel stayed open).
+  const itemsToShow = !!itemsNode && !(itemsNode.items.kind === 'cursor' && itemsNode.type !== 'Collection')
+  // Forced closed only when browsing moves to such a node — not on every
+  // select: picking a result of an API root's search (opened from the
+  // toggle) keeps browsing on the root, and must not close the panel it
+  // was picked from.
+  const lastBrowsedRef = useRef<string | null | undefined>(null)
   useEffect(() => {
-    if (itemsHref) setWindowOpen(true)
-  }, [itemsHref, selectSeq, setWindowOpen])
-  const headerRef = useRef<HTMLElement | null>(null)
-  const leftColumnRef = useRef<HTMLDivElement | null>(null)
+    if (itemsToShow) setPanelOpen(true)
+    else if (lastBrowsedRef.current !== itemsHref) setPanelOpen(false)
+    lastBrowsedRef.current = itemsHref
+  }, [itemsHref, itemsToShow, selectSeq, setPanelOpen])
+  const panelWidth = useItemSetStore((s) => s.panelWidth)
+  const setPanelWidth = useItemSetStore((s) => s.setPanelWidth)
   // Which view of the open catalog the desktop shows. Remembered with the
   // catalog it was chosen for, so opening another catalog starts at the
   // tree again without an effect to reset it.
@@ -104,71 +144,18 @@ function App() {
   // together with the selection it was made for, and a "peek" made for a
   // previous selection reads as "half" once a new node is selected.
   const [sheet, setSheet] = useState<{ snap: SheetSnap; href: string | null }>({ snap: 'half', href: null })
-  // Remembers the last non-zero width so double-clicking the handle while
-  // collapsed restores whatever size was actually in use, not always the
-  // same default.
-  const lastOpenWidthRef = useRef(DEFAULT_INSPECTOR_WIDTH)
-  useEffect(() => {
-    if (inspectorWidth > 0) lastOpenWidthRef.current = inspectorWidth
-  }, [inspectorWidth])
-
-  // Pointer Events with `setPointerCapture`, not mousedown/mousemove/mouseup
-  // on `window` (the original approach) — a real, confirmed bug: dragging
-  // the handle to collapse (or anywhere near a Leaflet map, e.g. Spatial's
-  // inline map in DetailPanel) could end the drag with the browser button
-  // released *without* a `mouseup` ever reaching `window` — either because
-  // the cursor left the browser window entirely before release (a fast
-  // drag to the edge, or resizing to fully collapsed is exactly a drag
-  // toward the edge) or because Leaflet calls `stopPropagation` on the
-  // pointer/mouse events it handles for its own map dragging, which stops
-  // the event from ever bubbling up to `window`. Either way the stale
-  // `onMove`/`onUp` pair from that drag stayed attached to `window`
-  // forever, with `startX`/`startWidth` frozen from the drag that never
-  // cleanly ended — so *any* later mouse movement anywhere on the page
-  // kept re-firing that ghost handler, immediately recomputing `next` from
-  // its stale closure and snapping the width straight back to 0 in a
-  // fight against any new, legitimate resize attempt: the handle looked
-  // permanently stuck at collapsed until a full page reload discarded the
-  // listener. `setPointerCapture` on the handle itself fixes this at the
-  // source — once captured, the browser keeps routing pointermove/pointerup
-  // to this element regardless of what's under the cursor or whether the
-  // pointer leaves the document, so `pointerup`/`pointercancel` are
-  // guaranteed to fire and clean the listeners up every time.
-  const beginResize = useCallback(
-    (startEvent: React.PointerEvent<HTMLDivElement>) => {
-      startEvent.preventDefault()
-      const handle = startEvent.currentTarget
-      const pointerId = startEvent.pointerId
-      handle.setPointerCapture(pointerId)
-      const startX = startEvent.clientX
-      const startWidth = inspectorWidth
-
-      function onMove(e: PointerEvent) {
-        // Handle sits to the *left* of Inspector, so dragging left (cursor
-        // x decreases) should grow it — the delta is inverted relative to
-        // a plain "drag right to grow" control.
-        const delta = startX - e.clientX
-        const cap = containerWidth > 0 ? containerWidth * 0.5 : DEFAULT_INSPECTOR_WIDTH
-        let next = Math.min(startWidth + delta, cap)
-        if (next < MIN_INSPECTOR_WIDTH) next = 0
-        setInspectorWidth(Math.max(next, 0))
-      }
-      function onUp(e: PointerEvent) {
-        handle.releasePointerCapture(e.pointerId)
-        handle.removeEventListener('pointermove', onMove)
-        handle.removeEventListener('pointerup', onUp)
-        handle.removeEventListener('pointercancel', onUp)
-      }
-      handle.addEventListener('pointermove', onMove)
-      handle.addEventListener('pointerup', onUp)
-      handle.addEventListener('pointercancel', onUp)
-    },
-    [inspectorWidth, containerWidth],
-  )
-
-  const toggleCollapse = useCallback(() => {
-    setInspectorWidth((w) => (w > 0 ? 0 : lastOpenWidthRef.current || DEFAULT_INSPECTOR_WIDTH))
-  }, [])
+  // Pane widths, clamped in render so the views keep MIN_CANVAS_WIDTH:
+  // each pane gets what is left after the canvas, the splitters and the
+  // other pane (at its minimum, if it is shown).
+  const itemsShown = !narrow && !!itemsNode && panelOpen
+  const inspectorShown = !narrow && !!selectedHref && !inspectorPrefs.hidden
+  const room =
+    containerWidth - MIN_CANVAS_WIDTH - (itemsShown ? SPLITTER_WIDTH : 0) - (inspectorShown ? SPLITTER_WIDTH : 0)
+  const inspectorMax = Math.max(MIN_INSPECTOR_WIDTH, room - (itemsShown ? MIN_ITEMS_PANEL_WIDTH : 0))
+  const inspectorWidth = Math.min(Math.max(inspectorPrefs.width, MIN_INSPECTOR_WIDTH), inspectorMax)
+  const itemsMax = Math.max(MIN_ITEMS_PANEL_WIDTH, room - (inspectorShown ? inspectorWidth : 0))
+  const itemsPanelWidth = Math.min(Math.max(panelWidth, MIN_ITEMS_PANEL_WIDTH), itemsMax)
+  const setInspectorHidden = (hidden: boolean) => setInspectorPrefs((p) => ({ ...p, hidden }))
 
   // Selecting a new node reuses this same scrolled-down container for
   // completely different content — without this, a selection made while
@@ -314,29 +301,15 @@ function App() {
   const sheetSnap: SheetSnap = sheet.snap === 'peek' && sheet.href !== selectedHref ? 'half' : sheet.snap
 
   return (
-    // `overflow: 'hidden'` here is load-bearing, not decorative — this is
-    // a fixed-viewport app (every scrollable area, Structure Lens's own
-    // canvas and Inspector's own column, already manages its own internal
-    // scrolling), so nothing here should ever need the *page* itself to
-    // scroll. Without this, any descendant that's even a few pixels wider
-    // than its own visual container — a real, reported case: the
-    // Inspector-collapse chevron button is deliberately larger (22px) than
-    // the divider handle it's centered on (`HANDLE_WIDTH`, 8px) for a
-    // comfortable click target, so it overflows ~7px past the divider on
-    // each side by design — bleeds all the way out to `body`/`html`
-    // (neither clips by default), which then grow a real page-level
-    // scrollbar in both directions to accommodate it. This was a reported
-    // problem, not a guess: after clicking that button, scrollbars showed
-    // up on the right and bottom in Chrome — confirmed in Firefox too,
-    // since neither browser clips overflow that nothing in the ancestor
-    // chain ever asked it to clip. This boundary is the right place to
-    // guarantee that never happens, regardless of what a future
-    // deliberately-larger-than-its-box affordance like this one does deep
-    // inside either column.
+    // `overflow: 'hidden'` here is load-bearing: this is a fixed-viewport
+    // app — the canvas and each pane manage their own scrolling — so the
+    // page itself must never scroll. Any descendant a few pixels wider than
+    // its box would otherwise bleed out to `body`/`html` (neither clips by
+    // default) and grow page-level scrollbars; it happened once with a
+    // control larger than the divider it sat on.
     <StructureProvider key={rootHref} rootHref={rootHref}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         <header
-          ref={headerRef}
           style={{
             padding: '10px 16px',
             borderBottom: '1px solid var(--color-border)',
@@ -418,12 +391,53 @@ function App() {
           {/* Source link, kept to the bare mark — the landing page's footer
            * carries version/license/source in full; here it only needs to be
            * findable, at the header's far edge, away from the catalog title. */}
+          {/* The panes' show/hide switches, fixed at the header's trailing
+           * end so they never move as panes open and close — the one place
+           * a hidden pane always comes back from. */}
+          {!narrow && (
+            <span
+              role="group"
+              aria-label="Panes"
+              className="stac-lens-pane-switch"
+              style={{ marginLeft: 'auto', flexShrink: 0 }}
+            >
+              <PaneToggle
+                id="items"
+                label="Items"
+                pressed={itemsShown}
+                disabled={!itemsNode}
+                title={
+                  itemsNode
+                    ? `${itemsShown ? 'Hide' : 'Show'} the Items panel (${itemsToShow ? (itemsNode.title ?? itemsNode.id) : 'a search across every Collection'})`
+                    : 'Items panel — select a Collection that has Items'
+                }
+                icon={<ItemSetIcon color="currentColor" />}
+                onToggle={() => setPanelOpen(!panelOpen)}
+              />
+              <PaneToggle
+                id="inspector"
+                label="Inspector"
+                pressed={inspectorShown}
+                disabled={!selectedHref}
+                title={
+                  selectedHref ? `${inspectorShown ? 'Hide' : 'Show'} the Inspector` : 'Inspector — select something'
+                }
+                icon={<InspectorIcon />}
+                onToggle={() => setInspectorHidden(!inspectorPrefs.hidden)}
+              />
+            </span>
+          )}
           <a
             href={REPO_URL}
             target="_blank"
             rel="noreferrer"
             title="Source on GitHub"
-            style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--color-text-muted)', display: 'flex' }}
+            style={{
+              marginLeft: narrow ? 'auto' : 8,
+              flexShrink: 0,
+              color: 'var(--color-text-muted)',
+              display: 'flex',
+            }}
           >
             <GitHubMark size={18} />
           </a>
@@ -522,19 +536,9 @@ function App() {
                     style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 8 }}
                   >
                     <StructureActions />
-                    {itemsNode && !windowOpen && (
-                      <button
-                        type="button"
-                        onClick={() => setWindowOpen(true)}
-                        title={`Reopen the Items window for ${itemsNode.title ?? itemsNode.id}`}
-                        style={canvasButtonStyle}
-                      >
-                        Items ▸ {itemsNode.title ?? itemsNode.id}
-                      </button>
-                    )}
                   </span>
                 </div>
-                <div ref={leftColumnRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
                   {view === 'tree' && <StructureTree key={rootHref} />}
                   {view === 'outline' && (
                     <div style={{ height: '100%', overflow: 'auto' }}>
@@ -545,17 +549,27 @@ function App() {
                   )}
                   {view === 'icicle' && <IcicleView key={rootHref} />}
                 </div>
-                {itemsNode && windowOpen && (
-                  <ItemsWindow
-                    node={itemsNode}
-                    areaRef={leftColumnRef}
-                    headerRef={headerRef}
-                    onClose={() => setWindowOpen(false)}
-                  />
-                )}
               </div>
             )}
           </div>
+          {itemsShown && itemsNode && (
+            <>
+              <PaneSplitter
+                width={itemsPanelWidth}
+                min={MIN_ITEMS_PANEL_WIDTH}
+                max={itemsMax}
+                defaultWidth={DEFAULT_ITEMS_PANEL_WIDTH}
+                label="Resize the Items panel"
+                returnFocusTo="items"
+                controls="stac-lens-items-pane"
+                onResize={setPanelWidth}
+                onHide={() => setPanelOpen(false)}
+              />
+              <div style={{ width: itemsPanelWidth, flexShrink: 0, minWidth: 0 }}>
+                <ItemsPanel node={itemsNode} />
+              </div>
+            </>
+          )}
           {hasSelection && narrow && (
             <BottomSheet
               snap={sheetSnap}
@@ -575,78 +589,30 @@ function App() {
               <DetailPanel />
             </BottomSheet>
           )}
-          {hasSelection && !narrow && (
+          {inspectorShown && (
             <>
-              {/* The divider resizes Inspector continuously while it's open
-               * (drag past `MIN_INSPECTOR_WIDTH` snaps it fully away), but a
-               * drag alone is not a reliable way back once collapsed — a
-               * reported problem, not a guess: dragging alone didn't work,
-               * even after the pointer-capture fix above made the *listener*
-               * itself stop getting stuck, because a fully collapsed divider
-               * is just a bare 8px sliver at the very edge of the window
-               * with nothing to grab. Rather than keep
-               * chasing that edge case, this is the standard resizable-panel
-               * pattern instead — a small chevron button that's always
-               * there and always a plain click, independent of drag
-               * geometry entirely, layered on the same divider (double-click
-               * still works too, this doesn't replace it). */}
-              <div
-                onPointerDown={beginResize}
-                onDoubleClick={toggleCollapse}
-                title={inspectorWidth > 0 ? 'Drag to resize' : 'Drag to show Inspector'}
-                style={{
-                  position: 'relative',
-                  width: HANDLE_WIDTH,
-                  flexShrink: 0,
-                  cursor: 'col-resize',
-                  background: 'var(--color-border)',
-                  touchAction: 'none',
-                }}
+              <PaneSplitter
+                width={inspectorWidth}
+                min={MIN_INSPECTOR_WIDTH}
+                max={inspectorMax}
+                defaultWidth={DEFAULT_INSPECTOR_WIDTH}
+                label="Resize the Inspector"
+                returnFocusTo="inspector"
+                controls="stac-lens-inspector-pane"
+                onResize={(width) => setInspectorPrefs((p) => ({ ...p, width }))}
+                onHide={() => setInspectorHidden(true)}
+              />
+              <section
+                id="stac-lens-inspector-pane"
+                aria-label="Inspector"
+                data-inspector-pane
+                style={{ width: inspectorWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', minWidth: 0 }}
               >
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={toggleCollapse}
-                  title={inspectorWidth > 0 ? 'Hide Inspector' : 'Show Inspector'}
-                  aria-label={inspectorWidth > 0 ? 'Hide Inspector' : 'Show Inspector'}
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: 22,
-                    height: 36,
-                    borderRadius: 6,
-                    border: '1px solid var(--color-border)',
-                    background: 'var(--color-surface)',
-                    color: 'var(--color-text-muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path
-                      // Points the direction the panel actually moves on
-                      // click — right (away) to hide, matching the same
-                      // "drag left grows it" convention `beginResize`
-                      // already uses, just inverted for collapsing.
-                      d={inspectorWidth > 0 ? 'M8 4l6 6-6 6' : 'M12 4 6 10l6 6'}
-                      stroke="currentColor"
-                      strokeWidth={1.6}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-              {inspectorWidth > 0 && (
-                <div ref={inspectorScrollRef} style={{ width: inspectorWidth, flexShrink: 0, overflow: 'auto' }}>
+                <PaneHeader icon={<InspectorIcon />} title="Inspector" />
+                <div ref={inspectorScrollRef} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                   <DetailPanel />
                 </div>
-              )}
+              </section>
             </>
           )}
         </div>

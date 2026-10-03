@@ -30,7 +30,7 @@ interface SelectionState {
   browsingHref: string | null
   /** Counts every `select` call, including one that re-selects what is
    *  already selected. A selection is an *act*, and some things answer the
-   *  act rather than the value: the Items window reopens when a Collection
+   *  act rather than the value: the Items panel reopens when a Collection
    *  is clicked again after being closed, which `browsingHref` alone can
    *  never say. */
   selectSeq: number

@@ -9,7 +9,7 @@
 // It covers the paths a contributor is most likely to break: the landing
 // page, opening an API root whose children come from /collections, the
 // desktop's view switcher (icicle and outline over the same graph), the
-// Items window that follows the browsed Collection across views, a deep
+// Items panel that follows the browsed Collection across views, a deep
 // link into a Collection with an applied search, a rejected search shown
 // as an error, the Inspector's Spatial map fitting a Collection's bbox, the
 // phone layout (390px: Filters button, outline, bottom-sheet Inspector), and
@@ -166,7 +166,7 @@ await page.route('**/*', handleRoute)
 const text = () => page.evaluate(() => document.body.innerText)
 const titleBars = () =>
   page.evaluate(() =>
-    [...document.querySelectorAll('[title="Drag to move this panel"]')].map((h) => h.innerText.replace(/\n/g, ' ')),
+    [...document.querySelectorAll('[data-items-panel] > div:first-child')].map((h) => h.innerText.replace(/\n/g, ' ')),
   )
 const treeLabels = () =>
   page.evaluate(() =>
@@ -220,10 +220,10 @@ check(
   'icicle: clicking a cell selects it — Inspector follows, cell outlined',
   (await page.locator('g[data-href$="landsat-c2-l2"] rect[stroke-width="2"]').count()) === 1,
 )
-// The Items window opens for it with its default search already run (no
+// The Items panel opens for it with its default search already run (no
 // conditions — one request, the recorded page of 5 Items served for any
 // collections= search), and that page is the row under the Collection.
-await page.waitForSelector('[data-items-window]', { timeout: 10000 })
+await page.waitForSelector('[data-items-panel]', { timeout: 10000 })
 await page.waitForSelector('g[data-item-href]', { timeout: 10000 })
 {
   const landsat = searchRequests.filter((u) => /collections=landsat-c2-l2/.test(u))
@@ -231,12 +231,12 @@ await page.waitForSelector('g[data-item-href]', { timeout: 10000 })
     'a Collection opens with its default, unconditioned search already run — once',
     landsat.length === 1 &&
       !/datetime|bbox|sortby/.test(landsat[0]) &&
-      /no conditions, the server's order/.test(await page.locator('[data-items-window]').textContent()),
+      /no conditions, the server's order/.test(await page.locator('[data-items-panel]').textContent()),
     JSON.stringify(landsat),
   )
 }
 check(
-  'icicle: the Items window opens for the browsed Collection and its page is the row under it',
+  'icicle: the Items panel opens for the browsed Collection and its page is the row under it',
   (await page.locator('g[data-item-href]').count()) === 5,
   `items: ${await page.locator('g[data-item-href]').count()}`,
 )
@@ -254,8 +254,8 @@ await page.waitForFunction(() => document.querySelectorAll('svg text').length > 
 await page.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns?bbox=-75.5%2C39.5%2C-73.5%2C41.5`)
 await page.waitForFunction(() => /page \d+ of \d+/.test(document.body.innerText), null, { timeout: 15000 })
 check(
-  'the Items window opens for the Collection, with Search above Results',
-  (await page.locator('[data-items-window]').count()) === 1 &&
+  'the Items panel opens for the Collection, with Search above Results',
+  (await page.locator('[data-items-panel]').count()) === 1 &&
     /USGS 3DEP Lidar Returns.*API/s.test((await titleBars()).join(',')) &&
     (await page.getByRole('button', { name: 'Hide the search conditions' }).count()) === 1,
   (await titleBars()).join(','),
@@ -271,7 +271,7 @@ check(
   (await page.evaluate(() => decodeURIComponent(location.hash))).endsWith('?bbox=-75.5,39.5,-73.5,41.5'),
 )
 check(
-  "tree: the window's page appears as Item leaves under the Collection; Landsat's page last seen stays, dimmed",
+  "tree: the panel's page appears as Item leaves under the Collection; Landsat's page last seen stays, dimmed",
   (await page.locator('[data-item-leaf][opacity="1"]').count()) === 5 &&
     (await page.locator('[data-item-leaf][opacity="0.55"]').count()) === 5,
   `current: ${await page.locator('[data-item-leaf][opacity="1"]').count()}, remembered: ${await page.locator('[data-item-leaf][opacity="0.55"]').count()}`,
@@ -284,17 +284,17 @@ check(
 )
 check('Inspector marks the deprecated license value', (await text()).includes('deprecated value since STAC 1.1'))
 
-// 3b. The Items window is the same window in every view: switching to
-// the icicle and back leaves it where it was, with its page; the title
-// bar still drags it (screen pixels now, not tree coordinates).
+// 3b. The Items panel is the same panel in every view: switching to
+// the icicle and back leaves it where it was, with its page; it is docked
+// beside the views and its splitter resizes it.
 await page.getByRole('tab', { name: 'Icicle' }).click()
 await page.waitForSelector('g[data-href]')
 check(
-  'Items window persists across a view switch with its page',
-  (await page.locator('[data-items-window]').count()) === 1 && /page 1 of 1 — 5 items total/.test(await text()),
+  'Items panel persists across a view switch with its page',
+  (await page.locator('[data-items-panel]').count()) === 1 && /page 1 of 1 — 5 items total/.test(await text()),
 )
 check(
-  "icicle: the browsed Collection's row is the window's page; Landsat keeps its last page, dimmed",
+  "icicle: the browsed Collection's row is the panel's page; Landsat keeps its last page, dimmed",
   (await page.locator('g[data-items-row="current"] g[data-item-href]').count()) === 5 &&
     (await page.locator('g[data-items-row="remembered"] g[data-item-href]').count()) === 5,
   `current: ${await page.locator('g[data-items-row="current"] g[data-item-href]').count()}, remembered: ${await page.locator('g[data-items-row="remembered"] g[data-item-href]').count()}`,
@@ -302,58 +302,132 @@ check(
 await page.getByRole('tab', { name: 'Tree' }).click()
 await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 5000 })
 {
-  const win = page.locator('[data-items-window]')
-  const bar = win.locator('[title="Drag to move this panel"]')
-  const before = await win.evaluate((el) => el.getBoundingClientRect().left)
-  const b = await bar.boundingBox()
-  await page.mouse.move(b.x + 40, b.y + b.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(b.x - 40, b.y + b.height / 2, { steps: 6 })
-  await page.mouse.up()
-  const after = await win.evaluate((el) => el.getBoundingClientRect().left)
-  check('Items window drags by its title bar', Math.abs(after - before + 80) < 0.5, `moved ${after - before}px`)
-  // Resizes from any edge: the left edge moves x and grows the width,
-  // keeping the right edge where it was.
-  const edge = page.locator('[data-resize="w"]')
-  const e = await edge.boundingBox()
-  const rectBefore = await win.evaluate((el) => el.getBoundingClientRect().toJSON())
-  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(e.x + e.width / 2 - 60, e.y + e.height / 2, { steps: 6 })
-  await page.mouse.up()
-  const rectAfter = await win.evaluate((el) => el.getBoundingClientRect().toJSON())
+  // The Items panel is docked: a column between the views and the
+  // Inspector, overlapping neither; its divider resizes it, taking the
+  // width from the canvas.
+  const box = (sel) =>
+    page
+      .locator(sel)
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().toJSON())
+  const canvas = await page
+    .locator('svg')
+    .filter({ has: page.locator(':scope > g[transform]') })
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().toJSON())
+  const panel = await box('[data-items-panel]')
+  const inspectorLeft = await page.evaluate(
+    () => document.querySelector('[data-inspector-pane]').getBoundingClientRect().left,
+  )
   check(
-    'Items window resizes from its left edge with the right edge pinned',
-    Math.abs(rectAfter.width - rectBefore.width - 60) < 0.5 && Math.abs(rectAfter.right - rectBefore.right) < 0.5,
-    `width ${rectBefore.width} → ${rectAfter.width}, right ${rectBefore.right} → ${rectAfter.right}`,
+    'the Items panel is docked between the views and the Inspector, overlapping neither',
+    canvas.right <= panel.left && panel.right <= inspectorLeft,
+    `canvas ${canvas.left}–${canvas.right}, panel ${panel.left}–${panel.right}, inspector from ${inspectorLeft}`,
+  )
+  const d = await page.getByRole('separator', { name: 'Resize the Items panel' }).boundingBox()
+  await page.mouse.move(d.x + d.width / 2, d.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(d.x + d.width / 2 - 60, d.y + 200, { steps: 6 })
+  await page.mouse.up()
+  const after = await box('[data-items-panel]')
+  check(
+    'dragging its divider widens the panel, its right edge where it was',
+    Math.abs(after.width - panel.width - 60) < 1.5 && Math.abs(after.right - panel.right) < 1.5,
+    `width ${panel.width} → ${after.width}, right ${panel.right} → ${after.right}`,
   )
 }
-// Close, reopen from the tab row: same page, no refetch (the session).
-await page.getByRole('button', { name: 'Close the Items window' }).click()
+// Hide and show from the header toggle (the one place panes are shown and
+// hidden): same page, no refetch (the session). The pane is named by its
+// role — "Items", the Collection only its context.
+const itemsToggle = page.getByRole('button', { name: 'Items', exact: true })
 check(
-  'closing the window leaves an Items button in the tab row',
-  (await page.locator('[data-items-window]').count()) === 0 &&
-    (await page.getByRole('button', { name: /^Items ▸/ }).count()) === 1,
+  'the Items panel is titled "Items", with its Collection as context',
+  /^Items\s*in USGS 3DEP Lidar Returns/.test(
+    (await page.locator('[data-items-panel] .stac-lens-pane-header').textContent()).trim(),
+  ),
+  await page.locator('[data-items-panel] .stac-lens-pane-header').textContent(),
 )
-await page.getByRole('button', { name: /^Items ▸/ }).click()
-await page.waitForSelector('[data-items-window]')
+await itemsToggle.click()
+check(
+  "the header's Items toggle hides the panel and shows as unpressed",
+  (await page.locator('[data-items-panel]').count()) === 0 &&
+    (await itemsToggle.getAttribute('aria-pressed')) === 'false',
+)
+await itemsToggle.click()
+await page.waitForSelector('[data-items-panel]')
 check('reopening restores the search and its page from the session', /page 1 of 1 — 5 items total/.test(await text()))
 // Closing and clicking the *same* Collection again also reopens it — a
 // selection is an act, not only a value (a reported confusion).
-await page.getByRole('button', { name: 'Close the Items window' }).click()
+await itemsToggle.click()
 await page.locator('svg text', { hasText: 'USGS 3DEP Lidar Returns' }).first().click()
-await page.waitForSelector('[data-items-window]', { timeout: 5000 })
+await page.waitForSelector('[data-items-panel]', { timeout: 5000 })
 check(
-  'clicking the already-selected Collection reopens the closed window',
-  (await page.locator('[data-items-window]').count()) === 1,
+  'clicking the already-selected Collection reopens the closed panel',
+  (await page.locator('[data-items-panel]').count()) === 1,
 )
+
+{
+  // The Inspector is the same kind of pane: hidden and shown again from
+  // its header toggle, at the width it had; its splitter takes the
+  // keyboard (WAI-ARIA window splitter).
+  const inspector = page.locator('[data-inspector-pane]')
+  const width = await inspector.evaluate((e) => Math.round(e.getBoundingClientRect().width))
+  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
+  const hidden = (await inspector.count()) === 0
+  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
+  const back = await inspector.evaluate((e) => Math.round(e.getBoundingClientRect().width))
+  const splitter = page.getByRole('separator', { name: 'Resize the Inspector' })
+  await splitter.focus()
+  await page.keyboard.press('ArrowLeft')
+  const keyed = await inspector.evaluate((e) => Math.round(e.getBoundingClientRect().width))
+  await page.keyboard.press('ArrowRight')
+  check(
+    'the Inspector hides and returns from its toggle at its width, and resizes by keyboard',
+    hidden &&
+      back === width &&
+      keyed === width + 16 &&
+      (await splitter.getAttribute('aria-valuenow')) === String(width),
+    `width ${width}, back ${back}, keyed ${keyed}`,
+  )
+  // Enter on a splitter hides its pane and hands keyboard focus to the
+  // toggle that brings it back; dragging a splitter well past the minimum
+  // hides the pane too; widths and the hidden state survive a reload.
+  await splitter.focus()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(100)
+  const focusedToggle = await page.evaluate(() => document.activeElement?.getAttribute('data-pane-toggle'))
+  check(
+    "Enter on a splitter hides its pane and moves focus to that pane's toggle",
+    (await inspector.count()) === 0 && focusedToggle === 'inspector',
+    `focus on ${focusedToggle}`,
+  )
+  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
+  const isp = await page.getByRole('separator', { name: 'Resize the Inspector' }).boundingBox()
+  await page.mouse.move(isp.x + 4, isp.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(isp.x + 500, isp.y + 200, { steps: 8 })
+  await page.mouse.up()
+  check('dragging a splitter well past the minimum hides its pane', (await inspector.count()) === 0)
+  const itemsWidth = await page
+    .locator('[data-items-panel]')
+    .evaluate((e) => Math.round(e.getBoundingClientRect().width))
+  await page.reload()
+  await page.waitForSelector('[data-items-panel]', { timeout: 15000 })
+  check(
+    'after a reload the Inspector stays hidden and the Items panel keeps its width',
+    (await page.locator('[data-inspector-pane]').count()) === 0 &&
+      (await page.locator('[data-items-panel]').evaluate((e) => Math.round(e.getBoundingClientRect().width))) ===
+        itemsWidth,
+  )
+  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
+}
 
 // 3c. Asset access. Browsing never signs anything; selecting an Item
 // signs only what is about to be shown (its thumbnail lives in storage
 // that refuses unsigned requests), the declared hrefs stay what STAC says,
 // and an access link is obtained only when asked for.
 check('browsing a catalog signs nothing', signRequests.length === 0, `${signRequests.length} sign request(s)`)
-await page.locator('[data-items-window]').getByText('NJ_South_Jersey_FEMA_2018-returns-5m-2-3').first().click()
+await page.locator('[data-items-panel]').getByText('NJ_South_Jersey_FEMA_2018-returns-5m-2-3').first().click()
 await page.waitForSelector('[data-asset-access]', { timeout: 10000 })
 await page.waitForFunction(
   () => {
@@ -406,14 +480,6 @@ await page.waitForFunction(
         return [Math.round(r.x), Math.round(r.y)]
       }),
     )
-  // The window floats over the canvas; collapse it so the leaves are free.
-  const toggleWindow = () =>
-    page
-      .locator('[data-items-window]')
-      .getByRole('button', { name: /Collapse the Items window|Expand the Items window/ })
-      .click()
-  await toggleWindow()
-  await page.waitForTimeout(200)
   const before = await rel()
   const leaf = await page.locator('[data-item-leaf][opacity="1"]').nth(1).boundingBox()
   await page.mouse.move(leaf.x + 6, leaf.y + leaf.height / 2)
@@ -429,7 +495,6 @@ await page.waitForFunction(
     JSON.stringify(moved),
   )
   await page.getByRole('button', { name: 'Reset layout' }).click()
-  await toggleWindow()
 }
 
 // 3d. An Item opened by its own URL — a reload, a shared link — that the
@@ -446,7 +511,7 @@ await page.waitForFunction(
     'an Item opened by its URL is drawn in the tree under its Collection, marked off the page',
     (await leaf.count()) === 1 &&
       (await leaf.getAttribute('data-item-leaf')).endsWith(`/items/${id}`) &&
-      /not on the Items window's page/.test(await leaf.textContent()),
+      /not on the Items panel's page/.test(await leaf.textContent()),
   )
   await fresh.getByRole('tab', { name: 'Outline' }).click()
   await fresh.waitForSelector('[role="treeitem"][data-off-page]', { timeout: 5000 }).catch(() => {})
@@ -527,8 +592,33 @@ await page.waitForFunction(
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result
 await page.goto(`${BASE_URL}/#${PC}/`)
 await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 15000 })
-await page.locator('svg text', { hasText: 'Planetary Computer' }).first().click()
-await page.waitForSelector('[title="Drag to move this panel"]')
+{
+  // A flat API root (only Collections under it) has nothing to collapse
+  // and no Catalog to open: both commands say so instead of doing nothing.
+  check(
+    'a flat API root offers neither Collapse nor Expand (both disabled)',
+    (await page.getByRole('button', { name: 'Collapse to top level' }).isDisabled()) &&
+      (await page.getByRole('button', { name: 'Expand all catalogs' }).isDisabled()),
+  )
+  const before = (await treeLabels()).length
+  await page.locator('svg text', { hasText: 'Planetary Computer' }).first().click()
+  await page.waitForTimeout(300)
+  // Selecting the open root by its name keeps the tree open (the circle
+  // toggles; the label only selects and opens).
+  check(
+    "clicking the open root's label selects it without collapsing the tree",
+    (await treeLabels()).length === before,
+    `${before} → ${(await treeLabels()).length}`,
+  )
+  // An API root's Items are a search across every Collection, nothing to
+  // show yet: the panel stays closed, and the header toggle opens it.
+  check(
+    "an API root's Items panel stays closed until its toggle is pressed",
+    (await page.locator('[data-items-panel]').count()) === 0,
+  )
+  await page.getByRole('button', { name: 'Items', exact: true }).click()
+}
+await page.waitForSelector('[data-items-panel]')
 const dates = page.locator('input[type="date"]')
 await dates.nth(0).fill('2020-01-01')
 await dates.nth(1).fill('2020-01-31')
@@ -568,6 +658,11 @@ const phoneText = await phone.evaluate(() => document.body.innerText)
 check(
   'phone explorer: outline + bottom-sheet Inspector, no canvas, compact banner',
   !/Collapse to top level/.test(phoneText) && /Compact view/.test(phoneText),
+)
+check(
+  'phone explorer: no docked panes — no splitters, no pane toggles',
+  (await phone.locator('[role="separator"]').count()) === 0 &&
+    (await phone.locator('[data-pane-toggle]').count()) === 0,
 )
 check(
   "phone explorer: a Collection's Items listed inline from the recorded search page",

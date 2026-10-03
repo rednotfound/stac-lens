@@ -296,10 +296,10 @@ function OutlineRow({
 
 /** On the desktop the rows under a Collection are the page the Items
  *  window is showing — the same state, read from the store — or, for a
- *  Collection that is open here but is not the one the window is on, the
+ *  Collection that is open here but is not the one the panel is on, the
  *  page it last showed (its session), so opening a second Collection
  *  never blanks the first. One line under the rows says which it is and
- *  points at the window. The phone, which has no window, keeps its own
+ *  points at the panel. The phone, which has no panel, keeps its own
  *  ten-at-a-time rows (`ItemRows`). */
 function WindowPageRows({
   node,
@@ -316,8 +316,8 @@ function WindowPageRows({
 }) {
   const forHref = useItemSetStore((s) => s.forHref)
   const visibleHrefs = useItemSetStore((s) => s.visibleHrefs)
-  const windowOpen = useItemSetStore((s) => s.windowOpen)
-  const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
+  const panelOpen = useItemSetStore((s) => s.panelOpen)
+  const setPanelOpen = useItemSetStore((s) => s.setPanelOpen)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const pad = 8 + depth * 18
   const current = forHref === node.href
@@ -328,21 +328,21 @@ function WindowPageRows({
   const offPage = selectedItemOffPage(selectedHref, node.href, browsingHref, items)
   const isApi = node.items.kind === 'cursor'
   const tail = current
-    ? !windowOpen
-      ? 'The Items window is closed — open it.'
+    ? !panelOpen
+      ? 'The Items panel is closed — open it.'
       : items.length === 0
         ? isApi
-          ? 'No search run yet — search in the Items window.'
+          ? 'No search run yet — search in the Items panel.'
           : 'Loading…'
-        : `This page of the Items window (${items.length}); page and search there.`
+        : `This page of the Items panel (${items.length}); page and search there.`
     : remembered
-      ? `Page ${remembered.pageIndex + 1} as last seen in the Items window (${items.length}) — select this Collection to browse it.`
+      ? `Page ${remembered.pageIndex + 1} as last seen in the Items panel (${items.length}) — select this Collection to browse it.`
       : isApi
-        ? 'Not searched yet — select this Collection to search in the Items window.'
-        : 'Not loaded yet — select this Collection to browse it in the Items window.'
-  // The line's click: for the current Collection, (re)open the window; for
-  // another, browse it — which moves the window there.
-  const onTail = () => (current ? setWindowOpen(true) : onSelect(node.href))
+        ? 'Not searched yet — select this Collection to search in the Items panel.'
+        : 'Not loaded yet — select this Collection to browse it in the Items panel.'
+  // The line's click: for the current Collection, (re)open the panel; for
+  // another, browse it — which moves the panel there.
+  const onTail = () => (current ? setPanelOpen(true) : onSelect(node.href))
   // An Item in another Collection's remembered rows: browse that Collection
   // first, so the selection store pins browsing to it (an Item selection
   // alone keeps the current Collection pinned), then the Item.

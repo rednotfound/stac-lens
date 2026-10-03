@@ -112,9 +112,9 @@ export function ItemSetResultsPanel({
 }: ItemSetResultsPanelProps) {
   const selectedRowRef = useScrollSelectedIntoView(selectedHref, pageItems)
   // The same hover card the tree, outline and icicle show — title,
-  // description, thumbnail. Portaled to body: the window this panel lives
-  // in animates with a transform, which would otherwise re-anchor a
-  // fixed-position card to the window.
+  // description, thumbnail. Portaled to body, like every hover card: a
+  // transformed or clipping ancestor would otherwise re-anchor or cut off
+  // the fixed-position card.
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
   const pageList = buildPageList(pageIndex + 1, totalPages)
   const atApparentLastPage = pageIndex >= totalPages - 1

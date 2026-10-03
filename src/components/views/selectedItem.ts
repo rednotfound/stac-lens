@@ -37,4 +37,4 @@ export function selectedItemOffPage(
 }
 
 /** How the views label it. */
-export const OFF_PAGE_NOTE = "selected · not on the Items window's page"
+export const OFF_PAGE_NOTE = "selected · not on the Items panel's page"

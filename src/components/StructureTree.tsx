@@ -23,7 +23,7 @@ import {
   type TooltipState,
 } from './tree/treeGeometry'
 
-const canvasButtonStyle: React.CSSProperties = {
+const resetLayoutButtonStyle: React.CSSProperties = {
   background: 'var(--color-surface)',
   border: '1px solid var(--color-border)',
   borderRadius: 999,
@@ -40,7 +40,7 @@ const canvasButtonStyle: React.CSSProperties = {
  *  handlers. This component owns the canvas: layout, pan/zoom, manual node
  *  offsets, per-node box geometry, auto-pan to an off-screen selection, and
  *  the layer boxes are portaled into. A node itself is `TreeNodeView`; a
- *  Items are in the Items window (`ItemsWindow`), not in this canvas. */
+ *  Items are in the Items panel (`ItemsPanel`), and their page shows here as leaves. */
 export function StructureTree() {
   const { root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
@@ -49,14 +49,14 @@ export function StructureTree() {
 
   // `browsingHref` — the Catalog/Collection being browsed, pinned across
   // Item selections inside it (see `store/selection.ts`) — is what the
-  // Items window shows and reads as "contains the selection"; `selectedHref`
+  // Items panel shows and reads as "contains the selection"; `selectedHref`
   // may point at one Item within it, which is never a tree node.
   const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
-  const windowOpen = useItemSetStore((s) => s.windowOpen)
-  const setWindowOpen = useItemSetStore((s) => s.setWindowOpen)
+  const panelOpen = useItemSetStore((s) => s.panelOpen)
+  const setPanelOpen = useItemSetStore((s) => s.setPanelOpen)
   const itemsOpenHref =
-    windowOpen && browsingHref && browsingNode && hasDirectItems(browsingNode) ? browsingHref : undefined
-  // The Items window's page, to draw as leaves under the browsed
+    panelOpen && browsingHref && browsingNode && hasDirectItems(browsingNode) ? browsingHref : undefined
+  // The Items panel's page, to draw as leaves under the browsed
   // Collection (and the page last seen under other browsed ones).
   const windowForHref = useItemSetStore((s) => s.forHref)
   const windowHrefs = useItemSetStore((s) => s.visibleHrefs)
@@ -80,7 +80,7 @@ export function StructureTree() {
   // its whole subtree: the same delta is written into every descendant's
   // entry at drag time, so each node's effective position is one lookup.
   const [dragOffsets, setDragOffsets] = useState<Map<string, { x: number; y: number }>>(new Map())
-  // Item leaves are not stable nodes — they are the Items window's page,
+  // Item leaves are not stable nodes — they are the Items panel's page,
   // replaced whenever the page turns or a search runs — so they never get
   // entries of their own. A Collection's leaves move as one group: their
   // position is the Collection's own offset plus the group's, keyed by the
@@ -145,12 +145,12 @@ export function StructureTree() {
     }
   }, [])
 
-  // The structure plus Item leaves: the window's page under the browsed
+  // The structure plus Item leaves: the panel's page under the browsed
   // Collection, ten at most, then a "+N more" leaf; the page last seen,
   // dimmed, under any other Collection that has been browsed. The same
   // reading of the shared state the outline and the icicle make.
   // The selected Item, when it belongs under the browsed Collection: drawn
-  // as a leaf there even when the window's page does not hold it.
+  // as a leaf there even when the panel's page does not hold it.
   const selectedItemNode = browsingHref ? selectedItemUnder(selectedHref, browsingHref, browsingHref) : undefined
   const viewRoot = useMemo<ViewDatum | undefined>(() => {
     if (!root) return undefined
@@ -197,14 +197,20 @@ export function StructureTree() {
   // through the current transform and checked against the viewport first.
   useEffect(() => {
     if (!selectedHref) return
-    // A selected Item drawn off the window's page (a reload, a link) is the
+    // A selected Item drawn off the panel's page (a reload, a link) is the
     // thing to bring into view, label and all — not just its Collection.
-    // Turning the window's page away from a selected Item also makes it an
+    // Turning the panel's page away from a selected Item also makes it an
     // off-page leaf; that pans only if the leaf is off-screen, and it sits
     // first under its Collection, so it rarely is.
     const offPageLeaf = nodes.find((n) => n.data.itemLeaf?.offPage)
     const panHref = offPageLeaf?.data.href ?? browsingHref ?? selectedHref
-    if (panHref === lastCenteredRef.current) return
+    // The browsed Collection's Item leaves arrive after it does (its default
+    // search is a request), and they must be seen too — a docked Items
+    // panel narrows the canvas enough to push them off its right edge. So
+    // their arrival is a reason to look again.
+    const hasLeaves = nodes.some((n) => (n.data.itemLeaf ?? n.data.moreItems)?.hostHref === browsingHref)
+    const panKey = `${panHref}${hasLeaves ? '#leaves' : ''}`
+    if (panKey === lastCenteredRef.current) return
     const target = nodes.find((n) => n.data.href === panHref)
     const svgSel = svgSelRef.current
     const behavior = zoomBehaviorRef.current
@@ -212,30 +218,39 @@ export function StructureTree() {
     if (!target || !svgSel || !behavior || !svgEl) return
 
     const currentTransform = viewTransformRef.current
+    const k = currentTransform.k
     const targetPos = effectiveXY(target)
-    const currentScreenX = currentTransform.x + targetPos.y * currentTransform.k
-    const currentScreenY = currentTransform.y + targetPos.x * currentTransform.k
+    const currentScreenX = currentTransform.x + targetPos.y * k
+    const currentScreenY = currentTransform.y + targetPos.x * k
+    const width = svgEl.clientWidth
     const VISIBILITY_MARGIN = 100
+    // How far a leaf's label runs to the right of its mark.
+    const LEAF_LABEL = 220
 
     const leftMargin = VISIBILITY_MARGIN
-    // A leaf's label runs to the right of its mark.
-    const rightMargin = offPageLeaf ? VISIBILITY_MARGIN + 220 : VISIBILITY_MARGIN
+    // The target's own right margin; with leaves under it, the whole leaf
+    // column — one level to its right, label and all — has to fit.
+    const rightMargin = offPageLeaf
+      ? VISIBILITY_MARGIN + LEAF_LABEL
+      : hasLeaves
+        ? LEVEL_WIDTH * k + LEAF_LABEL
+        : VISIBILITY_MARGIN
 
     const alreadyVisible =
       currentScreenX >= leftMargin &&
-      currentScreenX <= svgEl.clientWidth - rightMargin &&
+      currentScreenX <= width - rightMargin &&
       currentScreenY >= VISIBILITY_MARGIN &&
       currentScreenY <= svgEl.clientHeight - VISIBILITY_MARGIN
-    if (alreadyVisible) {
-      lastCenteredRef.current = panHref
-      return
-    }
+    lastCenteredRef.current = panKey
+    if (alreadyVisible) return
 
-    lastCenteredRef.current = panHref
-    const k = viewTransformRef.current.k
     const cy = svgEl.clientHeight / 2
-    const cx = svgEl.clientWidth / 2
-    svgSel.call(behavior.transform, zoomIdentity.translate(cx - targetPos.y * k, cy - targetPos.x * k).scale(k))
+    // Centered when there is room; with leaves, as far left as it takes for
+    // their column to fit — and no further left than a small margin, so on
+    // a very narrow canvas the Collection stays in view and the leaves'
+    // labels are the part cut off.
+    const screenX = hasLeaves && !offPageLeaf ? Math.max(24, Math.min(width / 2, width - rightMargin)) : width / 2
+    svgSel.call(behavior.transform, zoomIdentity.translate(screenX - targetPos.y * k, cy - targetPos.x * k).scale(k))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHref, nodes, browsingHref])
 
@@ -264,7 +279,7 @@ export function StructureTree() {
           <button
             onClick={resetLayout}
             title="Snap every manually-dragged node back to its computed position"
-            style={canvasButtonStyle}
+            style={resetLayoutButtonStyle}
           >
             Reset layout
           </button>
@@ -310,9 +325,9 @@ export function StructureTree() {
                     if (!current) select_(hostHref)
                     select_(itemHref)
                   }}
-                  onOpenWindow={(hostHref, current) => {
+                  onOpenPanel={(hostHref, current) => {
                     if (!current) select_(hostHref)
-                    setWindowOpen(true)
+                    setPanelOpen(true)
                   }}
                   onHover={(info, clientX, clientY) =>
                     info ? setTooltip({ ...info, x: clientX, y: clientY }) : setTooltip(null)

@@ -240,7 +240,7 @@ export function useScrollSelectedIntoView(selectedHref: string | null | undefine
 
 /** Reset `showOnLenses` back to off on every (re)mount — this component
  *  only ever exists while `browsingHref` points at this exact node
- *  (the Items window's content, keyed by the browsed Collection), fully unmounting the moment
+ *  (the Items panel's content, keyed by the browsed Collection), fully unmounting the moment
  *  browsing moves elsewhere. Browsing through a Collection with no items
  *  never calls `setVisible` at all, which left a stale `showOnLenses: true`
  *  surviving a round trip back to the same Collection (confirmed directly

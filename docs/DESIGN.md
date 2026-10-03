@@ -5447,6 +5447,11 @@ server omits — both loosened to match what matters, not the accident.
   Computer's `/token/{account}/{container}` in place of `/sign` when a
   viewer needs many assets at once; an in-browser COG viewer consuming
   `AssetAccess`.
+- **Narrow desktop windows (§122–§123).** Between the phone breakpoint
+  (720 px) and about 960 px, with both panes open, the canvas gets less
+  than 360 px (124 px at 720) because each pane keeps its minimum. Options:
+  hide the Items panel automatically there, overlay it, or lower the
+  minimums.
 - **The Items window's page number in the URL (§115, §118).** Since
   §118 a reload re-runs a Collection's default search, so page 1 comes
   back; the page an Item was found on does not — never guaranteed
@@ -8021,4 +8026,314 @@ and the position is the page's place, kept per Collection.
   Collection carries the group. Reset returns it to (304, 191).
 - **Smoke.** "Dragging an Item leaf moves its whole group of leaves
   together."
+
+## 121. The Items panel docks between the views and the Inspector
+
+The user: since the Item Set panel already lives across every view, it
+could be a fixed column like the Inspector, beside it, opened and closed
+at will — because the floating window "常常会盖住 view，让人很困惑". They
+asked for a round of panel design, not a patch.
+
+**Diagnosis.** The window and the views wanted the same pixels. It
+defaulted to 640 × 760 at the canvas's lower right — exactly where a
+Collection's Item leaves (§113) are drawn, to the right of its node. Its
+drag, eight-way resize and placement memory were work users did again
+and again to get it out of the way.
+
+**Prior art.**
+
+- **JetBrains tool windows.** The default mode is "Dock Pinned":
+  attached and always visible alongside the editor. "Float" is for
+  windows used now and then.
+- **The three-pane layout.** Navigation | list | detail (Apple Mail,
+  Outlook, Finder's column view). That is this app's flow exactly: a
+  Collection in a view, an Item in the Items panel, its details in the
+  Inspector.
+
+**The user's three choices** (via AskUserQuestion):
+
+1. **Where.** A third column between the views and the Inspector, over
+   a bottom dock under the views (a vertical list in a horizontal strip
+   shows a few rows) and over tabs shared with the Inspector (the two
+   could not be seen together).
+2. **When.** Follow the selection: the column appears when what is
+   browsed is a Collection with Items, and is gone, the canvas getting
+   its width back, otherwise. This was chosen over remembering the
+   user's own open/closed choice and over fully manual. Closing it with
+   × holds until the next act of selecting, the same rule the window
+   had (`selectSeq`); the tab row's "Items ▸" reopens it.
+3. **Floating mode.** Removed, docked only. Not kept as a JetBrains-style
+   pop-out, which would mean two forms to maintain.
+
+**What changed.**
+
+- **The new panel.** `components/ItemsPanel.tsx` replaces
+  `ItemsWindow.tsx`: a 30 px header (Collection, "· Items", the API
+  badge, ×) over the same body (`CursorItemSetPanels` or
+  `LinksItemSetBrowser`).
+- **Placement and width.** `App` places it and owns its width. A
+  hairline divider with a 7 px grab zone resizes it by pointer capture,
+  like the Inspector's, and a double-click restores the default (400).
+  The width is clamped in render (at least 300, and the views keep at
+  least 360) and persisted (`stac-lens.items-panel`).
+- **Removed.** `itemsWindowGeometry.ts` and its tests, `usePointerDrag`,
+  the eight resize handles, collapse to the title bar, the placement
+  memory and the re-appearance animation.
+- **Renamed.** "Items window" is now "Items panel" in the UI and the
+  code (`panelOpen`, `data-items-panel`).
+- **The tree's leaves stay in view.** A docked panel narrows the canvas
+  enough to push a Collection's leaves off its right edge (at 1400 px
+  the canvas is 525 px). Pan-to-selection now counts the leaf column,
+  one level right plus its labels, and looks again when the leaves
+  arrive after the default search. When they don't fit, it pans the
+  Collection toward the left edge (never past 24 px).
+- **The README.** Its hero screenshot is retaken with the docked panel,
+  and its Radial view mention, stale since PR #1, is removed.
+
+**Checks.**
+
+- **Live.** At 1400 px: canvas 0–525, panel 532–932, Inspector 940–1400,
+  no overlap. The divider widens the panel by 120 px and the width is
+  remembered across close and reopen. × closes it, with "Items ▸" in the
+  tab row. At 1200 px the canvas holds 360 and the panel takes 365.
+  Landsat's leaves sit inside the canvas at both widths. PLATEAU's
+  static Collection opens the panel (a paged list), and its root Catalog
+  removes it. Planetary Computer's API root keeps it, since a
+  cross-Collection search is Items. The phone is unchanged (sheet), and
+  light and dark both checked.
+- **Smoke (47).** The panel is docked between the views and the
+  Inspector, overlapping neither; dragging the divider widens it with
+  its right edge in place. The window's drag and edge-resize checks are
+  gone with the window.
+
+## 122. One kind of pane: a shared header, splitter and toggle
+
+With the Items panel docked (§121), the user noticed the two panes still
+resized and hid in different ways. Other apps give their panels one
+header and one set of controls; they asked for research and a proposal
+that makes the app read as a whole.
+
+**The mismatch.**
+
+| | Inspector | Items panel |
+|---|---|---|
+| header | none (the object's title inside) | 30 px with × |
+| divider | an 8 px grey bar with a chevron button | a hairline, no button |
+| double-click | collapse / restore | default width |
+| hiding | snap below 220 px, or the chevron | ×, back from the tab row's "Items ▸" |
+| once hidden | an 8 px sliver | gone |
+
+**Prior art.**
+
+- **The WAI-ARIA Window Splitter pattern.** `role="separator"` with
+  value, minimum and maximum, controlling the pane. Arrows move it,
+  Home and End go to the minimum and maximum, and Enter collapses the
+  pane and restores it.
+- **VS Code's sash.** A thin line with a larger grab area, highlighted
+  on hover after a delay. Double-click resets the size. Panes are
+  toggled from fixed layout controls.
+- **Apple's HIG.** The three-pane split view as in Mail. Hidden panes
+  should be recoverable from more than one place. The sidebar and
+  Inspector toggles are anchored to the toolbar's ends so they never
+  move.
+- **JetBrains tool windows.** One header style for all, with a hide
+  button, not a close.
+- **GitHub Primer's PageLayout.** A resizable pane with min, default and
+  max widths, persisted to localStorage, and one divider style.
+
+**The user's three choices** (via AskUserQuestion, all as recommended):
+
+1. **One header for both panes.** The Inspector gains it too; its own
+   object title, with its type color, stays inside.
+2. **Hidden panes come back from fixed toggles** at the header's trailing
+   end, chosen over JetBrains-style collapsed strips.
+3. **Double-clicking a splitter restores the default width.**
+
+**What changed.** `components/panes.tsx` holds the shared parts:
+
+- **`PaneHeader`.** 30 px with an icon, a title, badges and a
+  hide-this-pane button. The button is a sidebar glyph, not ×, because
+  the pane is hidden, not closed.
+- **`PaneSplitter`.** A 1 px line in an 8 px grab zone that turns into
+  a 3 px accent on hover (after 0.3 s), on keyboard focus and while
+  dragging. It drags by pointer capture, and dragged a third of the
+  minimum past the minimum, it hides the pane. Double-click restores
+  the default width. Keys follow the ARIA pattern: arrows ±16 px (Shift
+  ±64), Home and End, Enter hides.
+- **`PaneToggle`.** Two switches, Items and Inspector, at the header's
+  trailing end, pressed while the pane is shown and disabled when there
+  is nothing to show. They replace the tab row's "Items ▸" and the
+  Inspector divider's chevron.
+- **Widths.** Items: default 400, minimum 300. Inspector: default 460,
+  minimum 280. Both are clamped in render so the views keep 360 px, and
+  both are remembered: the Items width in its store, the Inspector's
+  width and hidden state in `stac-lens.inspector`; the Inspector's width
+  was not kept before.
+- **Behavior kept.** The Items panel still follows the selection
+  (§121). The Inspector shows whenever something is selected unless the
+  user hid it, and the hiding is remembered. The phone is unchanged.
+
+**Checks.**
+
+- **Live.**
+  - Both headers are 30 px on the same surface, and both toggles start
+    pressed.
+  - Hiding Items from its header unpresses its toggle, and the toggle
+    brings it back at 400.
+  - The Inspector hides and returns at 460.
+  - On the Items splitter, ← and Shift+← go 400 → 480 (and the value
+    reads 480), Home goes to 300, a double-click to 400, and Enter
+    hides it.
+  - Dragging the Inspector splitter past its minimum hides it.
+  - An Inspector width of 380 survives a reload.
+  - Hover lights the splitter 3 px in the selection color. Light and
+    dark both checked.
+- **Smoke (48).** Hiding from the header unpresses the toggle; the
+  Inspector hides, returns at its width and resizes by keyboard; the
+  divider drag uses the separator's accessible name.
+
+### Revised the same day: names over glyphs, and Items named by its role
+
+The user, trying it: the two header toggles and the panes' own buttons
+"真的是一点都没有识别性". All four were the same window-with-a-column
+glyph, told apart only by tooltips. The Items header also named a
+Collection, with the Collection icon, when conceptually the pane is the
+Collection's set of Items — "这是 items 的整个合体，而不是 collection".
+Asked to think harder, then to choose (all as recommended):
+
+- **Toggles carry an icon and a name.** "Items" with an Item-set glyph,
+  "Inspector" with ⓘ. With only two panes, a written name costs less to
+  learn than any glyph. They are pills, pressed while the pane is shown.
+- **The panes' own hide buttons are gone.** Showing and hiding has one
+  place, the header toggles (Apple's split views). Dragging a splitter
+  away or pressing Enter on it still hides.
+- **The Items pane is named by its role.** Its header reads "Items" in
+  bold, then the Collection as muted context — "in Landsat Collection 2
+  Level-2", cut with an ellipsis. It uses the new `ItemSetIcon` in the
+  Item color: four small photo frames, a page of Items. That is the
+  Item glyph's frame repeated, deliberately not the Collection's stack
+  of frames. The Inspector header reads "ⓘ Inspector". Both panes are
+  now titled by what they are, the objects in them by their own icons.
+
+**Checks.**
+
+- **Live.** Light and dark: the toggles read "Items" and "Inspector",
+  and hiding Items unpresses its toggle.
+- **Smoke (49).** The Items panel is titled "Items" with its Collection
+  as context; the Items toggle hides it and shows as unpressed; the
+  Inspector hides and returns from its toggle at its width.
+
+## 123. Commands that do nothing, a click that folded the tree, and two kinds of button
+
+Three reports from trying the docked layout:
+
+**1. "Collapse to top level" and "Expand all catalogs" did nothing on an
+API catalog.** Measured on Planetary Computer: 139 nodes before, after
+Collapse, after Expand. The root holds only Collections, so it is
+already at the top level and has no Catalog to open. The buttons were
+right to do nothing and wrong to look clickable. Each command is now
+disabled when it would change nothing, and its tooltip says why:
+"Nothing to collapse — only the top level is open", "No closed Catalogs
+to open". `structureStats` gains `expandedBelowTop`, the nodes below the
+root that are open; `unopenedCatalogs` already counted the Catalogs
+Expand would open.
+
+**2. "Selecting a Catalog folds it back."** In the tree, a click on a
+node's circle or label did the same thing: select and toggle. So
+clicking an open Catalog's name to look at it collapsed its subtree, and
+clicking the open root's name collapsed the whole tree (Capella: 174
+nodes → 1). This had been an open question since §97. The outline
+already split the two jobs (§105), and the tree now follows the same
+rule:
+
+- **The circle selects and toggles.** It expands or collapses the node.
+- **The label selects.** It also opens a closed node, and never
+  collapses an open one.
+
+Checked on Capella: a label click on a closed Catalog goes 7 → 14 nodes;
+a second label click leaves 14; its circle goes 14 → 7.
+
+**3. "If there are no Items to show, the panel should close on its
+own."** Selecting Planetary Computer's root left the panel open on the
+idle cross-Collection search (§118). The panel now opens on a selection
+only when there are Items to list: a static node's item links, or a
+Collection, whose default search runs on open. An API root's Items are a
+search across every Collection that waits for conditions, so browsing
+it closes the panel. Its header toggle stays enabled ("Show the Items
+panel — a search across every Collection") and opens it for that
+search.
+
+**And: the Items toggle and "Collapse to top level" looked alike while
+being different kinds of thing.** Both were bordered pills. One is a
+layout switch with state (which panes are on screen); the other is a
+one-off command on the view's content. Chosen via AskUserQuestion, over
+folding the commands into a "⋯" menu and over icon-only commands:
+
+- **The pane toggles form one segmented control** in the app header.
+  It has a single outline with a hairline between the halves, and the
+  pressed half is filled. Hover no longer masks the pressed state: a
+  hovered pressed toggle used to look unpressed, because the hover rule
+  out-ranked the pressed one.
+- **The structure commands are borderless text buttons** with a ⊟ / ⊞
+  glyph, in the view tab row's quiet register (`.stac-lens-view-command`),
+  greyed when disabled.
+- **The canvas's "Reset layout" keeps its pill.** It floats over the
+  drawing and needs its own surface. The shared `views/canvasButton.ts`,
+  left with no users, is removed.
+
+The rule this sets: **the header holds layout (what is on screen); a
+view's tab row holds commands on that view's content.**
+
+**Checks.**
+
+- **Live.**
+  - Planetary Computer: both commands disabled. Selecting the root closes
+    the panel; its toggle opens the cross-Collection search; selecting
+    Landsat opens the panel.
+  - Capella: Collapse is disabled at start and Expand enabled; the label
+    and circle behave as above.
+  - Light and dark headers checked.
+- **Unit.** A flat root has nothing to collapse or open; the existing
+  stats test gains `expandedBelowTop`.
+- **Smoke (52).** A flat API root offers neither command; clicking the
+  open root's label keeps the tree open; an API root's Items panel stays
+  closed until its toggle is pressed.
+
+### Review before the pull request
+
+An independent read of the branch (§121–§123) found no crash, and these,
+fixed unless noted:
+
+- **The Items panel closed when a result of an API root's search was
+  picked.** The auto-open rule ran on every act of selecting. Picking an
+  Item keeps browsing on the root, whose Items are "nothing to show", so
+  the panel the result came from closed. Now it is forced closed only
+  when browsing moves to such a node. Checked live on Earth Search: the
+  root closes the panel, the toggle opens it, a search runs, clicking a
+  Sentinel-1 result keeps the panel open and shows the Item.
+- **"The views keep 360 px" held only from about 960 px.** Below that,
+  with both panes open, the panes keep their minimums and the canvas
+  narrows (304 px at 900, 124 px at 720). Nothing overlaps and nothing
+  scrolls sideways. The code comment and ARCHITECTURE now say so, and
+  the narrow-desktop case is in §96.
+- **Enter on a splitter dropped keyboard focus to `<body>`.** It
+  unmounted the focused separator. Focus now moves to that pane's
+  header toggle (`returnFocusTo` / `data-pane-toggle`).
+- **A lost pointer capture could leave a "ghost drag".** Plain hovering
+  then kept resizing. `onLostPointerCapture` and a no-buttons check now
+  end the drag.
+- **The toggles' focus ring was clipped** by the segmented control's
+  rounded clip. It is now an inset ring.
+- **A stored Items width that is not a positive number** falls back to
+  the default instead of rendering NaN.
+- **Leftover wording.** "×", "window" and "the title bar drags it" were
+  left in comments and smoke check names, and a leaf prop was still
+  called `onOpenWindow` (now `onOpenPanel`).
+- **Tests added (smoke 56).** Enter hides a pane and focuses its toggle;
+  dragging well past the minimum hides it; after a reload the Inspector
+  stays hidden and the Items width holds; the phone has no splitters and
+  no pane toggles.
+- **Left as is.** A suspected re-pan of the tree when the panel is
+  toggled does not happen: hiding the panel leaves its published page,
+  and so the leaves, in place, so the pan key does not change.
 

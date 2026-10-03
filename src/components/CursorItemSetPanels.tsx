@@ -24,14 +24,14 @@ import { resolveBody } from '../stac/body'
 import { loader } from '../stac/loaderInstance'
 
 /** An API-backed Collection's Item Set: the Search section above the
- *  Results, in one column of the Items window. Search-first — nothing is
+ *  Results, in one column of the Items panel. Search-first — nothing is
  *  fetched until Search is clicked (or a query arrives by URL). The
  *  Search section collapses to a one-line summary of its conditions so
  *  the results get the height. This used to be two separate boxes in the
  *  tree canvas joined by a connector, the node-editor reading; in a
  *  floating window that reading has no line to hang on, and one column
  *  with a divider says the same thing: conditions above, what they
- *  produced below (docs/DESIGN.md, "The Items window"). One hook instance
+ *  produced below (docs/DESIGN.md, "The Items panel"). One hook instance
  *  (`usePagedCursorResults`) backs both halves, so they can never
  *  disagree. */
 export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind: 'cursor' } } }) {

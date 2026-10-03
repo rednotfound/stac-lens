@@ -105,7 +105,7 @@ export function Legend() {
       <LegendRow
         icon="Item"
         color="var(--color-node-item)"
-        label="Item — the Items window's page, ten as small leaves"
+        label="Item — the Items panel's page, ten as small leaves"
         swatch="square"
       />
       <LegendRow icon="Asset" color="var(--color-node-asset)" label="Asset (Detail Panel only)" swatch="none" />
@@ -113,9 +113,9 @@ export function Legend() {
         <div>● filled — has something to open (children or items)</div>
         <div>○ hollow — already open, or genuinely empty</div>
         <div>┄ dashed ring — your selected Item is inside</div>
-        <div>"N items" label — the rest are in the Items window; dimmed leaves = a page last seen</div>
+        <div>"N items" label — the rest are in the Items panel; dimmed leaves = a page last seen</div>
         <div>blue "API" tag — items are live-queried, not a static list</div>
-        <div>drag a label, or a page of Item leaves, to rearrange; the Items window floats above every view</div>
+        <div>drag a label, or a page of Item leaves, to rearrange; the Items panel sits beside every view</div>
       </div>
     </div>
   )

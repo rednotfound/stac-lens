@@ -31,7 +31,7 @@ const root: TreeDatum = {
 }
 
 describe('withItemLeaves', () => {
-  it('adds the window page under the browsed Collection, capped, with a "more" leaf', () => {
+  it('adds the panel page under the browsed Collection, capped, with a "more" leaf', () => {
     const out = withItemLeaves(root, {
       browsingHref: 'a',
       windowPage: { forHref: 'a', items: items(40, 'a-'), pageIndex: 1 },
@@ -61,7 +61,7 @@ describe('withItemLeaves', () => {
     expect(out.children![2].children).toBeUndefined()
   })
 
-  it('leaves the browsed Collection alone while the window has not published its page', () => {
+  it('leaves the browsed Collection alone while the panel has not published its page', () => {
     const out = withItemLeaves(root, {
       browsingHref: 'a',
       windowPage: { forHref: null, items: [], pageIndex: 0 },
@@ -79,7 +79,7 @@ describe('withItemLeaves', () => {
       selectedItem: { node: selected, hostHref: 'a' },
     })
 
-    it('is drawn first, marked, when the window has no page (an unsearched API Collection after a reload)', () => {
+    it('is drawn first, marked, when the panel has no page (an unsearched API Collection after a reload)', () => {
       const a = withItemLeaves(root, ctx([])).children![0]
       expect(a.children).toHaveLength(1)
       expect(a.children![0].node).toBe(selected)

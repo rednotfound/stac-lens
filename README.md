@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/screenshot-structure.png" alt="STAC Lens exploring Microsoft Planetary Computer: the tree, the floating Items window with a searched Collection's results on a timeline and a map, and the Inspector" width="1000">
+  <img src="docs/images/screenshot-structure.png" alt="STAC Lens exploring Microsoft Planetary Computer: the tree with a Collection's Item leaves, the docked Items panel with a searched Collection's results on a timeline and a map, and the Inspector" width="1000">
 </p>
 
 STAC Lens is a client-side lens on [STAC](https://stacspec.org/) (SpatioTemporal Asset Catalog) catalogs and APIs. Point it at any catalog and it shows three things a field-by-field browser doesn't: the **shape** of the dataset (how the publisher actually organized it — deep, flat, wide), its **health** (where the metadata contradicts itself or the spec), and its **distance from the specification** (what an API declares it supports versus what it really does when asked). Structure, time, and space are coordinated views of the same data: select a node in one and the others follow.
@@ -52,11 +52,11 @@ If you publish a catalog and want visitors to read it, deploy STAC Browser. If y
 
 ## Highlights
 
-**Structure Lens** — a horizontal, curved node-link tree over the Catalog → Collection graph. Items are not part of the structure: a Collection with two million Items is one node, not a wall — but the page the Items window is on shows under it as up to ten small leaves and a "+N more" leaf, a sketch of where those Items sit (dimmed for a page last seen in another Collection). Nothing loads until you expand it; the canvas pans and zooms by direct manipulation (drag, wheel), and nodes can be rearranged by hand — a Collection's Item leaves move together, as the page's place. Selecting an Item highlights the Collection it belongs to with a dashed ring, distinct from the solid ring of a direct selection.
+**Structure Lens** — a horizontal, curved node-link tree over the Catalog → Collection graph. Items are not part of the structure: a Collection with two million Items is one node, not a wall — but the page the Items panel is on shows under it as up to ten small leaves and a "+N more" leaf, a sketch of where those Items sit (dimmed for a page last seen in another Collection). Nothing loads until you expand it; the canvas pans and zooms by direct manipulation (drag, wheel), and nodes can be rearranged by hand — a Collection's Item leaves move together, as the page's place. Selecting an Item highlights the Collection it belongs to with a dashed ring, distinct from the solid ring of a direct selection.
 
-**Other views of the same structure** — the tree is the entry; on a desktop two lighter views sit beside it over the same loaded graph and the same selection: an **Outline** (the structure as an indented document), an **Icicle** (space-filling layers — how wide and how deep the publisher's hierarchy is, at a glance; width is share of loaded leaves, never an invented Item count) and a **Radial** tree (breadth as a ring, depth as concentric rings). In each, the Collection being browsed shows the page its Items window is on. Click anything in any view and the Inspector follows.
+**Other views of the same structure** — the tree is the entry; on a desktop two lighter views sit beside it over the same loaded graph and the same selection: an **Outline** (the structure as an indented document) and an **Icicle** (space-filling layers — how wide and how deep the publisher's hierarchy is, at a glance; width is share of loaded leaves, never an invented Item count). In each, the Collection being browsed shows the page the Items panel is on. Click anything in any view and the Inspector follows.
 
-**The Items window** — selecting a Collection opens its Items in one floating window that follows the Collection you browse, above every view (tree, outline, icicle): drag it by its title bar, resize it, collapse it, close it and reopen it from the tab row. Each Collection's search, page and loaded buffer are remembered for the session, so browsing elsewhere and coming back finds it as it was. Static catalogs and API-backed Collections get genuinely different UI, because they are different things:
+**The Items panel** — selecting a Collection opens its Items in a column docked between the views and the Inspector, so the screen reads left to right as you work: a Collection in a view, an Item in the panel, its details in the Inspector. It follows the Collection you browse in every view (tree, outline, icicle), gives the canvas its width back when what you browse has no Items, and, like the Inspector, has a header naming it — "Items in Landsat Collection 2 Level-2" — a divider to resize it (keyboard too), and a labeled toggle at the top right that shows and hides it. Each Collection's search, page and loaded buffer are remembered for the session, so browsing elsewhere and coming back finds it as it was. Static catalogs and API-backed Collections get genuinely different UI, because they are different things:
 
 - A static catalog's Item list is known up front, so it gets **real numbered pagination** with a per-page cache.
 - An API-backed Collection gets a **Search** section (date range, an area drawn on a real map, sort where the API declares support) above its **Results**, paged from the cursor's accumulated buffer. A Collection opens with its default search already run — no conditions, the server's order — so you see at once whether there is data; the Search section narrows it. A search across a whole API root waits for your conditions.
@@ -87,7 +87,7 @@ STAC Lens reads STAC 1.0 and 1.1 static catalogs and STAC APIs, and follows the 
 | Children extension | `rel:children` → `/children`, preferred over one fetch per `child` link when a server offers it |
 | STAC 1.1 | common `bands` / `data_type` (with `raster:bands` fallback), Link `method`/`body`, deprecated `license` values flagged in the Inspector |
 | Spatial extents | every declared `extent.spatial.bbox` drawn in the Collection's hue (not only the first); a sub-extent too small to see at the current zoom is marked with a dot; the spec's overall-extent rule checked and its two-bbox case flagged; malformed bboxes dropped |
-| Previews | a `thumbnail` or `overview` asset with a browser image type, or a `rel: preview` link with one, shown in the hover card (tree, outline, icicle, the Items window's list) and in the Inspector, fetched through asset access (signed when the source requires it) |
+| Previews | a `thumbnail` or `overview` asset with a browser image type, or a `rel: preview` link with one, shown in the hover card (tree, outline, icicle, the Items panel's list) and in the Inspector, fetched through asset access (signed when the source requires it) |
 | Descriptions | CommonMark (the spec's "MAY") plus GFM tables, rendered from a syntax tree — links new-tab and http(s)/mailto only, raw HTML dropped, headings demoted, long ones clamped with "Show full description"; plain text in hover cards |
 | Asset access | an asset's declared `href` is kept as STAC states it; when a source's storage refuses direct requests, an access method obtains a usable link only when one is needed (opening an asset, showing its preview) and the Inspector shows it beside the declared one with its expiry. Methods: Planetary Computer's public SAS signing (`/api/sas/v1/sign`), and an `s3://` URI's public AWS HTTPS address; everything else is direct and unchanged. Declared credentials (`auth:refs` → `auth:schemes`), storage (`storage:schemes`) and alternate locations (`alternate`) are named per asset |
 | Solar System extension | `ssys:targets` / `ssys:target_class` read on Catalogs, Collections and Items and resolved up the parent chain; a non-Earth body's extents are drawn on a plain lon/lat graticule with the body named, never on Earth tiles (Rosetta's comet 67P, Cassini's Titan) |
@@ -178,11 +178,10 @@ src/
     useShareableUrl.ts         URL hash <-> catalog / selection / applied search, both directions
     useItemWindow.ts           the phone's ten-at-a-time Item rows (sliding window)
     useDocumentTitle.ts        the tab title follows the open catalog and selection
-    usePointerDrag.ts          pointer-capture drag for the Items window's title bar and grip
     useStickySidebar.ts        a sidebar that stays in view with one page scroll, no nested scrolling
   store/
     selection.ts     the shared selection (selected vs. browsed node)
-    itemSet.ts       what the Items window has in view, its applied query, the window's open state and remembered geometry
+    itemSet.ts       what the Items panel has in view, its applied query, the panel's open state and remembered width
     itemSetSessions.ts  per-Collection memory (cursor buffer, next link, query, page, tab) so the window can close and come back
     landingPrefs.ts  favorites and recently opened catalogs, persisted per browser
   components/
@@ -193,8 +192,8 @@ src/
                              selectedItem (the selected Item drawn even when the window's page lacks it)
     StructureTree.tsx        the Tree view's canvas: d3 layout, pan/zoom, node offsets, auto-pan
     OutlineView.tsx          the structure as an indented document (the phone's only view; a desktop view too)
-    ItemsWindow.tsx          the floating Items window: follows the browsed Collection, every view, drag/resize/collapse
-    itemsWindowGeometry.ts   pure placement and clamping for it
+    ItemsPanel.tsx           the docked Items panel between the views and the Inspector (width and placement in App)
+    panes.tsx                what both docked panes share: PaneHeader, PaneSplitter (drag, keyboard, double-click), PaneToggle, their glyphs
     tree/                    the tree's parts: TreeNodeView, NodeTooltip, Legend, ItemLeafView + itemLeaves (Item leaves),
                              treeGeometry (spacing, links, the node vocabulary every view shares)
     DetailPanel.tsx          Inspector (Human/JSON), embeds TimeLens/SpaceLens

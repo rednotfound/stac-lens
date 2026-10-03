@@ -8,20 +8,20 @@ import { describeTemporal } from '../../stac/describe'
 import { OFF_PAGE_NOTE } from '../views/selectedItem'
 
 /** One Item leaf in the tree, or the trailing "+N more" leaf: a sketch of
- *  where the Items window's page sits in the structure. A small square in
+ *  where the Items panel's page sits in the structure. A small square in
  *  the Item color (the legend's Item glyph), the title, the date under it;
- *  dimmed when it is a page last seen rather than the window's page.
+ *  dimmed when it is a page last seen rather than the panel's page.
  *  Clicking an Item selects it — through its Collection first when that
- *  Collection is not the one being browsed, so the window follows. The
- *  "+N more" leaf opens or refocuses the window. Nothing here pages or
- *  searches: that is the window's job. */
+ *  Collection is not the one being browsed, so the panel follows. The
+ *  "+N more" leaf opens or refocuses the panel. Nothing here pages or
+ *  searches: that is the panel's job. */
 export function ItemLeafView({
   datum,
   x,
   y,
   selected,
   onSelectItem,
-  onOpenWindow,
+  onOpenPanel,
   onHover,
   containerRef,
   onGroupDragBy,
@@ -31,7 +31,7 @@ export function ItemLeafView({
   y: number
   selected: boolean
   onSelectItem: (itemHref: string, hostHref: string, current: boolean) => void
-  onOpenWindow: (hostHref: string, current: boolean) => void
+  onOpenPanel: (hostHref: string, current: boolean) => void
   onHover: (info: HoverInfo | null, clientX: number, clientY: number) => void
   /** The zoomed `<g>`, as d3-drag's container (drag deltas in its space). */
   containerRef: RefObject<SVGGElement | null>
@@ -73,7 +73,7 @@ export function ItemLeafView({
         transform={`translate(${y}, ${x})`}
         data-item-more-leaf
         opacity={m.current ? 1 : 0.55}
-        onClick={() => onOpenWindow(m.hostHref, m.current)}
+        onClick={() => onOpenPanel(m.hostHref, m.current)}
         style={{ cursor }}
       >
         <rect
@@ -86,7 +86,7 @@ export function ItemLeafView({
           style={{ stroke: 'var(--color-text-faint)' }}
         />
         <text x={10} y={4} fontSize={11} style={{ fill: 'var(--color-text-faint)' }}>
-          +{m.remaining} more on this page · page {m.pageIndex + 1} · {m.current ? 'Items window' : 'as last seen'}
+          +{m.remaining} more on this page · page {m.pageIndex + 1} · {m.current ? 'Items panel' : 'as last seen'}
         </text>
       </g>
     )
