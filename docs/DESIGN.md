@@ -5436,6 +5436,11 @@ server omits — both loosened to match what matters, not the accident.
 
 ## 96. What's deliberately deferred (not forgotten)
 
+- **OpenID Connect sign-in for catalogs that declare it (§116).**
+  Copernicus Data Space's public client refuses our redirect and has
+  device-code sign-in disabled; needs a client registered by CDSE for
+  staclens.com (the user's call to ask), or a deployment setting naming
+  an OIDC client per catalog, plus a streamed download with the token.
 - **Asset access, next steps (§114).** The Authentication extension's
   `signedUrl` scheme as a generic access method, once catalogs declare
   it (Planetary Computer would then become data, not code); Planetary
@@ -7621,4 +7626,130 @@ failed copy keeps its "Copy failed" label and the field to copy from
 until the next copy; turning the window's page away from a selected
 Item makes it an off-page leaf, which pans the tree only if that leaf is
 off-screen.
+
+## 116. Where an asset lives and what it needs — beyond Planetary Computer
+
+After §114 the user asked whether other catalogs need something like
+Planetary Computer's SAS signing. A probe of the 103 landing-page
+catalogs (one Item each, its data asset and thumbnail requested with a
+browser `Origin`; 72 reached an Item within a shallow walk) found **no
+second anonymous signing service**. What it did find, 2026-10-03:
+
+| Catalog | What happens | Why |
+|---|---|---|
+| Copernicus Data Space | data assets are `s3://eodata/…` | needs S3 keys or a CDSE sign-in; declared properly — `auth:schemes` (`s3`, `openIdConnect`) on each Collection, `auth:refs` on every asset, an `alternate` HTTPS location that needs the sign-in |
+| Super-Resolved Sentinel-2 API | 403 InvalidAccessKeyId | its product links point into CDSE's `eodata` |
+| Earth Genome mosaics | only `s3://` hrefs | a public AWS bucket: the same object answers 206 at `https://{bucket}.s3.amazonaws.com/{key}` |
+| GEP Supersites | `s3://` hrefs | not an AWS bucket (NoSuchBucket); storage not declared |
+| Africa Agriculture Adaptation Atlas | 403 | a publisher error: `…amazonaws.com//vulnerability/…` — one slash answers 206 |
+| OpenAerialMap Example | 403 on the whole bucket | data withdrawn |
+| CoCliCo, Cassini VIMS, MideaFind, the spec example | 404 | dead links (the spec example's `cool-sat.com` is fictional) |
+| EasierData | 429 | an IPFS gateway rate-limiting |
+
+Eleven more serve assets without CORS headers. That does not matter for
+`<img>` previews or opening a link in a tab, only for a future
+in-browser COG reader.
+
+The user asked to take the follow-ups one at a time, in the system's
+existing design. Four, in order of cost:
+
+### 1. Alternates, credentials and storage, as declared
+
+`graph.ts` now records, without judging: an asset's `auth:refs`,
+`storage:refs`, `alternate:name` and `alternate` map (Alternate Assets
+extension; each alternate's href resolved, its own refs kept), and a
+node's `auth:schemes` and `storage:schemes` (top level on a Catalog or
+Collection, in `properties` on an Item). `stac/schemes.ts` resolves a
+key up the parent chain, nearest wins, cache only — the same walk as
+`body.ts` — because CDSE declares its schemes on the Collection and
+refers to them from Items. It also says them in words ("S3
+credentials", "sign-in (OpenID Connect) · identity.dataspace…", "AWS S3
+· us-west-2 · requester pays").
+
+In the asset list:
+
+- **The note above the list counts these too.** For example "45 of 47
+  need S3 credentials" and "1 of 47 needs sign-in (OpenID Connect)",
+  beside "… open through Planetary Computer signing". Sentences are
+  singular or plural as counted.
+- **The key glyph also marks declared credentials.** Its spoken label
+  names them.
+- **An opened row shows these declarations.** "Requires" for the
+  credentials, "Storage" for where the file lives, and one "Alternate
+  (name)" per location, each with its own copy, its own Open and what it
+  needs.
+- **Open says why when it can't work.** An href a browser cannot open
+  (`s3://`, `gs://`), with no access method for it, gets a disabled
+  Open that gives the reason, instead of a link that does nothing.
+
+### 2. Health rule A-06: an empty path segment
+
+`hasEmptyPathSegment` (`stac/assets.ts`) reads only the path. An href
+with `//` after the host shows ⚠ on its row, in the note above the list,
+and in the opened row ("a publisher error, health rule A-06"). A-05 and
+the new A-07 (declared credentials, storage, alternates) are updated in
+`docs/HEALTH-RULES.md`.
+
+### 3. A second access method: an `s3://` URI's public AWS address
+
+`stac/access/awsS3.ts`, beside Planetary Computer signing in the same
+ordered list. To give it what it needs, `AccessSource` now also carries
+what the catalog declares about the href: its `auth:refs` and its
+resolved storage scheme (`accessSourceFor(node, entry, lookup)`). The
+method:
+
+- **Applies to an `s3://` href only when nothing says otherwise.** No
+  `auth:refs`; declared storage, if any, must be `aws-s3` and not
+  requester-pays. Undeclared storage counts as AWS, since `s3://` is
+  AWS's scheme. Copernicus Data Space's `s3://eodata` declares S3
+  credentials and a `custom-s3` platform, so the method never touches
+  it.
+- **Builds AWS's documented address.** That is
+  `https://{bucket}.s3.{region}.amazonaws.com/{key}`, with the region
+  when declared and path-style for a dotted bucket name. Nothing can be
+  checked from a browser (most buckets send no CORS), so when the
+  storage is undeclared the access link says AWS was assumed. A new
+  optional `note` on `AssetAccess` carries that.
+- **Credentials also stop Planetary Computer signing.** Any declared
+  credential now makes it stand down too.
+
+Earth Genome's mosaics now open; the Africa Atlas' `s3://` alternate
+(whose path is right) opens through it too.
+
+### 4. OpenID Connect sign-in — measured, not built
+
+Copernicus Data Space's sign-in (Keycloak realm `CDSE`), 2026-10-03:
+
+| | |
+|---|---|
+| browser sign-in (authorization code + PKCE) with its public client `cdse-public` | refused: `Invalid parameter: redirect_uri` for `https://staclens.com/` and `localhost` |
+| device-code sign-in (RFC 8628), which needs no redirect | refused: "The flow is disabled for the client" |
+| password grant with `cdse-public` | allowed, and the token endpoint sends CORS for staclens.com |
+| download endpoint | CORS open, accepts an `Authorization` header; no token in the query (401) |
+
+The only flow open to a third-party site is the password grant, and it
+would mean users typing their CDSE password into STAC Lens. We don't do
+that. A real sign-in needs CDSE to register a client that allows
+staclens.com as a redirect, or a deployment-level setting naming an
+OIDC client per catalog (what STAC Browser's `authConfig` does). Even
+then, opening a multi-gigabyte product with an `Authorization` header
+means a streamed download, not a link. Listed in §96; contacting CDSE is
+the user's call.
+
+### Checks
+
+- **Vitest.** Parsing (refs, alternates, schemes); scheme resolution up
+  the chain; descriptions; the S3 method's conditions and addresses
+  (regional, undeclared with its note, dotted bucket); Planetary
+  Computer standing down on declared credentials; A-06; browser-openable
+  schemes.
+- **Smoke (offline).** A made-up static catalog checks the notes, the
+  disabled Open, the opened row's credentials and alternate, and the
+  undeclared `s3://` access link.
+- **Live.** CDSE (47 assets: 45 need S3 credentials, one needs sign-in;
+  45 Opens disabled with the reason; the HTTPS alternate listed),
+  Earth Genome (all open through the AWS address, assumption said),
+  Africa Atlas (A-06 shown, the `s3://` alternate opens), Planetary
+  Computer (signing unchanged; one slow moment of the signer now reads
+  "did not answer within 15 seconds", not "signal timed out").
 

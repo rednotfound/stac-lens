@@ -88,11 +88,11 @@ STAC Lens reads STAC 1.0 and 1.1 static catalogs and STAC APIs, and follows the 
 | STAC 1.1 | common `bands` / `data_type` (with `raster:bands` fallback), Link `method`/`body`, deprecated `license` values flagged in the Inspector |
 | Spatial extents | every declared `extent.spatial.bbox` drawn in the Collection's hue (not only the first); a sub-extent too small to see at the current zoom is marked with a dot; the spec's overall-extent rule checked and its two-bbox case flagged; malformed bboxes dropped |
 | Previews | a `thumbnail` or `overview` asset with a browser image type, or a `rel: preview` link with one, shown in the hover card (tree, outline, icicle, the Items window's list) and in the Inspector, fetched through asset access (signed when the source requires it) |
-| Asset access | an asset's declared `href` is kept as STAC states it; when a source's storage refuses direct requests, an access method obtains a usable link only when one is needed (opening an asset, showing its preview) and the Inspector shows it beside the declared one with its expiry. First method: Planetary Computer's public SAS signing (`/api/sas/v1/sign`); everything else is direct and unchanged |
+| Asset access | an asset's declared `href` is kept as STAC states it; when a source's storage refuses direct requests, an access method obtains a usable link only when one is needed (opening an asset, showing its preview) and the Inspector shows it beside the declared one with its expiry. Methods: Planetary Computer's public SAS signing (`/api/sas/v1/sign`), and an `s3://` URI's public AWS HTTPS address; everything else is direct and unchanged. Declared credentials (`auth:refs` → `auth:schemes`), storage (`storage:schemes`) and alternate locations (`alternate`) are named per asset |
 | Solar System extension | `ssys:targets` / `ssys:target_class` read on Catalogs, Collections and Items and resolved up the parent chain; a non-Earth body's extents are drawn on a plain lon/lat graticule with the body named, never on Earth tiles (Rosetta's comet 67P, Cassini's Titan) |
 | Real-world behavior | verified against live servers — Earth Search, Microsoft Planetary Computer, Copernicus Data Space, NASA CMR and others — and worked around only where a server contradicts the spec (documented in `docs/DESIGN.md`) |
 
-Not yet: CQL2 filtering and free-text search, arbitrary-field sort, `overview`/`visual` asset rendering, authenticated APIs, the Authentication extension's `auth:schemes`, and in-browser COG display. The current list is kept in the last section of `docs/DESIGN.md`.
+Not yet: CQL2 filtering and free-text search, arbitrary-field sort, `overview`/`visual` asset rendering, signing in to authenticated APIs and catalogs (OpenID Connect), and in-browser COG display. The current list is kept in the last section of `docs/DESIGN.md`.
 
 What "health" means here is not a score but a list of rules, each cited to the STAC spec, its best-practices document, the community linters (`stac-check`, `stac-api-validator`) or a verified observation against a live server, and tiered as *invalid* / *warning* / *behavior* / *observation*. The full list, with what is built and what isn't, is [`docs/HEALTH-RULES.md`](docs/HEALTH-RULES.md).
 
@@ -157,7 +157,8 @@ src/
                      picks the root's GET /search?collections=<id> over the Collection's rel:items
     searchQueryUrl.ts encode/decode an applied search into the URL hash's ?query suffix
     assetAccess.ts   declared asset href -> a usable one, lazily: the ordered access-method list, the cache
-    access/          one file per access method; planetaryComputer.ts = PC's SAS signing (/api/sas/v1/sign)
+    access/          one file per access method: planetaryComputer.ts (PC's SAS signing), awsS3.ts (s3:// → public HTTPS)
+    schemes.ts       auth:schemes / storage:schemes resolved up the parent chain, said in words
   data/
     catalogs.json    the landing page's known-catalog list — data with rules (docs/CATALOGS.md)
     knownCatalogs.ts typed accessor for it

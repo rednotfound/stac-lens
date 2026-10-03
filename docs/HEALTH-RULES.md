@@ -93,7 +93,9 @@
 | A-02 | Warning | at least one `role` per asset ("recommended to include one for every asset") | spec assets; bp | 🟡 |
 | A-03 | Warning | `type` present, and the most specific IANA media type (a COG is `image/tiff; application=geotiff; profile=cloud-optimized`, not bare `image/tiff`) | bp | 🟡 — `type` already read for the inline preview |
 | A-04 | Warning | properties identical across all `bands` are on the asset, not repeated per band | bp (1.1) | 🟡 low priority |
-| A-05 | Observation | `href` scheme a browser cannot fetch (`s3://`, `gs://`) — expected for requester-pays data | bp | ✅ href shown verbatim as a copyable link |
+| A-05 | Observation | `href` scheme a browser cannot fetch (`s3://`, `gs://`) — expected for requester-pays data | bp | ✅ href shown verbatim and copyable; Open disabled with the reason; an `s3://` href on public AWS storage (declared `aws-s3`, or undeclared) opens through its HTTPS address, never when `auth:refs` declares credentials or the storage is requester-pays or not AWS (§116) |
+| A-06 | Warning | the `href` path has an empty segment (`//` after the host) — object stores read `a//b` and `a/b` as different keys, so the link usually fails | observed: Africa Agriculture Adaptation Atlas (`…amazonaws.com//vulnerability/…` → 403; one slash → 206) | ✅ ⚠ on the asset row, a note above the list, the reason in the opened row (§116) |
+| A-07 | Observation | the asset declares the credentials it needs (`auth:refs` → `auth:schemes`, Authentication extension) or its storage (`storage:refs` → `storage:schemes`, Storage extension), and other locations (`alternate`, Alternate Assets extension) | Authentication, Storage, Alternate Assets extensions; observed: Copernicus Data Space (S3 credentials / OpenID Connect sign-in, `alternate` HTTPS) | ✅ named in words in the opened row, schemes resolved up the parent chain; counted above the list (§116) |
 
 ## Link
 

@@ -358,7 +358,7 @@ export function DetailPanel() {
 
           {node.assets.length > 0 && (
             <Field label={`Assets (${node.assets.length})`}>
-              <AssetList key={node.href} assets={node.assets} source={accessSourceOf(node)} />
+              <AssetList key={node.href} assets={node.assets} node={node} />
             </Field>
           )}
 

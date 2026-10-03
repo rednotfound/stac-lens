@@ -55,3 +55,19 @@ export function describeAssetType(type: string | undefined): string {
         .split(';')[0]
         .toUpperCase()
 }
+
+/** HEALTH-RULES A-06: the href's path has an empty segment (`//` after the
+ *  host). Object stores treat `a//b` and `a/b` as different keys, so such
+ *  a link usually fails — the Africa Agriculture Adaptation Atlas'
+ *  `…amazonaws.com//vulnerability/…` answers 403, the same path with one
+ *  slash answers. Only the path is read, not the query or fragment. */
+export function hasEmptyPathSegment(href: string): boolean {
+  const m = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]+([^?#]*)/i.exec(href)
+  return !!m && m[1].includes('//')
+}
+
+/** A browser can open it itself (`http:`/`https:`); `s3://`, `gs://`,
+ *  `abfs://` and the like are for other tools. */
+export function browserCanOpen(href: string): boolean {
+  return /^https?:\/\//i.test(href)
+}
