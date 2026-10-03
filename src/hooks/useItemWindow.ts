@@ -56,7 +56,7 @@ function windowed(prev: Loaded | null, added: StacNode[]): { items: StacNode[]; 
 
 /** The first Items of a Collection, ten at a time, as a sliding window —
  *  the "functions complete, data truncated" reading of a Collection's
- *  Items for the phone's outline, which has no Items window (the desktop
+ *  Items for the phone's outline, which has no Items panel (the desktop
  *  views show the window's own page instead). A static list is sliced
  *  and loaded through the shared loader;
  *  an API Collection is requested in the server's default order through
@@ -134,7 +134,7 @@ export function useItemWindow(node: StacNode): ItemWindowState {
   usePublishVisible(node.href, items)
 
   // In the tree the Inspector's Temporal/Spatial widgets show only the
-  // Collection's own declared extent — the Items window has its own Time &
+  // Collection's own declared extent — the Items panel has its own Time &
   // Space view for the Items. The views using this window have no such
   // box, so here the Inspector's widgets *are* where the loaded Items are
   // plotted: the aggregate flag is on while this Collection's Items are

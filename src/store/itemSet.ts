@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { SearchFilter } from '../stac/apiSearch'
-import type { WindowGeometry } from '../components/itemsWindowGeometry'
+/** The Items panel's width before the user has dragged its divider. */
+export const DEFAULT_ITEMS_PANEL_WIDTH = 400
 
 interface ItemSetStoreState {
   /** href of the Collection/Catalog the current `visibleHrefs` belong to —
@@ -11,7 +12,7 @@ interface ItemSetStoreState {
    *  one render before its own Item Set catches up. */
   forHref: string | null
   visibleHrefs: string[]
-  /** 0-based page the window is on, published with `visibleHrefs`, for
+  /** 0-based page the panel is on, published with `visibleHrefs`, for
    *  views that name the page ("+30 more on this page · page 2"). */
   pageIndex: number
   setVisible: (forHref: string, hrefs: string[], pageIndex?: number) => void
@@ -67,17 +68,16 @@ interface ItemSetStoreState {
    *  since-abandoned Collection is never silently picked up by a different
    *  one later. */
   consumePendingInitialQuery: (forHref: string) => SearchFilter | undefined
-  /** Whether the Items window — the one floating panel that shows the
-   *  browsed Collection's Item Set in every view — is showing. Opened
-   *  again whenever browsing moves to a Collection with Items (`App`);
-   *  closed by its × until then. Not persisted. */
-  windowOpen: boolean
-  setWindowOpen: (open: boolean) => void
-  /** Where the user last put the window and how big; `null` until it has
-   *  been moved or resized once, meaning "use the default placement".
-   *  Persisted per browser, written only when a drag or resize ends. */
-  windowGeometry: WindowGeometry | null
-  setWindowGeometry: (g: WindowGeometry | null) => void
+  /** Whether the Items panel — the docked column that shows the browsed
+   *  Collection's Item Set beside every view — is showing. Opened again
+   *  on every act of selecting a node with Items to list (`App`); hidden
+   *  from its header toggle until then. Not persisted. */
+  panelOpen: boolean
+  setPanelOpen: (open: boolean) => void
+  /** The panel's width in pixels, as the user last left it by dragging
+   *  its divider. Persisted per browser. */
+  panelWidth: number
+  setPanelWidth: (width: number) => void
 }
 
 /** What the tree-embedded browse panel (rendered inline in Structure Lens
@@ -98,10 +98,10 @@ export const useItemSetStore = create<ItemSetStoreState>()(
       showOnLenses: false,
       appliedQuery: undefined,
       pendingInitialQuery: null,
-      windowOpen: true,
-      windowGeometry: null,
-      setWindowOpen: (open) => set({ windowOpen: open }),
-      setWindowGeometry: (g) => set({ windowGeometry: g }),
+      panelOpen: true,
+      panelWidth: DEFAULT_ITEMS_PANEL_WIDTH,
+      setPanelOpen: (open) => set({ panelOpen: open }),
+      setPanelWidth: (width) => set({ panelWidth: width }),
       setVisible: (forHref, hrefs, pageIndex = 0) =>
         set((state) => ({
           forHref,
@@ -129,9 +129,9 @@ export const useItemSetStore = create<ItemSetStoreState>()(
       },
     }),
     {
-      name: 'stac-lens.items-window',
+      name: 'stac-lens.items-panel',
       version: 1,
-      // Only the window's placement is remembered; everything else here is
+      // Only the panel's width is remembered; everything else here is
       // live state for one session. A throwing `localStorage` (blocked site
       // data) makes `createJSONStorage` return no storage, and the store
       // simply runs in memory.
@@ -139,7 +139,13 @@ export const useItemSetStore = create<ItemSetStoreState>()(
         if (typeof localStorage === 'undefined') throw new Error('localStorage unavailable')
         return localStorage
       }),
-      partialize: (state) => ({ windowGeometry: state.windowGeometry }),
+      partialize: (state) => ({ panelWidth: state.panelWidth }),
+      // A stored width that is not a positive number (hand-edited, an older
+      // shape) falls back to the default instead of making the panel NaN.
+      merge: (persisted, current) => {
+        const w = (persisted as { panelWidth?: unknown } | undefined)?.panelWidth
+        return { ...current, panelWidth: typeof w === 'number' && w > 0 ? w : DEFAULT_ITEMS_PANEL_WIDTH }
+      },
     },
   ),
 )

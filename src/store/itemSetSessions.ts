@@ -43,7 +43,7 @@ export interface LinksSession {
 export const MAX_SESSIONS = 20
 
 /** Per-Collection memory for the Item Set, keyed by href, so its panel can
- *  unmount — the Items window closed, another Collection browsed, a view
+ *  unmount — the Items panel closed, another Collection browsed, a view
  *  switched — and come back exactly where it was. A plain module, not a
  *  zustand store: the hooks that own this state read it once at mount and
  *  write it as they go; nothing renders from it directly. Cleared when a
@@ -125,7 +125,7 @@ export const itemSetSessions = new ItemSetSessions()
 
 /** The page a Collection's Item Set last showed, from its session — what
  *  a view draws for a Collection that is open in the outline but not the
- *  one the Items window is on. `undefined` when there is no session (never
+ *  one the Items panel is on. `undefined` when there is no session (never
  *  browsed, or never searched for an API Collection). */
 export function sessionPage(node: StacNode): { items: StacNode[]; pageIndex: number } | undefined {
   if (node.items.kind === 'cursor') {

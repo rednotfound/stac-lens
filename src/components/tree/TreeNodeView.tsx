@@ -28,8 +28,8 @@ export interface TreeNodeProps {
    *  so this dashed ring is the only way an Item selection shows in the
    *  tree. */
   containsSelection: boolean
-  /** This node's Items are open in the Items window right now — the
-   *  window follows `browsingHref`, so at most one node has this. Drives
+  /** This node's Items are open in the Items panel right now — the
+   *  panel follows `browsingHref`, so at most one node has this. Drives
    *  the filled/hollow glyph and hides the count badge, as the embedded
    *  box used to. */
   itemsOpen: boolean
@@ -45,8 +45,9 @@ export interface TreeNodeProps {
 }
 
 /** One tree node: circle, label, badges, hover. The node's Items are not
- *  drawn here any more — they are in the Items window, which floats above
- *  every view (`ItemsWindow`); this node only shows that they are open.
+ *  drawn here — they are in the Items panel docked beside every view
+ *  (`ItemsPanel`), and their page shows as leaves (`ItemLeafView`); this
+ *  node only shows that they are open.
  *  The label, not the circle, is the drag handle: the circle's one job is
  *  click-to-expand and a grab cursor on it muddied that signal; the label
  *  only ever selected, so drag fits there without conflict. d3-drag is the
@@ -114,7 +115,7 @@ export function TreeNodeView({
 
   const { node } = datum
   // Only sub-Catalogs/Collections are structural children; direct Items are
-  // reached through the Items window, shown below as a count. A node whose
+  // reached through the Items panel, shown below as a count. A node whose
   // children come from a `/collections` or `/children` endpoint expands the
   // same way, just fetched differently.
   const canExpand = canExpandNode(node)
@@ -142,14 +143,20 @@ export function TreeNodeView({
   // Computed when hovered, not on every render: every node re-renders when
   // the hover card moves, and a description's plain text is not free.
 
-  // One handler for both the circle and the label, so "click here to select
-  // and reveal what's next" means the same thing on every node — the label
-  // used to only select, which made Catalogs and Collections behave
-  // differently for the same gesture. Safe alongside the label's drag:
-  // d3-drag swallows the click only after a real drag moved the pointer.
-  function handleSelectAndToggle() {
+  // The circle and the label, two jobs (the same rule as the outline's
+  // title and chevron): the circle selects and toggles — expand or
+  // collapse; the label selects and opens a closed node, and never
+  // collapses an open one. Clicking an open Catalog's name to look at it
+  // used to fold its whole subtree away, the root's the entire tree
+  // (reported). Safe alongside the label's drag: d3-drag swallows the
+  // click only after a real drag moved the pointer.
+  function handleCircleClick() {
     onSelect()
     if (canExpand) onToggle()
+  }
+  function handleLabelClick() {
+    onSelect()
+    if (canExpand && !hasRenderedChildren) onToggle()
   }
 
   // Hover must belong to *this node*, not to something React merely
@@ -193,7 +200,7 @@ export function TreeNodeView({
         r={radius + 10}
         fill="transparent"
         style={{ cursor: 'pointer' }}
-        onClick={handleSelectAndToggle}
+        onClick={handleCircleClick}
       />
       <circle
         r={radius}
@@ -226,7 +233,7 @@ export function TreeNodeView({
           cursor: labelDragging ? 'grabbing' : 'pointer',
           userSelect: 'none',
         }}
-        onClick={handleSelectAndToggle}
+        onClick={handleLabelClick}
       >
         {labelText}
       </text>

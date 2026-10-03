@@ -13,6 +13,9 @@ export interface StructureStats {
   moreLeaves: number
   /** Depth of the deepest loaded node, root = 0. */
   maxDepth: number
+  /** Nodes below the root that are expanded — what "Collapse to top
+   *  level" would fold; zero means there is nothing to collapse. */
+  expandedBelowTop: number
 }
 
 /** Counts over the loaded datum tree — only what is loaded, never a guess
@@ -20,13 +23,21 @@ export interface StructureStats {
  *  state's own answer, so a node whose expansion is still loading counts
  *  as opened. */
 export function structureStats(root: TreeDatum, isExpanded: (href: string) => boolean): StructureStats {
-  const stats: StructureStats = { catalogs: 0, collections: 0, unopenedCatalogs: 0, moreLeaves: 0, maxDepth: 0 }
+  const stats: StructureStats = {
+    catalogs: 0,
+    collections: 0,
+    unopenedCatalogs: 0,
+    moreLeaves: 0,
+    maxDepth: 0,
+    expandedBelowTop: 0,
+  }
   function walk(datum: TreeDatum, depth: number) {
     if (datum.moreCount) {
       stats.moreLeaves += datum.moreCount
       return
     }
     stats.maxDepth = Math.max(stats.maxDepth, depth)
+    if (depth > 0 && isExpanded(datum.href)) stats.expandedBelowTop += 1
     const { node } = datum
     if (node.type === 'Catalog') {
       stats.catalogs += 1

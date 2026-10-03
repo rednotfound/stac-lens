@@ -47,7 +47,22 @@ describe('structureStats', () => {
       unopenedCatalogs: 1,
       moreLeaves: 40,
       maxDepth: 2,
+      expandedBelowTop: 1,
     })
+  })
+
+  it('finds nothing to collapse or open on a flat root of Collections (Planetary Computer)', () => {
+    const flat: TreeDatum = {
+      href: 'pc',
+      node: node('pc', 'Catalog', ['x', 'y']),
+      children: [
+        { href: 'x', node: node('x', 'Collection') },
+        { href: 'y', node: node('y', 'Collection') },
+      ],
+    }
+    const stats = structureStats(flat, (h) => h === 'pc')
+    expect(stats.expandedBelowTop).toBe(0)
+    expect(stats.unopenedCatalogs).toBe(0)
   })
 
   it('treats a node whose expansion is in flight as opened', () => {

@@ -142,39 +142,6 @@ body {
  * needs a real UI with motion, everywhere the app loads something. One
  * keyframe, reused everywhere, rather than a
  * bespoke animation per component. */
-/* The Items window re-appearing when its subject changes (a different
- * Collection was browsed while it was open): a fade and a flash of the
- * border, so the swap is seen. Two identical keyframes — a component
- * alternates between them to restart the animation on every change. */
-@keyframes stac-lens-window-a {
-  0% {
-    opacity: 0.35;
-    transform: translateY(6px);
-    border-color: var(--color-brand);
-  }
-  60% {
-    border-color: var(--color-brand);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-@keyframes stac-lens-window-b {
-  0% {
-    opacity: 0.35;
-    transform: translateY(6px);
-    border-color: var(--color-brand);
-  }
-  60% {
-    border-color: var(--color-brand);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes stac-lens-spin {
   to {
     transform: rotate(360deg);
@@ -379,4 +346,137 @@ body {
   font-size: 12px;
   color: var(--color-selection);
   cursor: pointer;
+}
+
+/* Docked panes (components/panes.tsx): one header, one splitter, one
+ * toggle style for the Items panel and the Inspector alike. */
+.stac-lens-pane-header {
+  flex-shrink: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.stac-lens-pane-context {
+  min-width: 0;
+  font-weight: 400;
+  color: var(--color-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stac-lens-pane-title {
+  flex-shrink: 0;
+}
+/* The pane switches: one segmented control — a single outline, a hairline
+ * between the halves, the pressed half filled — so it reads as "which
+ * panes are on screen", not as a pair of command buttons. */
+.stac-lens-pane-switch {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.stac-lens-pane-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stac-lens-pane-toggle + .stac-lens-pane-toggle {
+  border-left: 1px solid var(--color-border);
+}
+/* Hover never masks the pressed state. */
+.stac-lens-pane-toggle:hover:not(:disabled):not([aria-pressed='true']) {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+.stac-lens-pane-toggle[aria-pressed='true'] {
+  color: var(--color-selection);
+  background: var(--color-selection-bg);
+}
+/* Inset, so the switch's rounded clip doesn't cut the focus ring off. */
+.stac-lens-pane-toggle:focus-visible {
+  outline: 2px solid var(--color-selection);
+  outline-offset: -2px;
+}
+.stac-lens-pane-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Commands on a view's content (Collapse / Expand): plain text with a
+ * glyph, no border — the tab row's own quiet register, unlike the
+ * segmented pane switch. */
+.stac-lens-view-command {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stac-lens-view-command:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+.stac-lens-view-command:disabled {
+  color: var(--color-text-faint);
+  opacity: 0.6;
+  cursor: default;
+}
+/* The splitter: an 8 px grab zone, a 1 px line in its middle that turns
+ * into a 3 px accent on hover (after a short delay, so passing over it
+ * doesn't flicker), on keyboard focus, and immediately while dragging. */
+.stac-lens-splitter {
+  position: relative;
+  width: 8px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--color-bg);
+  outline: none;
+}
+.stac-lens-splitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--color-border);
+  transition:
+    width 0.1s ease 0s,
+    background-color 0.1s ease 0s;
+}
+.stac-lens-splitter:hover::after {
+  width: 3px;
+  background: var(--color-selection);
+  transition-delay: 0.3s;
+}
+.stac-lens-splitter:focus-visible::after,
+.stac-lens-splitter[data-dragging]::after {
+  width: 3px;
+  background: var(--color-selection);
+  transition-delay: 0s;
 }

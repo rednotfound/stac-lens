@@ -56,7 +56,7 @@ export function IcicleView() {
   const [containerRef, { width }] = useElementSize<HTMLDivElement>()
   const [focusHref, setFocusHref] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
-  // Read so this re-renders when the Items window's page moves (the rows
+  // Read so this re-renders when the Items panel's page moves (the rows
   // below draw it); the value itself is read inside `IcicleItems`.
   useItemSetStore((s) => s.visibleHrefs)
 
@@ -78,7 +78,7 @@ export function IcicleView() {
   const px = (v: number) => ((v - focus.x0) / span) * width
   const visible = focus.descendants().filter((n) => px(n.x1) - px(n.x0) >= 0.75)
   // Items appear as one more row under a Collection's subtree: the page
-  // the Items window is on for the Collection being browsed, and — dimmer
+  // the Items panel is on for the Collection being browsed, and — dimmer
   // — the page last seen for every other visible Collection that has been
   // browsed (its session), so the exploration so far stays on the shape
   // and two Collections' pages can be compared side by side.
@@ -262,7 +262,7 @@ export function IcicleView() {
       >
         Width = share of loaded leaves, never an Item count · counts appear as text where known · dot and dashed
         baseline = not opened yet · hatched = not loaded · click a node with children to focus on it · Item rows = the
-        Items window's page for the browsed Collection, dimmer for pages last seen in other Collections
+        Items panel's page for the browsed Collection, dimmer for pages last seen in other Collections
       </div>
       {tooltip && <NodeTooltip tooltip={tooltip} />}
     </div>

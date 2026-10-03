@@ -38,8 +38,9 @@ export function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
         borderRadius: 'var(--radius-sm)',
         fontSize: 12,
         pointerEvents: 'none',
-        // Above the Items window (50), below the bbox modal (100): the card
-        // for a row inside the window must not paint underneath it.
+        // Above the docked panels, below the bbox modal (100): the card for
+        // a row near a column's edge must not paint underneath its
+        // neighbor.
         zIndex: 60,
         boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
       }}
