@@ -102,6 +102,8 @@ export function BottomSheet({
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--color-surface)',
+        // A clamped description in the sheet fades into this surface.
+        ['--stac-lens-md-fade-to' as string]: 'var(--color-surface)',
         borderTop: '1px solid var(--color-border)',
         borderRadius: '12px 12px 0 0',
         boxShadow: '0 -6px 24px rgba(0,0,0,0.18)',

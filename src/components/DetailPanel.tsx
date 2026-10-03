@@ -15,6 +15,7 @@ import { LoadingState } from './LoadingState'
 import { TabButton } from './TabButton'
 import { accessSourceOf } from '../stac/assetAccess'
 import { AssetList } from './AssetList'
+import { Description } from './Description'
 import { AccessImage } from './AccessImage'
 
 type Tab = 'human' | 'json'
@@ -176,7 +177,11 @@ export function DetailPanel() {
         </pre>
       ) : (
         <>
-          {node.description && <Field label="Description (source)">{node.description}</Field>}
+          {node.description && (
+            <Field label="Description (source)">
+              <Description key={node.href} text={node.description} baseHref={node.href} clamp />
+            </Field>
+          )}
 
           {previewHref && (
             <div style={{ marginBottom: 12 }}>
@@ -302,6 +307,11 @@ export function DetailPanel() {
                     )}
                     {p.roles && p.roles.length > 0 && (
                       <span style={{ color: 'var(--color-text-muted)' }}> — {p.roles.join(', ')}</span>
+                    )}
+                    {p.description && (
+                      <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
+                        <Description text={p.description} baseHref={node.href} mode="inline" />
+                      </div>
                     )}
                   </div>
                 ))}

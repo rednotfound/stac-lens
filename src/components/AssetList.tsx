@@ -11,6 +11,8 @@ import {
 import { loader } from '../stac/loaderInstance'
 import { describeAuthScheme, describeStorageScheme, resolveAuthScheme } from '../stac/schemes'
 import type { StacAsset, StacAssetAlternate, StacNode } from '../stac/types'
+import { descriptionPlainText } from '../stac/markdownLoader'
+import { Description } from './Description'
 import { TypeIcon } from './TypeIcon'
 
 // The Inspector's asset list: one list, every asset, one line each — the
@@ -460,7 +462,9 @@ function AssetDetails({
       {asset.description && (
         <>
           <DetailLabel>Description</DetailLabel>
-          <span>{asset.description}</span>
+          <span>
+            <Description text={asset.description} baseHref={node.href} mode="inline" />
+          </span>
         </>
       )}
     </div>
@@ -546,7 +550,7 @@ function AlternateLink({
     alt.authRefs?.length ? `needs ${describeAuthRefs(node, alt.authRefs)}` : undefined,
     source.storage ? describeStorageScheme(source.storage) : undefined,
     method ? `opens through ${method.label}` : undefined,
-    alt.description,
+    alt.description ? descriptionPlainText(alt.description) : undefined,
   ].filter(Boolean)
   return (
     <>

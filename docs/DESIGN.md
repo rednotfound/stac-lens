@@ -7753,3 +7753,120 @@ the user's call.
   Computer (signing unchanged; one slow moment of the signer now reads
   "did not answer within 15 seconds", not "signal timed out").
 
+## 117. Descriptions are Markdown — read them as such
+
+The user: many descriptions are written in Markdown, or carry other text
+formatting, and the app ignored all of it, so some read as a mess. The
+spec agrees with them: Catalog, Collection, Item, Provider and Asset
+descriptions all say "CommonMark 0.29 syntax MAY be used for rich text
+representation". The Inspector showed the raw text; the hover card
+stripped only `[text](url)`.
+
+**What real catalogs use.** 461 descriptions sampled on 2026-10-03:
+Planetary Computer's 138 Collections, 200 of Copernicus Data Space's,
+Earth Search, USGS, and the 100 landing-page roots. 137 carry markup:
+
+| Construct | Count |
+|---|---|
+| links | 127 |
+| paragraph breaks | 115 |
+| lists | 48 |
+| inline code | 41 |
+| headings | 37 |
+| bold or italic | 34 |
+| bare URLs | 15 |
+| GFM tables | 5 |
+| raw HTML (`<a href>`, `<sub>`) | 4 |
+| images | 2 |
+
+The median length is about 400 characters; the longest,
+`cil-gdpcir-cc-by-sa`, is 43,034 characters with a 30-row table. Our own
+landing-list descriptions carry none.
+
+**Prior art.** STAC Browser renders with commonmark.js in safe mode
+(raw HTML dropped) and uses `remove-markdown` where it needs plain text.
+It has no tables, so Planetary Computer's show as pipes there.
+
+**Decision.** Parse to a syntax tree and render React elements from it;
+no HTML string is ever injected.
+
+- **Parser.** `mdast-util-from-markdown` with the GFM extension (tables,
+  autolink literals, strikethrough, task lists, footnotes), MIT,
+  22.5 kB gzipped. It lives in `stac/markdown.ts`, a chunk of its own
+  that `stac/markdownLoader.ts` loads when a catalog opens, so the
+  landing page doesn't carry it. Until it arrives, a description shows
+  as plain text with its line breaks.
+- **Renderer.** `components/Description.tsx` renders the nodes it knows.
+  Raw HTML nodes are dropped, and their text survives in sibling text
+  nodes. Links open in a new tab and only if `http(s)` or `mailto`;
+  images only if `http(s)`. Relative URLs resolve against the node's
+  href (`stac/safeUrl.ts`). Headings become small bold lines, so a
+  description's `# Title` never outranks the Inspector's own field
+  labels. Code blocks wrap.
+- **Inline form.** `mode="inline"` flattens blocks into one run of text
+  for short places: an asset's description, an alternate's, and a
+  provider's, which the Inspector now shows (it showed none before).
+- **Plain text from the same tree.** The hover card uses
+  `descriptionPlainText`: the tree read as text, blocks joined by
+  spaces, raw HTML and image URLs gone. It replaces the link-only
+  regex, which stays as the fallback before the parser loads.
+
+**The user's three choices** (via AskUserQuestion, all as recommended):
+
+1. **Long descriptions show their first ~14 lines.** They fade out,
+   followed by "Show full description (42,662 characters)". The page
+   grows when it opens; nothing scrolls inside it. The fade ends in
+   whatever the description sits on: the page background on the desktop,
+   the sheet's surface on a phone (`--stac-lens-md-fade-to`).
+2. **A table scrolls sideways inside itself if it must.** That is one
+   axis, not a scroll inside the page's scroll, and the cells stay
+   readable.
+3. **Images show inline.** They are no wider than the column, load
+   lazily, and fall back to their alt text when the URL is unusable or
+   fails to load.
+
+**Checks.**
+
+- **Vitest.** Parsing with GFM; plain text (links, blocks, raw HTML,
+  images, tables, definitions); the fallback; `safeUrl` (relative
+  resolution, `javascript:` and `data:` refused).
+- **Smoke (offline).** The fixture Item's description renders a safe new-tab
+  link, bold, code, a demoted heading and a table; no `**`, `##`, `](`
+  or `<b>` left, and the `javascript:` link becomes plain text.
+- **Live.** Four Planetary Computer Collections: `cil-gdpcir-cc-by`
+  (13 headings, 119 links, a table that scrolls only sideways),
+  `ecmwf-forecast` (raw `<a>` dropped, text kept), `ms-buildings`
+  (2 images), and `3dep-lidar-classification` (code). Every link was
+  safe and opened in a new tab. Checked light and dark, on an iPhone 13
+  sheet, and in hover cards with no markup left.
+
+### The hover card lagged — and why
+
+Testing this round, the user found the Tree's hover card sluggish. The
+cause was ours: every tree node computed its hover content on every
+render, and every move of the hover card re-renders the whole tree. The
+hover content now includes the description's plain text, and a full
+parse of all 138 Planetary Computer descriptions takes about 147 ms (the
+longest alone, about 22 ms) — on every mouse move.
+
+Three fixes:
+
+- **Hovered nodes only.** A tree node computes its hover content when it
+  is hovered, not on render.
+- **Cached.** `descriptionPlainText` caches per description, bounded at
+  2,000 entries.
+- **The opening only.** It reads only a description's opening, about
+  2,000 characters cut at a paragraph break, which is enough for the
+  card's 160.
+
+Measured by sweeping the pointer across 25 Collection nodes on Planetary
+Computer's root:
+
+| | Sweep | Long tasks (> 50 ms) | Longest | Blocking time |
+|---|---|---|---|---|
+| before | 25.0 s | 60 | 410 ms | 21.1 s |
+| after | 2.6 s | 0 | — | 0 |
+
+The lesson: anything a render or a mouse-move handler calls must stay
+cheap, or be cached.
+

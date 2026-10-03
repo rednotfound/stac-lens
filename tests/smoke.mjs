@@ -68,6 +68,8 @@ const fixtureItem = {
   geometry: null,
   properties: {
     datetime: '2026-01-01T00:00:00Z',
+    description:
+      'A **bold** [link](https://example.org/docs) and <b>raw</b> `code`.\n\n## A heading\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n[evil](javascript:alert(1))',
     'auth:schemes': {
       s3: { type: 's3' },
       oidc: { type: 'openIdConnect', openIdConnectUrl: 'https://identity.example/.well-known/openid-configuration' },
@@ -396,6 +398,21 @@ await page.waitForFunction(
   await fx.route('**/*', handleRoute)
   await fx.goto(`${BASE_URL}/#${FIXTURE_ITEM}`)
   await fx.waitForSelector('[role="listitem"]', { timeout: 15000 })
+  await fx.waitForSelector('.stac-lens-md', { timeout: 10000 })
+  const md = fx.locator('.stac-lens-md')
+  const mdText = await md.textContent()
+  check(
+    'a Markdown description renders as structure, with safe links and no raw HTML',
+    (await md.locator('a[href="https://example.org/docs"][target="_blank"]').count()) === 1 &&
+      (await md.locator('strong').count()) === 1 &&
+      (await md.locator('code').count()) === 1 &&
+      (await md.locator('h4').count()) === 1 &&
+      (await md.locator('table td').count()) === 2 &&
+      (await md.locator('a[href^="javascript"]').count()) === 0 &&
+      !/\*\*|<b>|##|\]\(/.test(mdText) &&
+      /evil/.test(mdText),
+    mdText,
+  )
   const notes = (await fx.locator('[role="list"]').locator('xpath=preceding-sibling::div').allTextContents()).join(
     ' | ',
   )
