@@ -5447,9 +5447,10 @@ server omits — both loosened to match what matters, not the accident.
   Computer's `/token/{account}/{container}` in place of `/sign` when a
   viewer needs many assets at once; an in-browser COG viewer consuming
   `AssetAccess`.
-- **The Items window's empty search and page in the URL (§115).** A
-  link to an Item would then also restore the page it was found on —
-  never guaranteed, since API result order drifts.
+- **The Items window's page number in the URL (§115, §118).** Since
+  §118 a reload re-runs a Collection's default search, so page 1 comes
+  back; the page an Item was found on does not — never guaranteed
+  anyway, since API result order drifts.
 - **The phone Inspector's timeline still scrolls inside the sheet
   (§114, "No scroll inside the Inspector").** Plotting a Collection's
   first 10–100 Items can stack more than 240px of lanes; needs a lane
@@ -7869,4 +7870,155 @@ Computer's root:
 
 The lesson: anything a render or a mouse-move handler calls must stay
 cheap, or be cached.
+
+## 118. A Collection opens with its default search already run (revises §78)
+
+The user, after many rounds of opening API Collections: "每次为了确定有没有
+数据都得先search一下" — every time, a Search click just to learn whether
+there is any data. They asked whether the window could load results at
+once — a search with no conditions — and let the Search panel narrow
+them afterwards.
+
+**This reverses the user's own §78 decision.** It had made API mode
+search-first: before any search, nothing to page through, never "an
+unfiltered default load standing in for 'no query yet'". The concerns
+behind it no longer hold:
+
+- **The danger is gone.** An unfiltered result is tens of thousands of
+  Items, and "Load all remaining" once froze the page on 1,400 of them.
+  That button was removed (§83); paging is the only way through, so one
+  default page is safe.
+- **The concept holds.** The default results are framed as a search
+  that had no conditions, not as "no search yet". The collapsed Search
+  summary reads "No conditions — everything, in the server's order", and
+  the results footer now adds "· no conditions, the server's order"
+  while no condition applies. Results are still the output of a search.
+
+**What changed.**
+
+- **Collections search on open.** `useCursorQueriedItemSet` runs a
+  Collection's unconditioned search on open, from a loading state on the
+  first frame, so "set your conditions" never flashes first. It runs once
+  per Collection per session: closing and reopening the window, switching
+  views or coming back to the Collection reuses the session.
+- **Links with conditions are unchanged.** A shareable URL with a query
+  runs that query, never a default search first.
+- **An API root still waits.** A search across every Collection is a
+  different, much larger question, and some servers refuse it
+  (Planetary Computer: "collection is required"). Its idle message now
+  says so.
+- **Gains.** The window answers "is there data, how much"
+  (`numberMatched` when the server gives it); the tree, outline and
+  icicle draw the first page at once; a reload refills the page (the
+  page number is still not restored, §115).
+
+**Two problems the automatic request exposed, both fixed.**
+
+1. **The request size.** Each request asked for a fixed 250 Items, on the
+   theory that a round trip costs the same whatever it carries. Measured
+   on Copernicus Data Space's Sentinel-2 Collection, unconditioned:
+
+   | limit | time | size |
+   |---|---|---|
+   | 10 | 26 s | 0.7 MB |
+   | 40 | 60 s | 2.8 MB |
+   | 200 | 340 s | 14.3 MB |
+
+   The browser gave up with "Failed to fetch". A request now asks for one
+   page: the results' page size, 40 by default, passed from
+   `usePagedCursorResults`. Paging past the buffer fetches page by page.
+   Without a total, the pager reads "page 1 of 2+" while the server still
+   offers a `next`, not "1 of 1+".
+2. **A server refusing our limit.** CDSE also answered limit 250 with
+   400 "Limit of 250 exceeds maximum of 200". OGC API - Features says a
+   limit above the maximum "SHALL NOT result in an error", but servers
+   differ. `fetchSearchPage` now handles it for every server: when a 400
+   is about the limit and names the maximum, it asks again once with
+   that maximum and remembers it for the endpoint (`maxLimitFrom` reads
+   "maximum of N", "at most N", "maximum limit is N"). Any other 400 is
+   reported as it is.
+
+A network-level failure now reads "The server did not answer, or closed
+the connection before it did (the browser says "Failed to fetch")".
+
+**Checks.**
+
+- **Vitest.** The limit retry, other 400s untouched, the maximum parser.
+- **Smoke.** Opening Landsat makes exactly one unconditioned search
+  request and shows the "no conditions" note. The off-page check (§115)
+  now uses an Item the default search page does not hold, because the
+  fixture page now holds the one it used.
+- **Live.** Planetary Computer Landsat: one request, ten tree leaves,
+  "page 1 of 2+", the URL unchanged, no refetch on reopen, the API root
+  still waiting. Earth Search Sentinel-2: 51,517,425 Items counted.
+  CDSE Sentinel-2: the first page in about a minute, where it failed
+  before.
+
+## 119. The wheel zooms the tree wherever the pointer rests
+
+Reported: with the pointer on a node in the Tree view, the wheel did
+nothing — "这个限制非常奇怪", since a canvas is expected to zoom
+anywhere, any time.
+
+**Cause.** The canvas's d3-zoom filter refused every gesture that starts
+inside a `data-block-pan` element. Those are a node's hit circle and its
+label, which have their own click and their own drag (moving the node).
+The rule was meant for drags, but it caught the wheel too.
+
+**Fix.** The filter exempts `wheel`. A drag from a node still moves the
+node, not the canvas, and a double-click on a node still doesn't zoom.
+
+**Checks.**
+
+- **Live on Planetary Computer.** The wheel zooms with the pointer on a
+  label and on a circle. A label drag leaves the canvas transform
+  unchanged, and a double-click on a label leaves the zoom as it was.
+- **Smoke.** "The wheel zooms with the pointer on a node."
+
+## 120. Item leaves are dragged as a group — a page's place, not an Item's
+
+The user asked whether Item leaves could be dragged in the Tree like
+nodes. They couldn't. Measuring how drag worked also turned up a bug:
+
+**The bug.** Dragging a node wrote the same delta into the offset of
+every node in its subtree, Item leaves included, keyed by each leaf's
+href. Leaves are the Items window's page, so a page turn or a new search
+replaces them, and the new leaves had no offsets. They snapped back to
+where the Collection had been before the drag, their links stretched
+across the canvas. Measured on Landsat: the "+N more" leaf sat at
+(296, −195) from its Collection, moved with it on drag, then jumped to
+(256, −315) on page 2.
+
+**The question.** Nodes are stable structure; a leaf is the page's
+sketch. Is a dragged leaf placing that Item, or placing the page? Three
+options were drawn (group, single leaf, group with Alt for single). The
+user chose **the group**: dragging any leaf moves all of its
+Collection's leaves, including "+N more" and an off-page selected Item,
+and the position is the page's place, kept per Collection.
+
+**How.**
+
+- **Leaves never get offsets of their own.** A leaf's position is the
+  layout position, plus its Collection's own offset, plus the group's
+  offset (`leafGroupOffsets`, keyed by the Collection).
+- **A node drag writes only structural descendants.** The leaves follow
+  through `effectiveXY` whichever page is showing, which fixes the bug.
+- **A leaf drag uses the label's composition.** It is d3-drag in the
+  zoomed `<g>`, and the layout is transposed, as for a node's own drag.
+  A real drag moves the group, and d3-drag swallows the click that ends
+  it. A click without movement still selects the Item. The canvas does
+  not pan meanwhile.
+- **Reset and legend.** "Reset layout" clears both kinds of offset. The
+  legend now says "drag a label, or a page of Item leaves, to
+  rearrange".
+
+**Checks.**
+
+- **Live on Landsat.** All 11 leaves move by the same (150, 80) while
+  the Collection stays, and the drag selects nothing. A plain click
+  selects. Page 2 appears in the moved place (the "+N more" leaf at
+  (454, 271) from the Collection, before and after). Dragging the
+  Collection carries the group. Reset returns it to (304, 191).
+- **Smoke.** "Dragging an Item leaf moves its whole group of leaves
+  together."
 

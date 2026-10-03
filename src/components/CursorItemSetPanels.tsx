@@ -102,12 +102,11 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
   const appliedFilterActive = !isEmptyQuery(appliedQuery)
   const draftFilter = draftToFilter(draft)
   const draftDirty = JSON.stringify(draftFilter) !== JSON.stringify(appliedQuery)
-  // Before the very first search, `draftFilter` and `appliedQuery` are both
-  // `{}` — identical — which would otherwise leave Search permanently
-  // disabled and no way to ever trigger that first search at all (search-
-  // first mode has no auto-load to fall back on). Any explicit click before
-  // `status !== 'idle'` should go through, filters or not — that's exactly
-  // what running a search for the first time means.
+  // At an API root, before the first search, `draftFilter` and
+  // `appliedQuery` are both `{}` — identical — which would otherwise leave
+  // Search permanently disabled. Any explicit click while `idle` goes
+  // through, filters or not — that's what running a first search means. (A
+  // Collection is never idle: its default search runs on open.)
   const searchDisabled = state.loadingMore || (state.status !== 'idle' && !draftDirty)
 
   function handleSearch() {
@@ -191,13 +190,14 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
           setView={setView}
           status={state.status}
           error={state.error}
-          idleMessage="Set your search conditions above and click Search to see results."
+          idleMessage="A search across every Collection — set conditions above and click Search."
           pageItems={pageItems}
           dimmedItems={state.dimmedItems}
           pageIndex={state.pageIndex}
           totalPages={state.totalPages}
           totalPagesIsLowerBound={state.totalPagesIsLowerBound}
           totalItems={state.totalItems}
+          queryNote={appliedFilterActive ? undefined : "no conditions, the server's order"}
           pageSize={state.pageSize}
           setPageSize={state.setPageSize}
           goToPage={state.goToPage}

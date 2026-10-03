@@ -115,7 +115,7 @@ export function Legend() {
         <div>┄ dashed ring — your selected Item is inside</div>
         <div>"N items" label — the rest are in the Items window; dimmed leaves = a page last seen</div>
         <div>blue "API" tag — items are live-queried, not a static list</div>
-        <div>drag a label to rearrange; the Items window floats above every view</div>
+        <div>drag a label, or a page of Item leaves, to rearrange; the Items window floats above every view</div>
       </div>
     </div>
   )

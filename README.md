@@ -52,14 +52,14 @@ If you publish a catalog and want visitors to read it, deploy STAC Browser. If y
 
 ## Highlights
 
-**Structure Lens** — a horizontal, curved node-link tree over the Catalog → Collection graph. Items are not part of the structure: a Collection with two million Items is one node, not a wall — but the page the Items window is on shows under it as up to ten small leaves and a "+N more" leaf, a sketch of where those Items sit (dimmed for a page last seen in another Collection). Nothing loads until you expand it; the canvas pans and zooms by direct manipulation (drag, wheel), and nodes and panels can be rearranged by hand. Selecting an Item highlights the Collection it belongs to with a dashed ring, distinct from the solid ring of a direct selection.
+**Structure Lens** — a horizontal, curved node-link tree over the Catalog → Collection graph. Items are not part of the structure: a Collection with two million Items is one node, not a wall — but the page the Items window is on shows under it as up to ten small leaves and a "+N more" leaf, a sketch of where those Items sit (dimmed for a page last seen in another Collection). Nothing loads until you expand it; the canvas pans and zooms by direct manipulation (drag, wheel), and nodes can be rearranged by hand — a Collection's Item leaves move together, as the page's place. Selecting an Item highlights the Collection it belongs to with a dashed ring, distinct from the solid ring of a direct selection.
 
 **Other views of the same structure** — the tree is the entry; on a desktop two lighter views sit beside it over the same loaded graph and the same selection: an **Outline** (the structure as an indented document), an **Icicle** (space-filling layers — how wide and how deep the publisher's hierarchy is, at a glance; width is share of loaded leaves, never an invented Item count) and a **Radial** tree (breadth as a ring, depth as concentric rings). In each, the Collection being browsed shows the page its Items window is on. Click anything in any view and the Inspector follows.
 
 **The Items window** — selecting a Collection opens its Items in one floating window that follows the Collection you browse, above every view (tree, outline, icicle): drag it by its title bar, resize it, collapse it, close it and reopen it from the tab row. Each Collection's search, page and loaded buffer are remembered for the session, so browsing elsewhere and coming back finds it as it was. Static catalogs and API-backed Collections get genuinely different UI, because they are different things:
 
 - A static catalog's Item list is known up front, so it gets **real numbered pagination** with a per-page cache.
-- An API-backed Collection gets a **Search** section (date range, an area drawn on a real map, sort where the API declares support) above its **Results**, paged from the cursor's accumulated buffer. API mode is **search-first** — nothing is fetched until you ask.
+- An API-backed Collection gets a **Search** section (date range, an area drawn on a real map, sort where the API declares support) above its **Results**, paged from the cursor's accumulated buffer. A Collection opens with its default search already run — no conditions, the server's order — so you see at once whether there is data; the Search section narrows it. A search across a whole API root waits for your conditions.
 
 Both share a **List / Time & Space** switcher: the same page of Items as a scrollable list, or as a zoomable timeline stacked over an interactive map. Already-visited pages stay faintly visible behind the current one.
 
@@ -133,7 +133,7 @@ Details, headers and a GitHub Pages workflow: [`docs/DEPLOY.md`](docs/DEPLOY.md)
 
 ## Stack
 
-TypeScript, React 19, Vite 8. `zustand` for shared state; `d3-hierarchy` / `d3-shape` / `d3-zoom` / `d3-drag` / `d3-scale` for layout math and gesture composition (rendering is plain React + SVG); `leaflet` with OpenStreetMap tiles for maps. No UI component library — a small design-token layer (`src/design/tokens.css`) with light and dark themes. The three hierarchy colors are the STAC logo's own three squares — Catalog `#C4E2EF`, Collection `#0EB4AE`, Item `#144E63` — used as hues with per-theme luminance so each reads on both surfaces; the same squares, under a lens, are the app's mark.
+TypeScript, React 19, Vite 8. `zustand` for shared state; `d3-hierarchy` / `d3-shape` / `d3-zoom` / `d3-drag` / `d3-scale` for layout math and gesture composition (rendering is plain React + SVG); `leaflet` with OpenStreetMap tiles for maps. No UI component library — a small design-token layer (`src/design/tokens.css`) with light and dark themes. Catalog and Collection wear the STAC logo's outer and middle squares (`#C4E2EF`, `#0EB4AE`) as hues with per-theme luminance; the Item wears STAC's own green at the teal's weight (`#4d8d34` light / `#8cd472` dark). The logo's three squares, under a lens, are the app's mark.
 
 ## Project layout
 
@@ -171,7 +171,7 @@ src/
     useStructure.ts            reads that shared instance from StructureProvider
     useSelectedItems.ts        current selection -> what Inspector's Temporal/Spatial widgets plot
     useLinksPagedItemSet.ts    static catalogs: page-based browsing over a known href array
-    useCursorQueriedItemSet.ts API Collections: cursor-following, search-first query state
+    useCursorQueriedItemSet.ts API Collections: cursor-following query state, a default search on open
     usePagedCursorResults.ts   the cursor buffer presented as numbered pages ("catch-up" on a far jump)
     useApiConformance.ts       reactive root-conformance resolution for gating UI
     useElementSize.ts          ResizeObserver -> real container size

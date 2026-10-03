@@ -5,13 +5,13 @@ import { resolveSearchTarget } from '../stac/conformance'
 import type { StacNode } from '../stac/types'
 import { itemSetSessions } from '../store/itemSetSessions'
 
-// A cursor-mode page costs one network round-trip regardless of how many
-// Items it returns — the response already embeds full Item JSON for each
-// one — so a much larger page size than links-mode is nearly free. A small
-// page also reads as a hard limit (a real complaint about a felt "40 item"
-// cap — see docs/DESIGN.md, "STAC API sources — a real STAC dataset has two
-// faces, not one").
-const CURSOR_PAGE_SIZE = 250
+// How many Items one request asks for, when the caller does not say. The
+// paged results pass their page size instead: a request fills one page.
+// This used to be a fixed 250 on the theory that a round-trip costs the
+// same whatever it carries — measured wrong: Copernicus Data Space takes
+// 26 s for 10 Sentinel-2 Items, 60 s for 40 and 340 s (14 MB) for 200, and
+// a Collection's default search now runs on open (docs/DESIGN.md §118).
+const DEFAULT_FETCH_LIMIT = 40
 
 export type CursorQuery = SearchFilter
 
@@ -20,11 +20,10 @@ const EMPTY_QUERY: CursorQuery = {}
 export type CursorItemSetState =
   | { status: 'empty' }
   | {
-      /** `idle`: no search has ever been run yet (and none was restored
-       *  from a shareable URL) — deliberately not the same as `loading`.
-       *  API mode is search-first, by explicit request: before an API
-       *  search runs, there's no result at all — no request is made until
-       *  `applyQuery` is actually called at least once. */
+      /** `idle`: no search has been run yet — only an API root (a search
+       *  across every Collection) starts here, waiting for conditions; a
+       *  Collection runs its default, unconditioned search on open, and a
+       *  shareable URL's query runs at once. Deliberately not `loading`. */
       status: 'idle' | 'loading' | 'ready' | 'error'
       /** Set while `status === 'error'`: the last request for the current
        *  query failed — shown as such, never as an empty result. A server
@@ -72,8 +71,16 @@ export function useCursorQueriedItemSet(
    *  already-mounted instance has no effect, matching `applyQuery`'s own
    *  "only a fresh explicit call starts a new query" semantics. */
   initialQuery?: CursorQuery,
+  /** Items per request — the results' page size. Read at each request. */
+  fetchLimit: number = DEFAULT_FETCH_LIMIT,
 ): CursorItemSetState {
   const nodeHref = node?.href
+  const fetchLimitRef = useRef(fetchLimit)
+  // Declared before the mount effect below, so a first request already
+  // sees the current value.
+  useEffect(() => {
+    fetchLimitRef.current = fetchLimit
+  }, [fetchLimit])
 
   // A session left by a previous mount for this Collection (the Items
   // window closed and reopened, another Collection browsed in between)
@@ -81,16 +88,29 @@ export function useCursorQueriedItemSet(
   // and the page is where it was. A restored `initialQuery` (a shareable
   // URL's query) is a new intent and wins over the session.
   const restored = nodeHref && initialQuery === undefined ? itemSetSessions.getCursor(nodeHref) : undefined
+  // A Collection opens with its default search already run — no
+  // conditions, the server's order — so one can see at once whether there
+  // is data, and the views draw its first page; the Search panel then
+  // narrows it. An API root (a search across every Collection) still waits
+  // for conditions: it is a different, much larger question, and some
+  // servers refuse it outright (Planetary Computer: "collection is
+  // required"). See docs/DESIGN.md §118, which revises §78.
+  const autoSearch = node?.type === 'Collection'
+  const autoSearchNow = autoSearch && !restored && initialQuery === undefined
 
   const [items, setItems] = useState<StacNode[]>(restored?.items ?? [])
-  const [loadingMore, setLoadingMore] = useState(false)
+  // Loading from the first frame when the default search is about to run,
+  // so the panel never flashes "set your conditions" first.
+  const [loadingMore, setLoadingMore] = useState(autoSearchNow)
   const [matched, setMatched] = useState<number | undefined>(restored?.matched)
   const [error, setError] = useState<string | undefined>(restored?.error)
   const [appliedQuery, setAppliedQuery] = useState<CursorQuery>(initialQuery ?? restored?.appliedQuery ?? EMPTY_QUERY)
   // A restored `initialQuery` (from a shareable URL) counts as "already
   // searched" — it's replaying a real search someone actually ran, not
   // browsing the default unfiltered order.
-  const [hasSearched, setHasSearched] = useState(initialQuery !== undefined || (restored?.hasSearched ?? false))
+  const [hasSearched, setHasSearched] = useState(
+    initialQuery !== undefined || autoSearchNow || (restored?.hasSearched ?? false),
+  )
 
   const generationRef = useRef(0)
   const nextRef = useRef<NextLink | undefined>(restored?.next)
@@ -114,9 +134,9 @@ export function useCursorQueriedItemSet(
 
   // One effect, not two — resetting state and (conditionally) kicking off
   // the first fetch need to happen in the same pass: a restored
-  // `initialQuery` should fetch immediately (replaying a real search), but
-  // the *default*, nothing-restored case must NOT auto-fetch at all
-  // (search-first — see `CursorItemSetState.status`'s `idle` doc above).
+  // `initialQuery` fetches immediately (replaying a real search), a
+  // Collection runs its default, unconditioned search, and only an API
+  // root waits in `idle` for conditions.
   useEffect(() => {
     const session = nodeHref && initialQuery === undefined ? itemSetSessions.getCursor(nodeHref) : undefined
     if (session) {
@@ -138,8 +158,9 @@ export function useCursorQueriedItemSet(
     resetForNewQueryOrNode()
     appliedQueryRef.current = initialQuery ?? EMPTY_QUERY
     setAppliedQuery(initialQuery ?? EMPTY_QUERY)
-    setHasSearched(initialQuery !== undefined)
-    if (initialQuery !== undefined) void loadMore()
+    const runNow = initialQuery !== undefined || autoSearch
+    setHasSearched(runNow)
+    if (runNow) void loadMore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeHref])
 
@@ -169,7 +190,7 @@ export function useCursorQueriedItemSet(
     // request, and stay the merge base for a `next` link followed by POST
     // (`fetchSearchPage` never re-appends them to a followed href).
     const page = await fetchSearchPage(target.endpoint, {
-      limit: CURSOR_PAGE_SIZE,
+      limit: fetchLimitRef.current,
       next: nextRef.current,
       filter: appliedQueryRef.current,
       collections: target.collections,
@@ -196,7 +217,15 @@ export function useCursorQueriedItemSet(
       if (generation !== generationRef.current) return
       console.error('[useCursorQueriedItemSet] search request failed', err)
       exhaustedRef.current = true // don't retry a broken endpoint forever
-      setError(err instanceof Error ? err.message : String(err))
+      // A network-level failure (no answer, a dropped connection, a gateway
+      // timeout without CORS headers) reaches us only as "Failed to fetch".
+      setError(
+        err instanceof TypeError
+          ? `The server did not answer, or closed the connection before it did (the browser says "${err.message}")`
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      )
     } finally {
       // Only this generation's own request may clear the loading flags. A
       // superseded request (a newer `applyQuery`/node-change already reset

@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchChildrenPage, fetchCollectionsPage, fetchSearchPage, filterToParams, type NextLink } from '../apiSearch'
+import {
+  fetchChildrenPage,
+  fetchCollectionsPage,
+  fetchSearchPage,
+  filterToParams,
+  maxLimitFrom,
+  type NextLink,
+} from '../apiSearch'
 
 const SEARCH = 'https://api.example.org/v1/search'
 
@@ -177,5 +184,37 @@ describe('list endpoints', () => {
     const page = await fetchChildrenPage('https://api.example.org/v1/children', { limit: 100 })
     expect(page.items.map((n) => n.href)).toEqual(['https://api.example.org/v1/c1'])
     expect(page.next).toBeUndefined()
+  })
+})
+
+describe('a server that refuses our limit', () => {
+  const refuse = (detail: string) =>
+    new Response(JSON.stringify({ detail: { code: 'LimitValidationError', message: detail } }), { status: 400 })
+  const page = () => new Response(JSON.stringify({ type: 'FeatureCollection', features: [feature('a')], links: [] }))
+
+  it('asks again once with the maximum it names, and remembers it for the endpoint', async () => {
+    const endpoint = 'https://cdse.example/v1/search'
+    responses.push(refuse('Limit of 250 exceeds maximum of 200 for sentinel-2-l2a'), page(), page())
+    const first = await fetchSearchPage(endpoint, { limit: 250, collections: ['sentinel-2-l2a'] })
+    expect(first.items).toHaveLength(1)
+    expect(new URL(calls[0].url).searchParams.get('limit')).toBe('250')
+    expect(new URL(calls[1].url).searchParams.get('limit')).toBe('200')
+    await fetchSearchPage(endpoint, { limit: 250, collections: ['other'] })
+    expect(calls).toHaveLength(3)
+    expect(new URL(calls[2].url).searchParams.get('limit')).toBe('200')
+  })
+
+  it('reports any other 400 as it is', async () => {
+    responses.push(new Response('{"detail":"Invalid bbox"}', { status: 400, statusText: 'Bad Request' }))
+    await expect(fetchSearchPage('https://other.example/search', { limit: 250 })).rejects.toThrow(/400.*Invalid bbox/)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('reads the maximum from the wordings servers use, only when the message is about the limit', () => {
+    expect(maxLimitFrom('Limit of 250 exceeds maximum of 200')).toBe(200)
+    expect(maxLimitFrom('limit must be at most 100')).toBe(100)
+    expect(maxLimitFrom('The maximum limit is 1000')).toBe(1000)
+    expect(maxLimitFrom('bbox maximum of 4 numbers')).toBeUndefined()
+    expect(maxLimitFrom('limit is invalid')).toBeUndefined()
   })
 })

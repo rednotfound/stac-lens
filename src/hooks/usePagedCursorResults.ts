@@ -60,8 +60,6 @@ export function usePagedCursorResults(
   node: (StacNode & { items: { kind: 'cursor' } }) | undefined,
   initialQuery?: CursorQuery,
 ): PagedCursorResultsState {
-  const inner = useCursorQueriedItemSet(node, initialQuery)
-
   // Page position comes back with the session (see `useCursorQueriedItemSet`);
   // page size is a preference that carries over to the next Collection.
   const restored = node && initialQuery === undefined ? itemSetSessions.getCursor(node.href) : undefined
@@ -69,6 +67,8 @@ export function usePagedCursorResults(
   const [pageSize, setPageSizeState] = useState(
     restored?.pageSize ?? itemSetSessions.preferredCursorPageSize ?? DEFAULT_CURSOR_RESULTS_PAGE_SIZE,
   )
+  // One request fills one page: the server is asked for `pageSize` Items.
+  const inner = useCursorQueriedItemSet(node, initialQuery, pageSize)
   const [catchingUp, setCatchingUp] = useState(false)
   useEffect(() => {
     if (!node) return
@@ -168,10 +168,15 @@ export function usePagedCursorResults(
   if (inner.status === 'empty') return { status: 'empty' }
 
   const totalPagesIsLowerBound = totalCount == null && hasMore
+  // Without a total, the buffer's pages are known — and while the server
+  // still offers a `next`, at least one more exists ("page 1 of 2+").
+  const knownPages = Math.max(Math.ceil(items.length / pageSize) || 1, pageIndex + 1)
   const totalPages =
     totalCount != null
       ? Math.max(1, Math.ceil(totalCount / pageSize))
-      : Math.max(Math.ceil(items.length / pageSize) || 1, pageIndex + 1)
+      : totalPagesIsLowerBound && items.length >= knownPages * pageSize
+        ? knownPages + 1
+        : knownPages
 
   function goToPage(index0Based: number) {
     const upperBound = totalCount != null ? Math.max(0, Math.ceil(totalCount / pageSize) - 1) : Infinity
