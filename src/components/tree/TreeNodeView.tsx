@@ -139,7 +139,8 @@ export function TreeNodeView({
   const apiTagHeight = 13
   const apiTagWidth = estimateTextWidth('API', apiTagFontSize) + apiTagPadX * 2
   const apiTagX = labelOnLeft ? labelDx - apiTagWidth : labelDx
-  const hoverInfo: HoverInfo = hoverInfoFor(node)
+  // Computed when hovered, not on every render: every node re-renders when
+  // the hover card moves, and a description's plain text is not free.
 
   // One handler for both the circle and the label, so "click here to select
   // and reveal what's next" means the same thing on every node — the label
@@ -166,11 +167,11 @@ export function TreeNodeView({
       onHover(null, 0, 0)
       return
     }
-    onHover(hoverInfo, e.clientX, e.clientY)
+    onHover(hoverInfoFor(node), e.clientX, e.clientY)
   }
   function handleMove(e: React.MouseEvent) {
     if (isNotThisNode(e)) return
-    onHover(hoverInfo, e.clientX, e.clientY)
+    onHover(hoverInfoFor(node), e.clientX, e.clientY)
   }
   function handleLeave() {
     onHover(null, 0, 0)

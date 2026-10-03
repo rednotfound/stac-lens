@@ -27,6 +27,7 @@ import { Spinner } from './components/Spinner'
 import { Logo } from './components/Logo'
 import { GitHubMark, REPO_URL } from './components/ProjectLinks'
 import { loader } from './stac/loaderInstance'
+import { loadMarkdown } from './stac/markdownLoader'
 import type { StacNode } from './stac/types'
 
 // Inspector's width is a plain pixel number, not a boolean — 0 means fully
@@ -241,6 +242,11 @@ function App() {
   // one's.
   useEffect(() => {
     itemSetSessions.clear()
+  }, [rootHref])
+  // Descriptions are Markdown; fetch the parser as soon as a catalog is
+  // open, not with the landing page.
+  useEffect(() => {
+    if (rootHref) void loadMarkdown()
   }, [rootHref])
   // The tab title follows what is on screen: the selected object, else the
   // catalog, else the landing page's own title. Before any early return

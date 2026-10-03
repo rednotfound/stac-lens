@@ -1,5 +1,6 @@
 import { linkHorizontal } from 'd3-shape'
 import { previewImageHref } from '../../stac/assets'
+import { descriptionPlainText } from '../../stac/markdownLoader'
 import { accessSourceOf, type AccessSource } from '../../stac/assetAccess'
 import { classifyNodeShape, type StacNode } from '../../stac/types'
 import type { StacObjectKind } from '../TypeIcon'
@@ -23,15 +24,6 @@ export const LABEL_MAX_CHARS = 40
 
 export function truncateLabel(label: string, maxChars: number = LABEL_MAX_CHARS): string {
   return label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label
-}
-
-/** `[text](url)` → `text`. STAC descriptions are Markdown, and a raw URL is
- *  dead weight in a one-line hover snippet (Planetary Computer's Sentinel-2
- *  description opens with a link whose URL alone ate most of the snippet).
- *  Only link syntax is stripped — other Markdown reads fine as plain
- *  characters — and the Inspector still shows the untouched source. */
-export function stripMarkdownLinks(text: string): string {
-  return text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
 }
 
 export const LABEL_FONT_SIZE = 12
@@ -68,8 +60,9 @@ export interface HoverInfo {
   type: StacObjectKind
   title: string
   /** A short prefix of the node's own `description`, so hovering says
-   *  what is inside before the user commits to clicking in. Markdown link
-   *  syntax is stripped first (`stripMarkdownLinks`). */
+   *  what is inside before the user commits to clicking in. The
+   *  description's Markdown is read as plain text first
+   *  (`descriptionPlainText`). */
   description?: string
   note?: string
   /** The node's browser-renderable thumbnail asset, if any — decided by the
@@ -139,7 +132,7 @@ export function hoverInfoFor(node: StacNode): HoverInfo {
     type: node.type,
     title: node.title ?? node.id,
     description: node.description
-      ? truncateLabel(stripMarkdownLinks(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
+      ? truncateLabel(descriptionPlainText(node.description), TOOLTIP_DESCRIPTION_MAX_CHARS)
       : undefined,
     note: node.items.kind === 'cursor' ? 'API-searched — item count unknown until queried' : undefined,
     thumbnailHref: previewImageHref(node),

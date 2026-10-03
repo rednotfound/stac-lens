@@ -242,3 +242,141 @@ body {
 .leaflet-dark .leaflet-tile-pane {
   filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
 }
+
+/* A STAC description rendered from Markdown (components/Description.tsx).
+ * Quiet, in the Inspector's own scale: a description's headings are small
+ * bold lines, never larger than the field labels around them. */
+.stac-lens-md {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.stac-lens-md > :first-child {
+  margin-top: 0;
+}
+.stac-lens-md p,
+.stac-lens-md ul,
+.stac-lens-md ol,
+.stac-lens-md blockquote,
+.stac-lens-md pre,
+.stac-lens-md .stac-lens-md-table {
+  margin: 0 0 8px;
+}
+.stac-lens-md h4,
+.stac-lens-md h5,
+.stac-lens-md h6 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.stac-lens-md h5,
+.stac-lens-md h6 {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.stac-lens-md ul,
+.stac-lens-md ol {
+  padding-left: 20px;
+}
+.stac-lens-md li {
+  margin: 2px 0;
+}
+.stac-lens-md li > p {
+  margin: 0 0 4px;
+}
+.stac-lens-md a,
+.stac-lens-md-inline a {
+  color: var(--color-selection);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+.stac-lens-md code,
+.stac-lens-md-inline code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+.stac-lens-md pre {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  /* Wrapped, never a scroll box of its own. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.stac-lens-md pre code {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.stac-lens-md blockquote {
+  padding-left: 10px;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+.stac-lens-md hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 10px 0;
+}
+.stac-lens-md img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+/* Sideways only, and only the table — the page keeps the one vertical scroll. */
+.stac-lens-md-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.stac-lens-md table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.stac-lens-md th,
+.stac-lens-md td {
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+.stac-lens-md th {
+  background: var(--color-bg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.stac-lens-md-footnote {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.stac-lens-md-alt {
+  color: var(--color-text-faint);
+}
+.stac-lens-md-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  /* Fades into whatever the description sits on: the page background in
+   * the desktop Inspector, the sheet's surface on a phone. */
+  background: linear-gradient(to bottom, transparent, var(--stac-lens-md-fade-to, var(--color-bg)));
+  pointer-events: none;
+}
+.stac-lens-md-more {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-selection);
+  cursor: pointer;
+}
