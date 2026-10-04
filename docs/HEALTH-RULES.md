@@ -58,7 +58,7 @@
 | C-08 | Invalid | `extent.temporal.interval` inner arrays have exactly two entries, each RFC 3339 or `null`; first is the overall interval | spec collection | 🟡 |
 | C-09 | Observation | open-ended temporal extent (`null` bound) | spec collection | ✅ timeline renders it distinctly |
 | C-10 | Warning | `summaries` present ("STRONGLY RECOMMENDED") | spec collection; bp ("always provide summaries"); stac-check | 🟡 — shown when present (schema hints), absence not yet flagged |
-| C-11 | Warning | `keywords` and `providers` present | bp | 🟡 low priority |
+| C-11 | Warning | `keywords` and `providers` present | bp | 🟡 not flagged yet — both now feed the Collections list's facets (DESIGN §128), so a Collection without them cannot be found by them |
 | C-12 | Warning | `self` and `root` links present; non-root has `parent` | spec collection | 🟡 |
 | C-13 | Invalid | each `item_assets` definition has at least two fields | spec collection | 🟡 |
 | C-14 | Warning | `providers` in chronological order, most recent last | spec collection | ⚪ not decidable from the data |
@@ -122,15 +122,15 @@
 
 | ID | Tier | Rule | Source | Status / notes |
 |---|---|---|---|---|
-| B-01 | Behavior | declared `item-search` ⇒ `GET /search?limit=1` returns 200 with a GeoJSON `FeatureCollection` | api item-search; api-validator | ✅ on demand (the error, with the server's body, shows when a search fails — Planetary Computer's `422 collection is required`); 🔵 as an unprompted probe |
+| B-01 | Behavior | declared `item-search` ⇒ `GET /search?limit=1` returns 200 with a GeoJSON `FeatureCollection` | api item-search; api-validator | ✅ on demand (the error, with the server's body, shows when a search fails — Planetary Computer refuses a search without `collections=` — 422 "collection is required" in 2026-09, 400 "Item Search requires collections or a collection filter" in 2026-10, which is why an API root is never searched across every Collection, §128); 🔵 as an unprompted probe |
 | B-02 | Behavior | `bbox` / `datetime` actually filter: two small requests with different `bbox` return different results | api Features / Item Search; **observed** (Planetary Computer's `/items` returns a cached result keyed without them) | 🔵 — worked around today, not yet reported to the user |
 | B-03 | Behavior | pagination: following `next` yields new Items and terminates; `limit` respected or clamped | api; api-validator | ✅ followed correctly; 🔵 as a probe |
 | B-04 | Observation | whether a total match count is reported (`numberMatched` / `context`), and by which field | api; observed (Earth Search yes, Planetary Computer no) | ✅ "N+" when unknown |
 | B-05 | Observation | pagination by POST (`next` link with `method: POST`) | api | 🟡 — honored ✅; not yet stated to the user |
 | B-06 | Behavior | declared `#sort` ⇒ `sortby` changes the order | api sort ext | 🔵 |
-| B-07 | Behavior | declared `collection-search` ⇒ `/collections?q=…` (or `bbox`/`datetime`) changes the result | api collection-search ext; **observed** (14 of 34 landing-page APIs declare it; Planetary Computer and Earth Search don't and ignore the params) | 🔵 — the *check* belongs here even though the search feature is parked (`DESIGN.md` §92) |
+| B-07 | Behavior | declared `collection-search` ⇒ `/collections?q=…` (or `bbox`/`datetime`) changes the result | api collection-search ext; **observed** (14 of 34 landing-page APIs declare it; Planetary Computer and Earth Search don't and ignore the params) | 🔵 — not probed; the free text is used by the Children list when its list is partial (`DESIGN.md` §128), the tree's root filter stays parked (§92) |
 | B-08 | Behavior | declared `children` ⇒ `/children` returns `{children, links}` | api children ext | 🔵 — consumed ✅ when present |
-| B-09 | Behavior | `/collections` honors `limit` and paginates with `next` | api Features | 🔵 — observed: Planetary Computer ignores `limit`, returns all 136 |
+| B-09 | Behavior | `/collections` honors `limit` and paginates with `next` | api Features | 🔵 — observed: Planetary Computer ignores `limit`, returns all of its Collections (138 in 2026-10) |
 | B-10 | Warning | CORS: `Access-Control-Allow-Origin` permits browser clients ("enable CORS for all requests") | bp | ✅ every landing-page entry pre-checked; a pasted URL that fails is reported as such |
 | B-11 | Warning | served over HTTPS (an `http://` catalog is blocked as mixed content from an HTTPS page) | web platform | ✅ none in the landing list; a pasted `http://` URL fails visibly |
 | B-12 | Behavior | `service-desc` served as `application/vnd.oai.openapi+json;version=3.0` | api-validator | ⚪ low value for this app |
@@ -142,7 +142,7 @@ These are the facts a reader needs to place a catalog, deliberately left as neut
 
 - an API root with no `child` links at all, discovered through `/collections` (Planetary Computer) — ✅
 - a flat root: N Collections and no intermediate Catalogs (Copernicus Data Space, 422) — ✅ count; "no hierarchy" not yet stated in words
-- Collections whose Item count is unknown until queried (any cursor-mode Collection) — ✅ "items via API search"
+- Collections whose Item count is unknown until queried (any cursor-mode Collection) — ✅ "API-searched — item count unknown until queried"
 - a Collection reporting millions of Items (Earth Search Sentinel-2, 51M+) — ✅
 - static vs. API-backed, per node — ✅ badge
 - nesting depth; widest level — 🟡

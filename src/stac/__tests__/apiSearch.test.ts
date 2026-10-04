@@ -174,6 +174,29 @@ describe('list endpoints', () => {
     expect(page.next?.method).toBe('GET')
   })
 
+  it('/collections with q: a fresh request sends limit and q, numberMatched is read; a followed next adds nothing', async () => {
+    responses.push(
+      json({
+        collections: [{ type: 'Collection', id: 'sst', extent: {}, links: [] }],
+        numberMatched: 41,
+        links: [{ rel: 'next', href: 'https://api.example.org/v1/collections?q=sea&cursor=2' }],
+      }),
+      json({ collections: [], links: [] }),
+    )
+    const first = await fetchCollectionsPage('https://api.example.org/v1/collections', { limit: 1000, q: 'sea' })
+    const url = new URL(calls[0].url)
+    expect(url.searchParams.get('q')).toBe('sea')
+    expect(url.searchParams.get('limit')).toBe('1000')
+    expect(first.matched).toBe(41)
+    const second = await fetchCollectionsPage('https://api.example.org/v1/collections', {
+      limit: 1000,
+      q: 'sea',
+      next: first.next,
+    })
+    expect(calls[1].url).toBe('https://api.example.org/v1/collections?q=sea&cursor=2')
+    expect(second.matched).toBeUndefined()
+  })
+
   it('/children: reads the children array', async () => {
     responses.push(
       json({

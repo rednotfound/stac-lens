@@ -75,14 +75,13 @@ async function resolveHashTarget(hash: string): Promise<DeepLinkTarget> {
   const page =
     state.page && state.pageSize ? { forHref: owner, pageIndex: state.page - 1, pageSize: state.pageSize } : undefined
   // A node that opened on its own because its catalog was unreachable is
-  // still what the link named: select it, so the Inspector shows it. So is
-  // a root whose own Items the link pages or searches: only a selected
-  // node is browsed, and only a browsed node's Items panel mounts its pager.
+  // still what the link named: select it, so the Inspector shows it. A
+  // root otherwise stays unselected — it is browsed when nothing is
+  // selected, so its own Items' page or search still reaches its pager.
   const openedOnItsOwn = rootHref === node.href && !!unreachable
-  const carriesItems = !!appliedQuery || !!page
   return {
     rootHref,
-    selectedHref: node.href === rootHref && !openedOnItsOwn && !carriesItems ? null : node.href,
+    selectedHref: node.href === rootHref && !openedOnItsOwn ? null : node.href,
     appliedQuery,
     view: state.view,
     page,

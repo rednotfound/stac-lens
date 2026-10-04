@@ -218,6 +218,14 @@ export interface StacNode {
    *  information about the children (e.g., title, description), which can
    *  cause significant performance issues." */
   childrenEndpoint?: string
+  /** The document's own `rel: next` — its `child` links continue on another
+   *  page (NASA CMR-STAC's `ALL` catalog lists 100 and links the rest). Not
+   *  followed; recorded so nothing calls the first page complete. */
+  childPagesNext?: string
+  /** The `rel: data` link (an API's `/collections`), whether or not it is
+   *  how the children are found — `collectionsEndpoint` is only set when
+   *  there are no `child` links. Collection Search's `q` goes here. */
+  dataHref?: string
   items: ItemEnumeration
   /** This node's own API capability — a landing page/root declaring
    *  `conformsTo`/`rel:search` is `api-search`; everything else is

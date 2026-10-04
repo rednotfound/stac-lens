@@ -3,6 +3,7 @@ import { hierarchy, partition, type HierarchyRectangularNode } from 'd3-hierarch
 import type { TreeDatum } from '../../hooks/useStructureTree'
 import { useElementSize } from '../../hooks/useElementSize'
 import { useSelectionStore } from '../../store/selection'
+import { loader } from '../../stac/loaderInstance'
 import { useItemSetStore } from '../../store/itemSet'
 import { sessionPage } from '../../store/itemSetSessions'
 import { useStructure } from '../../hooks/useStructure'
@@ -18,6 +19,8 @@ import {
   type TooltipState,
 } from '../tree/treeGeometry'
 import { IcicleItems } from './IcicleItems'
+import { useCollectionHighlight } from '../collections/useCollectionHighlight'
+import { DIMMED_OPACITY } from '../collections/dimming'
 import { OverviewBar } from './OverviewBar'
 import { StructureFallback } from './StructureFallback'
 
@@ -53,6 +56,16 @@ export function IcicleView() {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
+  // The Collections list's filter: non-matching children of the browsed
+  // node, and everything under them, drawn faint (DESIGN §128).
+  const highlight = useCollectionHighlight()
+  function isDimmed(n: HierarchyRectangularNode<TreeDatum>): boolean {
+    if (!highlight) return false
+    for (let a: HierarchyRectangularNode<TreeDatum> | null = n; a?.parent; a = a.parent) {
+      if (a.parent.data.href === highlight.containerHref) return !highlight.matches.has(a.data.href)
+    }
+    return false
+  }
   const [containerRef, { width }] = useElementSize<HTMLDivElement>()
   const [focusHref, setFocusHref] = useState<string | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
@@ -162,6 +175,7 @@ export function IcicleView() {
             {itemHosts.map((host) => (
               <IcicleItems
                 key={host.data.href}
+                dimmed={isDimmed(host)}
                 node={host.data.node}
                 current={host.data.href === browsingHref}
                 x={px(host.x0)}
@@ -181,7 +195,7 @@ export function IcicleView() {
               const { node } = data
               if (data.moreCount) {
                 return (
-                  <g key={data.href} transform={`translate(${x}, ${y})`}>
+                  <g key={data.href} transform={`translate(${x}, ${y})`} opacity={isDimmed(n) ? DIMMED_OPACITY : 1}>
                     <rect width={w} height={ROW - 1} fill="url(#icicle-not-loaded)" opacity={0.6} />
                     {w >= MIN_LABEL_WIDTH && (
                       <text x={6} y={ROW / 2 + 4} fontSize={SUB_FONT} style={{ fill: 'var(--color-text-faint)' }}>
@@ -192,7 +206,8 @@ export function IcicleView() {
                 )
               }
               const selected = selectedHref === data.href
-              const contains = !selected && browsingHref === data.href
+              const contains =
+                !selected && !!selectedHref && loader.get(selectedHref)?.type === 'Item' && browsingHref === data.href
               const closed = canExpandNode(node) && !data.children
               const loading = isLoading(data.href)
               const title = node.title ?? node.id
@@ -208,7 +223,8 @@ export function IcicleView() {
                   onClick={() => onCellClick(n)}
                   onMouseMove={(e) => setTooltip({ ...hoverInfoFor(node), x: e.clientX, y: e.clientY })}
                   onMouseLeave={() => setTooltip(null)}
-                  style={{ cursor: 'pointer', opacity: loading ? 0.55 : 1 }}
+                  data-dimmed={isDimmed(n) || undefined}
+                  style={{ cursor: 'pointer', opacity: (loading ? 0.55 : 1) * (isDimmed(n) ? DIMMED_OPACITY : 1) }}
                 >
                   <rect
                     width={w}

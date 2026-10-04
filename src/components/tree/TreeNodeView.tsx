@@ -3,6 +3,7 @@ import { select } from 'd3-selection'
 import { drag, type D3DragEvent } from 'd3-drag'
 import type { TreeDatum } from '../../hooks/useStructureTree'
 import { Spinner } from '../Spinner'
+import { DIMMED_OPACITY } from '../collections/dimming'
 import {
   canExpandNode,
   estimateTextWidth,
@@ -20,6 +21,9 @@ export interface TreeNodeProps {
   x: number
   y: number
   hasRenderedChildren: boolean
+  /** A child of the browsed node that does not match the Collections
+   *  list's filter (or something under one): drawn faint (DESIGN §128). */
+  dimmed?: boolean
   isRoot: boolean
   loading: boolean
   selected: boolean
@@ -46,7 +50,7 @@ export interface TreeNodeProps {
 
 /** One tree node: circle, label, badges, hover. The node's Items are not
  *  drawn here — they are in the Items panel docked beside every view
- *  (`ItemsPanel`), and their page shows as leaves (`ItemLeafView`); this
+ *  (`ContentsPane`), and their page shows as leaves (`ItemLeafView`); this
  *  node only shows that they are open.
  *  The label, not the circle, is the drag handle: the circle's one job is
  *  click-to-expand and a grab cursor on it muddied that signal; the label
@@ -69,6 +73,7 @@ export function TreeNodeView({
   onHover,
   containerRef,
   onNodeDragBy,
+  dimmed = false,
 }: TreeNodeProps) {
   // The root always labels to the right; every other node labels left once
   // its children are rendered, so the label never runs into them.
@@ -187,6 +192,8 @@ export function TreeNodeView({
   return (
     <g
       transform={`translate(${y}, ${x})`}
+      opacity={dimmed ? DIMMED_OPACITY : undefined}
+      data-dimmed={dimmed || undefined}
       onMouseEnter={handleEnter}
       onMouseMove={handleMove}
       onMouseLeave={handleLeave}

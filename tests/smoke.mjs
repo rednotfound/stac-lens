@@ -122,6 +122,74 @@ const pagedItem = (id) => ({
   ],
   assets: {},
 })
+// A static catalog with twelve child Collections: enough for the
+// Collections list to open by itself (DESIGN §128, ten or more).
+const MANY_ROOT = 'https://fixtures.stac-lens.test/many/catalog.json'
+const manyChild = (i) => ({
+  type: 'Collection',
+  stac_version: '1.0.0',
+  id: `many-${i}`,
+  title: `Many ${i}${i % 3 === 0 ? ' radar' : ''}`,
+  description: 'A fixture Collection.',
+  license: i % 2 ? 'CC-BY-4.0' : 'proprietary',
+  keywords: i % 3 === 0 ? ['SAR', 'fixture'] : ['optical', 'fixture'],
+  extent: { spatial: { bbox: [[0, 0, 1, 1]] }, temporal: { interval: [['2024-01-01T00:00:00Z', null]] } },
+  links: [],
+})
+const manyRoot = {
+  type: 'Catalog',
+  stac_version: '1.0.0',
+  id: 'many',
+  title: 'Many fixture',
+  description: 'Twelve Collections.',
+  links: Array.from({ length: 12 }, (_, i) => ({ rel: 'child', href: `./c${i + 1}.json` })),
+}
+// A Catalog of twelve, one level down, reached by a deep link that selects
+// it: its Children list must open by itself (review H3 — the count was
+// wiped by the per-catalog clear in the same commit).
+const NEST_ROOT = 'https://fixtures.stac-lens.test/nest/catalog.json'
+const NEST_MANY = 'https://fixtures.stac-lens.test/nest/many/catalog.json'
+const nestRoot = {
+  type: 'Catalog',
+  stac_version: '1.0.0',
+  id: 'nest',
+  title: 'Nest root',
+  description: 'One Catalog.',
+  links: [
+    { rel: 'root', href: './catalog.json' },
+    { rel: 'child', href: './many/catalog.json' },
+  ],
+}
+const nestMany = {
+  ...manyRoot,
+  id: 'nest-many',
+  title: 'Nest many',
+  links: [
+    { rel: 'root', href: '../catalog.json' },
+    { rel: 'parent', href: '../catalog.json' },
+    ...Array.from({ length: 12 }, (_, i) => ({ rel: 'child', href: `../../many/c${i + 1}.json` })),
+  ],
+}
+// An API root whose child links go on over a rel:next page and that
+// declares Collection Search free text (NASA CMR's ALL, in miniature): the
+// list says it is partial and can send its text to rel:data.
+const SRV_ROOT = 'https://fixtures.stac-lens.test/srv/'
+const srvRoot = {
+  type: 'Catalog',
+  stac_version: '1.0.0',
+  id: 'srv',
+  title: 'Server-search root',
+  description: 'Three of many.',
+  conformsTo: ['https://api.stacspec.org/v1.0.0/core', 'https://api.stacspec.org/v1.0.0/collection-search#free-text'],
+  links: [
+    { rel: 'root', href: './' },
+    { rel: 'self', href: './' },
+    { rel: 'data', href: './collections' },
+    { rel: 'next', href: './?cursor=2' },
+    ...[1, 2, 3].map((i) => ({ rel: 'child', href: `../many/c${i}.json` })),
+  ],
+}
+const srvRequests = []
 const fixtureRoot = {
   type: 'Catalog',
   stac_version: '1.1.0',
@@ -179,6 +247,37 @@ const handleRoute = async (route) => {
     const id = url.split('/').pop().replace('.json', '')
     return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pagedItem(id)) })
   }
+  if (url === NEST_ROOT) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(nestRoot) })
+  }
+  if (url === NEST_MANY) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(nestMany) })
+  }
+  if (url === SRV_ROOT) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(srvRoot) })
+  }
+  if (url.startsWith(`${SRV_ROOT}collections`)) {
+    srvRequests.push(url)
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        collections: [7, 8].map((i) => ({
+          ...manyChild(i),
+          links: [{ rel: 'self', href: `https://fixtures.stac-lens.test/many/c${i}.json` }],
+        })),
+        numberMatched: 2,
+        links: [],
+      }),
+    })
+  }
+  if (url === MANY_ROOT) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manyRoot) })
+  }
+  if (url.startsWith('https://fixtures.stac-lens.test/many/c')) {
+    const i = Number(url.match(/c(\d+)\.json$/)?.[1])
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manyChild(i)) })
+  }
   if (url === PAGED_ROOT) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pagedRoot) })
   }
@@ -235,6 +334,13 @@ const handleRoute = async (route) => {
       searchRequests.push(url)
       const q = new URL(url).searchParams
       if (!q.get('collections')) return reply('search-422.txt', 'text/plain', 422)
+      if (q.get('datetime')?.startsWith('1900')) {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: '{"error":"datetime is out of range"}',
+        })
+      }
       return reply('search-3dep-nj.json', 'application/geo+json')
     }
     return route.fulfill({ status: 404, body: 'no fixture for ' + path })
@@ -346,10 +452,11 @@ await page.waitForFunction(() => document.querySelectorAll('svg text').length > 
 await page.goto(`${BASE_URL}/#${PC}/collections/3dep-lidar-returns?bbox=-75.5%2C39.5%2C-73.5%2C41.5`)
 await page.waitForFunction(() => /page \d+ of \d+/.test(document.body.innerText), null, { timeout: 15000 })
 check(
-  'the Items panel opens for the Collection, with Search above Results',
+  'the Items panel opens for the Collection, with Search above Results and the linked area as a chip',
   (await page.locator('[data-items-panel]').count()) === 1 &&
     /USGS 3DEP Lidar Returns.*API/s.test((await titleBars()).join(',')) &&
-    (await page.getByRole('button', { name: 'Hide the search conditions' }).count()) === 1,
+    (await page.locator('[data-items-panel] button[aria-expanded="true"]', { hasText: /^Hide$/ }).count()) === 1 &&
+    ((await page.locator('[data-condition-chips]').textContent()) ?? '').includes('Area:'),
   (await titleBars()).join(','),
 )
 check(
@@ -483,7 +590,8 @@ check(
   )
   // Enter on a splitter hides its pane and hands keyboard focus to the
   // toggle that brings it back; dragging a splitter well past the minimum
-  // hides the pane too; widths and the hidden state survive a reload.
+  // hides the pane too; widths survive a reload, a hidden pane does not —
+  // every newly opened catalog starts with what should be open, open.
   await splitter.focus()
   await page.keyboard.press('Enter')
   await page.waitForTimeout(100)
@@ -505,13 +613,13 @@ check(
     .evaluate((e) => Math.round(e.getBoundingClientRect().width))
   await page.reload()
   await page.waitForSelector('[data-items-panel]', { timeout: 15000 })
+  await page.waitForSelector('[data-inspector-pane]', { timeout: 10000 }).catch(() => {})
   check(
-    'after a reload the Inspector stays hidden and the Items panel keeps its width',
-    (await page.locator('[data-inspector-pane]').count()) === 0 &&
+    'after a reload the Inspector is back (a hidden pane belongs to that visit) and the Items panel keeps its width',
+    (await page.locator('[data-inspector-pane]').count()) === 1 &&
       (await page.locator('[data-items-panel]').evaluate((e) => Math.round(e.getBoundingClientRect().width))) ===
         itemsWidth,
   )
-  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
 }
 
 // 3c. Asset access. Browsing never signs anything; selecting an Item
@@ -799,6 +907,20 @@ await page.waitForFunction(
       !shText.includes(pagedItemId(41)),
     shText.match(/page \d+ of[^\n]*/)?.[0],
   )
+  // At its minimum width the Items panel never scrolls sideways: the pager
+  // wraps, and the page size lives in the footer.
+  await sh.getByRole('separator', { name: /Resize the Items panel/ }).focus()
+  await sh.keyboard.press('Home')
+  await sh.waitForTimeout(200)
+  const sideways = await sh.evaluate(() => {
+    const body = document.querySelector('[data-items-panel] > div:last-child')
+    return body ? body.scrollWidth - body.clientWidth : -1
+  })
+  check(
+    'the Items panel at its minimum width has no horizontal scroll; the page size is in the footer',
+    sideways === 0 && (await sh.locator('[data-results-footer] select[aria-label="Items per page"]').count()) === 1,
+    `overflow ${sideways}px`,
+  )
   const outlineTab = sh.locator('button[aria-selected="true"]', { hasText: /^Outline$/ })
   check(
     'a link with view=outline opens the Outline view, and the hash keeps view and page',
@@ -854,7 +976,125 @@ await page.waitForFunction(
   await ctx.close()
 }
 
-// 4. Root-level search rejected by the server -> shown as an error, not as an empty result
+// 3i. Many children: the Collections list is there when the catalog opens,
+// before anything is selected, and a license facet narrows it.
+{
+  const mp = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  await mp.route('**/*', handleRoute)
+  await mp.goto(`${BASE_URL}/#${MANY_ROOT}`)
+  const list = mp.locator('[data-collections-list]')
+  await list.waitFor({ timeout: 15000 }).catch(() => {})
+  const count = await mp
+    .locator('[data-collections-count]')
+    .innerText()
+    .catch(() => 'no list')
+  check(
+    'a catalog with 12 Collections opens with its Collections list, nothing selected yet',
+    count === '12' && (await mp.locator('[data-inspector-pane]').count()) === 0,
+    count,
+  )
+  await list.locator('[data-facet-button="licenses"]').click()
+  await list
+    .locator('[data-facet="licenses"] label', { hasText: /^CC-BY-4.0/ })
+    .locator('input')
+    .check()
+  await mp.keyboard.press('Escape')
+  await mp.waitForTimeout(200)
+  check(
+    'a license facet ("any of") narrows the list, and the tree dims the rest',
+    (await mp.locator('[data-collections-count]').innerText()) === '6 of 12' &&
+      (await mp.locator('g[data-dimmed]').count()) === 6,
+    await mp.locator('[data-collections-count]').innerText(),
+  )
+  // Pane and view choices belong to one visit: hide both panes and pick
+  // the Outline, go back to the catalog list, open the same catalog again —
+  // it starts fresh.
+  await list.locator('[data-collection-row] button').first().click()
+  await mp
+    .locator('[data-inspector-pane]')
+    .waitFor({ timeout: 5000 })
+    .catch(() => {})
+  await mp.locator('button[aria-selected]', { hasText: /^Outline$/ }).click()
+  await mp.locator('[data-pane-toggle="inspector"]').click()
+  await mp.locator('[data-pane-toggle="items"]').click()
+  const hiddenBoth =
+    (await mp.locator('[data-inspector-pane]').count()) === 0 &&
+    (await mp.locator('[data-contents-pane]').count()) === 0
+  await mp.getByTitle('Back to catalogs').click()
+  await mp.getByPlaceholder(/paste a STAC URL/).fill(MANY_ROOT)
+  await mp.getByRole('button', { name: 'Open', exact: true }).click()
+  await list.waitFor({ timeout: 10000 }).catch(() => {})
+  const freshView = await mp.locator('button[aria-selected="true"]', { hasText: /^Tree$/ }).count()
+  await list.locator('[data-collection-row] button').first().click()
+  await mp
+    .locator('[data-inspector-pane]')
+    .waitFor({ timeout: 5000 })
+    .catch(() => {})
+  check(
+    'reopening a catalog starts fresh: the tree, its Collections list open, the Inspector shown on selecting',
+    hiddenBoth && freshView === 1 && (await mp.locator('[data-inspector-pane]').count()) === 1,
+    `hidden ${hiddenBoth}, tree ${freshView}, inspector ${await mp.locator('[data-inspector-pane]').count()}`,
+  )
+  await mp.close()
+}
+
+// 3j. A deep link selecting a Catalog of twelve opens its Children list.
+{
+  const np = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  await np.route('**/*', handleRoute)
+  await np.goto(`${BASE_URL}/#${NEST_MANY}`)
+  await np
+    .locator('[data-collections-count]')
+    .waitFor({ timeout: 15000 })
+    .catch(() => {})
+  check(
+    'a deep link selecting a Catalog with 12 children opens its Children list by itself',
+    (await np
+      .locator('[data-collections-count]')
+      .innerText()
+      .catch(() => 'no list')) === '12' && (await np.locator('[data-inspector-pane]').count()) === 1,
+    await np
+      .locator('[data-collections-count]')
+      .innerText()
+      .catch(() => 'no list'),
+  )
+  await np.close()
+}
+
+// 3k. A partial list (child links that go on over rel:next) can send its
+// text to the API's Collection Search, and says what came back.
+{
+  const sp = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  await sp.route('**/*', handleRoute)
+  await sp.goto(`${BASE_URL}/#${SRV_ROOT}`)
+  await sp
+    .waitForFunction(() => document.querySelectorAll('svg text').length > 2, null, { timeout: 15000 })
+    .catch(() => {})
+  await sp.locator('[data-pane-toggle="items"]').click()
+  const spCount = sp.locator('[data-collections-count]')
+  await spCount.waitFor({ timeout: 10000 }).catch(() => {})
+  const partial = await spCount.innerText().catch(() => '')
+  await sp.locator('[data-collections-list] input[type="search"]').first().fill('radar')
+  await sp.getByRole('button', { name: 'Search the server' }).click()
+  await sp
+    .waitForFunction(
+      () => /server’s search/.test(document.querySelector('[data-collections-count]')?.textContent ?? ''),
+      null,
+      { timeout: 10000 },
+    )
+    .catch(() => {})
+  const after = await spCount.innerText().catch(() => '')
+  check(
+    'a partial list says so, and "Search the server" sends q to rel:data and counts what came back',
+    /the first 3 listed — the listing goes on/.test(partial) &&
+      srvRequests.some((u) => new URL(u).searchParams.get('q') === 'radar') &&
+      /2 of 2 returned by the server’s search for “radar” \(2 matched\)/.test(after),
+    `${partial} → ${after}`,
+  )
+  await sp.close()
+}
+
+// 4. An API root's Collections list, and a search the server rejects -> shown as an error, not as an empty result
 await page.goto(`${BASE_URL}/#${PC}/`)
 await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 15000 })
 {
@@ -875,18 +1115,122 @@ await page.waitForFunction(() => document.querySelectorAll('svg text').length > 
     (await treeLabels()).length === before,
     `${before} → ${(await treeLabels()).length}`,
   )
-  // An API root's Items are a search across every Collection, nothing to
-  // show yet: the panel stays closed, and the header toggle opens it.
+  // A root with few children leaves them to the tree: the contents pane
+  // stays closed, and its header toggle opens the list. Pane and toggle are
+  // "Children" whatever the children are (Catalogs, Collections or both),
+  // never borrowing a Collection's name or icon (DESIGN §128).
+  const paneToggle = page.locator('[data-pane-toggle="items"]')
   check(
-    "an API root's Items panel stays closed until its toggle is pressed",
-    (await page.locator('[data-items-panel]').count()) === 0,
+    'an API root with few Collections keeps its pane closed; the toggle is named Children',
+    (await page.locator('[data-contents-pane]').count()) === 0 && (await paneToggle.innerText()).trim() === 'Children',
+    await paneToggle.innerText(),
   )
-  await page.getByRole('button', { name: 'Items', exact: true }).click()
+  await paneToggle.click()
+  const collList = page.locator('[data-collections-list]')
+  await collList.waitFor({ timeout: 5000 }).catch(() => {})
+  const count = () => page.locator('[data-collections-count]').innerText()
+  const listed = await count()
+  await collList.locator('input[type="search"]').first().fill('imagery')
+  await page.waitForTimeout(200)
+  const filtered = await count()
+  const dimmedTree = await page.locator('g[data-dimmed]').count()
+  check(
+    'the Collections list filters by text over title and keywords, and the tree dims the rest',
+    /^\d+$/.test(listed) &&
+      filtered === `3 of ${listed}` &&
+      dimmedTree === Number(listed) - 3 &&
+      (await collList.locator('[data-collection-row]').count()) === 3,
+    `${listed} → ${filtered}, dimmed ${dimmedTree}`,
+  )
+  // The facets are a row of buttons, each opening its values; Escape closes
+  // and returns focus. Keywords are "all of": Imagery and Reflectance leave
+  // Landsat and Sentinel-2.
+  await collList.locator('[data-facet-button="keywords"]').click()
+  await collList
+    .locator('[data-facet="keywords"] label', { hasText: /^Reflectance/ })
+    .locator('input')
+    .check()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  const chipTexts = await collList.locator('[data-condition-chips] li').allInnerTexts()
+  check(
+    'a keyword from the filter bar narrows the list ("all of"), shows as a removable chip, and Escape closes its panel',
+    (await count()) === `2 of ${listed}` &&
+      chipTexts.some((t) => t.includes('Keywords: Reflectance')) &&
+      chipTexts.some((t) => t.includes('imagery')) &&
+      (await collList.locator('[data-facet="keywords"]').count()) === 0 &&
+      (await page.evaluate(() => document.activeElement?.getAttribute('data-facet-button'))) === 'keywords',
+    `${await count()} | ${chipTexts.join(' / ')}`,
+  )
+  const row = collList.locator('[data-collection-row]').first()
+  const rowTitle = (await row.innerText()).split('\n')[0]
+  const rowBox = await row.boundingBox()
+  await page.mouse.move(rowBox.x + 40, rowBox.y + rowBox.height / 2)
+  await page
+    .locator('[data-node-tooltip]')
+    .waitFor({ timeout: 3000 })
+    .catch(() => {})
+  check(
+    'hovering a Collections list row shows the same hover card as the views',
+    (
+      (await page
+        .locator('[data-node-tooltip]')
+        .textContent()
+        .catch(() => '')) ?? ''
+    ).includes(rowTitle),
+    rowTitle,
+  )
+  await row.locator('button').first().click()
+  await page.waitForTimeout(300)
+  check(
+    'choosing a row shows that Collection in the Inspector and keeps the list',
+    (await page.locator('[data-inspector-pane]').innerText()).includes(rowTitle) && (await collList.count()) === 1,
+    rowTitle,
+  )
+  await row.getByRole('button', { name: /Items →/ }).click()
+  await page
+    .locator('[data-collections-back]')
+    .waitFor({ timeout: 5000 })
+    .catch(() => {})
+  check(
+    '"Items →" browses its Items, with the way back to the list ("‹ Children of …")',
+    (await page.locator('[data-contents-pane="items"]').count()) === 1 &&
+      /^‹ Children of /.test(((await page.locator('[data-collections-back]').textContent()) ?? '').trim()),
+  )
+  await page.locator('[data-collections-back]').click()
+  await collList.waitFor({ timeout: 5000 }).catch(() => {})
+  check(
+    'back on the list, its text and facets are as they were',
+    (await count()) === `2 of ${listed}` &&
+      (await collList.locator('input[type="search"]').first().inputValue()) === 'imagery',
+    await count(),
+  )
+  await paneToggle.click()
+  check(
+    'hiding the Children list un-dims the views (the filter is out of sight), showing it again dims them',
+    (await page.locator('g[data-dimmed]').count()) === 0,
+    `${await page.locator('g[data-dimmed]').count()} still dimmed`,
+  )
+  await paneToggle.click()
+  await collList.waitFor({ timeout: 5000 }).catch(() => {})
+  await page.locator('[data-collections-list] button', { hasText: 'Clear all' }).click()
+  // An API root has no Items of its own: no second tab, no search across
+  // every Collection (DESIGN §128 — Planetary Computer refuses one).
+  check(
+    'an API root’s pane is its Collections list only — no cross-Collection Item search',
+    (await page.locator('[data-contents-pane] [role="tablist"]').count()) === 0 &&
+      (await page.locator('[data-contents-pane="collections"]').count()) === 1,
+  )
+  // Items are searched inside a Collection.
+  await collList
+    .locator('[data-collection-row]', { hasText: '3DEP' })
+    .getByRole('button', { name: /Items →/ })
+    .click()
 }
 await page.waitForSelector('[data-items-panel]')
 const dates = page.locator('input[type="date"]')
-await dates.nth(0).fill('2020-01-01')
-await dates.nth(1).fill('2020-01-31')
+await dates.nth(0).fill('1900-01-01')
+await dates.nth(1).fill('1900-01-31')
 await page.getByRole('button', { name: 'Search', exact: true }).first().click()
 await page.waitForFunction(() => /Search request failed|no items match/.test(document.body.innerText), null, {
   timeout: 15000,
@@ -895,8 +1239,25 @@ await page.waitForFunction(() => /Search request failed|no items match/.test(doc
 // the status and the body, not the exact spacing between them.
 check(
   'a rejected search shows the server\'s words, not "no items"',
-  /Search request failed: 422[^\n]*collection is required/.test(await text()),
+  /Search request failed: 400[^\n]*datetime is out of range/.test(await text()),
   (await text()).match(/Search request failed[^\n]*|no items match[^\n]*/)?.[0],
+)
+{
+  // Removing an applied condition's chip searches again without it.
+  const before = searchRequests.length
+  await page.locator('[data-items-panel] [data-condition-chips] button[aria-label^="Remove Date"]').click()
+  await page.waitForTimeout(500)
+  const last = searchRequests[searchRequests.length - 1] ?? ''
+  check(
+    'removing the Date chip searches again without a datetime',
+    searchRequests.length > before && !new URL(last).searchParams.get('datetime'),
+    last,
+  )
+}
+check(
+  'no search was ever sent without collections= (an API root is not searched across every Collection)',
+  searchRequests.length > 0 && searchRequests.every((u) => new URL(u).searchParams.get('collections')),
+  searchRequests.filter((u) => !new URL(u).searchParams.get('collections')).join(' '),
 )
 
 // 5. Phone layout (390px, touch): the landing hides its sidebar behind a
@@ -929,9 +1290,30 @@ await phone.waitForFunction(() => document.querySelectorAll('[role="group"] [rol
   timeout: 15000,
 })
 const phoneText = await phone.evaluate(() => document.body.innerText)
+{
+  // The phone opening an API root: it is browsed, but there is no docked
+  // column and nothing is searched.
+  const pp = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  await pp.route('**/*', handleRoute)
+  const before = searchRequests.length
+  await pp.goto(`${BASE_URL}/#${PC}/`)
+  await pp.waitForSelector('[role="treeitem"]', { timeout: 15000 }).catch(() => {})
+  await pp.waitForTimeout(500)
+  check(
+    'phone, API root: the outline lists its Collections, no docked column, no search request',
+    (await pp.locator('[role="treeitem"]').count()) > 1 &&
+      (await pp.locator('[data-contents-pane]').count()) === 0 &&
+      searchRequests.length === before,
+    `rows ${await pp.locator('[role="treeitem"]').count()}, searches ${searchRequests.length - before}`,
+  )
+  await pp.close()
+}
 check(
   'phone explorer: outline + bottom-sheet Inspector, no canvas, compact banner',
-  !/Collapse to top level/.test(phoneText) && /Compact view/.test(phoneText),
+  (await phone.locator('[data-structure-canvas]').count()) === 0 &&
+    (await phone.locator('[role="tree"]').count()) >= 1 &&
+    /Compact view/.test(phoneText),
+  `canvas ${await phone.locator('[data-structure-canvas]').count()}, outline ${await phone.locator('[role="tree"]').count()}, banner ${/Compact view/.test(phoneText)}`,
 )
 check(
   'phone explorer: no docked panes — no splitters, no pane toggles',

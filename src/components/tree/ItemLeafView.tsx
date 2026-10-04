@@ -5,6 +5,7 @@ import type { HoverInfo } from './treeGeometry'
 import { hoverInfoFor, LABEL_FONT_SIZE, truncateLabel } from './treeGeometry'
 import type { ViewDatum } from './itemLeaves'
 import { describeTemporal } from '../../stac/describe'
+import { DIMMED_OPACITY } from '../collections/dimming'
 import { OFF_PAGE_NOTE } from '../views/selectedItem'
 
 /** One Item leaf in the tree, or the trailing "+N more" leaf: a sketch of
@@ -25,7 +26,10 @@ export function ItemLeafView({
   onHover,
   containerRef,
   onGroupDragBy,
+  dimmed = false,
 }: {
+  /** Its Collection does not match the Collections list's filter. */
+  dimmed?: boolean
   datum: ViewDatum
   x: number
   y: number
@@ -72,7 +76,7 @@ export function ItemLeafView({
         data-block-pan="true"
         transform={`translate(${y}, ${x})`}
         data-item-more-leaf
-        opacity={m.current ? 1 : 0.55}
+        opacity={(m.current ? 1 : 0.55) * (dimmed ? DIMMED_OPACITY : 1)}
         onClick={() => onOpenPanel(m.hostHref, m.current)}
         style={{ cursor }}
       >
@@ -102,7 +106,7 @@ export function ItemLeafView({
       transform={`translate(${y}, ${x})`}
       data-item-leaf={node.href}
       data-off-page={leaf.offPage ? '' : undefined}
-      opacity={leaf.current ? 1 : 0.55}
+      opacity={(leaf.current ? 1 : 0.55) * (dimmed ? DIMMED_OPACITY : 1)}
       onClick={() => onSelectItem(node.href, leaf.hostHref, leaf.current)}
       onMouseEnter={(e) => onHover(hoverInfoFor(node), e.clientX, e.clientY)}
       onMouseMove={(e) => onHover(hoverInfoFor(node), e.clientX, e.clientY)}

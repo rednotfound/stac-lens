@@ -94,9 +94,14 @@ class ItemSetSessions {
     if (patch.pageSize !== undefined) this.preferredLinksPageSize = patch.pageSize
     this.put(this.links, href, next)
   }
+  /** A newly opened catalog starts fresh: no session, and the page sizes
+   *  back to their defaults (carried from Collection to Collection within
+   *  one catalog only). */
   clear(): void {
     this.cursor.clear()
     this.links.clear()
+    this.preferredCursorPageSize = undefined
+    this.preferredLinksPageSize = undefined
   }
   get size(): number {
     return this.cursor.size + this.links.size

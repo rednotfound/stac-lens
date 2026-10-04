@@ -132,14 +132,24 @@ export function ItemSetResultsPanel({
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TabBar view={view} setView={setView} />
+      {/* Navigation only. It wraps rather than widening the panel: with
+       * tens of millions of Items the last page number alone runs to seven
+       * digits, and at the panel's minimum width the row used to push the
+       * page-size control out and bring back a horizontal scrollbar
+       * (reported). The page size, a setting of the list, sits in the
+       * footer with the page count it changes; so does the loading text. */}
       <div
+        data-pager
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           gap: 6,
+          rowGap: 4,
           marginBottom: 6,
           fontSize: 11,
           color: 'var(--color-text-muted)',
+          minWidth: 0,
         }}
       >
         <button
@@ -168,19 +178,10 @@ export function ItemSetResultsPanel({
           Next →
         </button>
         {loadingPage && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span title={loadingPageLabel} style={{ display: 'flex', alignItems: 'center' }}>
             <Spinner size={11} />
-            {loadingPageLabel}
           </span>
         )}
-        <span style={{ flex: 1 }} />
-        <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={formControlStyle}>
-          {RESULTS_PAGE_SIZE_OPTIONS.map((n) => (
-            <option key={n} value={n}>
-              {n}/page
-            </option>
-          ))}
-        </select>
       </div>
       {view === 'list' && (
         <div
@@ -250,7 +251,11 @@ export function ItemSetResultsPanel({
        * reads as the box's own bottom bar (matching the title bar above);
        * the pager itself deliberately stays at the top, next to the tabs. */}
       <div
+        data-results-footer
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
           fontSize: 11,
           color: 'var(--color-text-faint)',
           margin: '6px -8px -8px',
@@ -259,16 +264,32 @@ export function ItemSetResultsPanel({
           background: 'var(--color-bg)',
         }}
       >
-        {status === 'error' ? (
-          'search failed — nothing to page through'
-        ) : (
-          <>
-            page {pageIndex + 1} of {totalPages}
-            {totalPagesIsLowerBound ? '+' : ''}
-            {totalItems != null && ` — ${totalItems}${totalPagesIsLowerBound ? '+' : ''} items total`}
-            {queryNote && ` · ${queryNote}`}
-          </>
-        )}
+        <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+          {status === 'error' ? (
+            'search failed — nothing to page through'
+          ) : (
+            <>
+              page {pageIndex + 1} of {totalPages}
+              {totalPagesIsLowerBound ? '+' : ''}
+              {totalItems != null && ` — ${totalItems}${totalPagesIsLowerBound ? '+' : ''} items total`}
+              {queryNote && ` · ${queryNote}`}
+              {loadingPage && ` · ${loadingPageLabel}`}
+            </>
+          )}
+        </span>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          aria-label="Items per page"
+          title="Items per page"
+          style={{ ...formControlStyle, flexShrink: 0 }}
+        >
+          {RESULTS_PAGE_SIZE_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}/page
+            </option>
+          ))}
+        </select>
       </div>
       {tooltip && createPortal(<NodeTooltip tooltip={tooltip} />, document.body)}
     </div>

@@ -257,6 +257,9 @@ export function maxLimitFrom(body: string): number | undefined {
 export interface NodeListPage {
   items: StacNode[]
   next?: NextLink
+  /** `numberMatched`, when the server reports it — absent, not zero, when
+   *  unknown. */
+  matched?: number
 }
 
 /** One page of an endpoint that lists whole Catalog/Collection objects
@@ -266,12 +269,13 @@ export interface NodeListPage {
 async function fetchNodeListPage(
   endpoint: string,
   key: 'collections' | 'children',
-  opts: { limit: number; next?: NextLink },
+  opts: { limit: number; next?: NextLink; q?: string },
 ): Promise<NodeListPage> {
-  const url = opts.next?.href ?? withQuery(endpoint, { limit: String(opts.limit) })
+  const fresh: Record<string, string> = { limit: String(opts.limit), ...(opts.q ? { q: opts.q } : {}) }
+  const url = opts.next?.href ?? withQuery(endpoint, fresh)
   const res = opts.next ? await followNext(opts.next, { limit: opts.limit }) : await fetch(url)
   if (!res.ok) throw await httpError(`${key === 'children' ? 'Children' : 'Collections'} request failed`, res)
-  const raw = (await res.json()) as Record<string, unknown> & { links?: RawSearchLink[] }
+  const raw = (await res.json()) as Record<string, unknown> & { links?: RawSearchLink[]; numberMatched?: unknown }
   const entries = Array.isArray(raw[key]) ? (raw[key] as RawStacObject[]) : []
 
   const items = entries.map((entry) => {
@@ -284,7 +288,11 @@ async function fetchNodeListPage(
     return buildNode(entryHref, entry)
   })
 
-  return { items, next: findNextLink(raw.links, url) }
+  return {
+    items,
+    next: findNextLink(raw.links, url),
+    matched: typeof raw.numberMatched === 'number' ? raw.numberMatched : undefined,
+  }
 }
 
 /** Fetches one page from an OGC API - Features "Collections" listing
@@ -298,10 +306,13 @@ async function fetchNodeListPage(
  *  needed at all (confirmed directly: PC's own `?limit=` param is silently
  *  ignored and every Collection comes back in one response regardless —
  *  `rel:next` is still checked and followed rather than assumed absent,
- *  since a different implementation may genuinely paginate this). */
+ *  since a different implementation may genuinely paginate this). Also
+ *  the Children list's server search: `q` is Collection Search's free text
+ *  (gate on `supportsCollectionFreeText`); a followed `next` link already
+ *  carries it, so it is not appended again. */
 export function fetchCollectionsPage(
   endpoint: string,
-  opts: { limit: number; next?: NextLink },
+  opts: { limit: number; next?: NextLink; q?: string },
 ): Promise<NodeListPage> {
   return fetchNodeListPage(endpoint, 'collections', opts)
 }

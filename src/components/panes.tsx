@@ -215,6 +215,20 @@ export function ItemSetIcon({ size = 14, color = 'var(--color-node-item)' }: { s
   )
 }
 
+/** A node's children (STAC's `rel: child`): an indented list — a parent
+ *  row with two rows hanging under it. Neutral on purpose: the children
+ *  can be Catalogs, Collections or both, and the pane must not wear either
+ *  one's identity (DESIGN §128). Each row of the list keeps its own icon. */
+export function ChildrenIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg {...glyph} width={size} height={size} stroke={color} style={{ flexShrink: 0 }}>
+      <rect x="2.5" y="2.5" width="4" height="4" rx="1" />
+      <path d="M4.5 6.5v8.5h3M4.5 10.5h3" />
+      <path d="M10 10.5h7.5M10 15h7.5M9 4.5h8.5" />
+    </svg>
+  )
+}
+
 /** The Inspector: details of what is selected — the familiar ⓘ. */
 export function InspectorIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
   return (

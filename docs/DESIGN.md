@@ -5452,6 +5452,30 @@ server omits — both loosened to match what matters, not the accident.
   than 360 px (124 px at 720) because each pane keeps its minimum. Options:
   hide the Items panel automatically there, overlay it, or lower the
   minimums.
+- **Added (§128): a Catalog whose `child` links continue on a `rel: next`
+  page** (NASA CMR-STAC's `ALL` lists 100) shows those 100 in the tree as
+  if complete. The Collections list now says "the first 100 listed — the
+  listing goes on"; the tree should get a "+ more (next page not
+  followed)" leaf, or follow the pages on request.
+- **Added (§128): the Collections list's filter in the URL** and a
+  Collections list on the phone.
+- **Added (2026-10-04 review): the loader caches no failure**, so a dead
+  link is fetched up to three times (§124: root search, the tree's walk,
+  the Inspector). A short-lived failure cache keyed by href.
+- **Added (§128): a Collection Search walk stops at 2,000** results and
+  says so; the tree is likewise silent past `COLLECTIONS_SAFETY_CAP`,
+  where the Children list now says "the listing goes on" — the tree
+  should get the same "+ more" honesty.
+- **Added (§128): health rule C-11** (keywords and providers present) is
+  not flagged yet, though both now feed the Children list's filter.
+- **Done (2026-10-04): the README screenshot retaken** (same scene: Planetary Computer Landsat with a date search, Time & Space, dark, 1600×1000) — shows the star, Share, the Search line and its chip, the footer page size.
+- **Added (2026-10-04 review): known-catalog re-check.** `verify:catalogs`:
+  98 ok, 2 warn, 3 fail — USGS Landsat Collection 2 and UK NCEO ARD
+  (CORS, flagged since 2026-09-17, now over two weeks) and Maxar ARD
+  Sample Data (newly 404: its bucket's website configuration is gone).
+  Removal is the owner's decision (CATALOGS.md rules).
+- **Settled (§128): the API root's cross-Collection Item search** (open
+  since §92) — removed; an API root has no Items of its own.
 - **Done (§127): the Items page number in the URL** (§115, §118) — as
   `page` + `page-size`; exact for a static list, re-walked for an API,
   with the drift said in the Share panel.
@@ -5495,18 +5519,13 @@ server omits — both loosened to match what matters, not the accident.
      Decided: code speaks English to contributors; this document stays
      bilingual.
 
-- **Parked by decision, complete on `parked/collection-search`:
-  Collection Search on API roots (§92).** To revisit: whether the tree
-  should ever show a *filtered* root at all, or whether collection
-  discovery belongs somewhere other than the structure view; and, tied
-  to it, whether an API root should carry an Item Search box (Planetary
-  Computer rejects cross-collection search outright).
-- **Open question surfaced by §97's before/after comparison: should a
-  click on the root label collapse the tree?** On `main` the root toggles
-  like any expandable node, so clicking it folds everything (the
-  "Collapse to top level" button deliberately never folds the root). The
-  parked branch made the root select-only because selecting it is how
-  its boxes would open. Undecided; not changed during the refactor.
+- **Settled by §128: Collection Search on API roots (§92).** Collection
+  discovery lives in the Children list, not the structure view: the tree
+  is never filtered, only dimmed; free-text `q` is used there when a list
+  is partial. An API root carries no Item search. The tree's root filter
+  stays parked on `parked/collection-search`.
+- **Settled by §123: a click on a label never collapses** (the circle
+  toggles, the label selects and opens).
 - **Landing page follow-ups (§100–§101).** Filter and view state are not
   in the URL yet (a shared "disaster imagery over South America" link
   would need a landing-page query string cleared when a catalog opens).
@@ -5540,7 +5559,8 @@ server omits — both loosened to match what matters, not the accident.
   and `intersects`, Sort on arbitrary fields via `queryables`, CQL2
   Filter (already parked in §68/§84), `fields`. Inspector-side: the
   `overview`/`visual` asset roles and `rel=preview` links best-practices
-  defines for visualization (only `thumbnail` is inlined today), and the
+  defines for visualization (done in §112: `overview` and `rel: preview`
+  are shown too), and the
   discovery/provenance links `alternate` (HTML), `via`, `license`,
   `derived_from`, `canonical`. Access: auth headers / API keys and a
   CORS proxy option (STAC Browser: `authConfig`, `requestHeaders`,
@@ -5613,8 +5633,9 @@ server omits — both loosened to match what matters, not the accident.
   are too except for a rare deep-linked-orphan-Item case (§21) — the only
   real asynchronous pop-in left is the preview `<img>` itself (changing
   `src` on the same element makes the browser clear it before the new
-  image arrives). The targeted fix discussed instead, not yet built: a
-  fixed-height placeholder + spinner + fade-in scoped to that image alone,
+  image arrives). The targeted fix discussed instead — since built
+  (`AccessImage.tsx`): a fixed-height placeholder + spinner + fade-in
+  scoped to that image alone,
   so text content still renders instantly rather than everything waiting
   on one image's network fetch.
 - Type icons (§44) in Structure Lens's own tree, not just Inspector —
@@ -5683,7 +5704,7 @@ server omits — both loosened to match what matters, not the accident.
   is rather than flagging what's missing. Would need `loadChildren`/
   `loadItems` to return failures alongside successes, and a synthetic
   "failed to load" tree leaf similar to the existing "+N more" one.
-- Growing the landing page's known-catalog list further — now at 102
+- Growing the landing page's known-catalog list further — now at 103
   (§11's original 8, §19's static pass, Earth Search in §22, Planetary
   Computer in §43, and §47's 33 more APIs). §47 closed the API-side gap;
   the *static* side has not been re-swept since §19 and STAC Index's
@@ -8641,4 +8662,300 @@ own share glyph. The panel:
   open.
 - §126's active-tag colour regained its underline, so a matching tag is
   not told by colour alone.
+
+## 128. Finding the right Collection among many: the Collections list
+
+**What was asked.** "我发现在很多API的数据中，collection变得更加重要，是api搜索
+的入口了，所以很多catalog打开之后就是一片collections，然后为了能够在collections
+中找到对的那个，collection对象上可能还追加了key word，或者说tag之类的。这样的做
+法是常见的么？…我们应该如何支持这一功能呢？"
+
+**Research.**
+- Measured on six APIs (2026-10-04): Planetary Computer 138 Collections,
+  `keywords` on 138 (216 distinct); Copernicus Data Space 423, on 422
+  (370 distinct); NASA CMR LPCLOUD 788+, on all (GCMD terms, flattened);
+  USGS LandsatLook 14; Earth Search 9. `providers` nearly everywhere;
+  `summaries.platform`/`constellation` on 48/138 (PC), 315/423 (CDSE).
+  The Themes extension (controlled vocabularies) is a Proposal and none of
+  the six uses it.
+- Spec: `keywords` is a Collection field ("List of keywords describing
+  the Collection"); STAC API Collection Search (Candidate) adds `q` free
+  text over title/description/keywords — 14 of our 34 API roots
+  implement it (§92).
+- STAC Browser (`Catalogs.vue`): a text filter over title/id/keywords and
+  a keyword multi-select built from the Collections' own keywords (all of
+  the selected), only once the list is complete; server `q` when the API
+  declares free text. NASA Earthdata Search: sidebar facets (keywords,
+  platforms, instruments, organizations…). Planetary Computer's own data
+  catalog: categories hand-made in YAML, not from STAC.
+- Keywords are uncontrolled ("10-daily", "300m", "l2" on CDSE), so facets
+  rank by count, show a few, and can be searched — not a wall of chips
+  (§100's lesson).
+
+**Decisions (asked, two rounds).**
+- The docked column lists what the browsed node contains: "Collections
+  in X" for a Catalog or root, "Items in X" for a Collection; a node with
+  both gets two tabs (an API root: Collections | Item search). No fourth
+  column.
+- The tree is not re-shaped — the doubt that parked §92 stands: matching
+  children stay lit in every view and the rest dim.
+- Facets: Keywords, Providers, Platform / constellation, License, all
+  read from declared fields; counts are Collections declaring the value.
+- Choosing a row only selects (the Inspector shows it; the list stays),
+  like picking an Item from a search's results; "Items →" browses it,
+  and the Items view offers "‹ Collections in X" back, filter intact.
+- Opens by itself at ten or more children; fewer are read in the tree
+  and listed from the toggle.
+- Server `q` only when the list is incomplete and the API declares
+  Collection Search free text; otherwise filtering is local, instant and
+  counted exactly.
+
+**How it is built.** See ARCHITECTURE (`ContentsPane`, `collections/`,
+`stac/collectionFacets.ts`, `store/collectionList.ts`). Points worth
+keeping:
+- The list is the structure's own children (`containerChildren`), so it
+  can never disagree with the tree. Listing a node opens it.
+- Keywords combine "all of" (each narrows; their counts include the
+  facet's own selection so a count never promises what the list cannot
+  show); the other facets "any of" (standard faceted counts).
+- With nothing selected, the open catalog's root is now *browsed*
+  (`selection.browse`), so an API root's Collections list is there on
+  open while the Inspector waits. The "selection is inside" ring and the
+  phone outline's default-open Items now require a selection, so browsing
+  alone neither rings the root nor runs an API root's search.
+- Counts are honest about partial lists: "the 100 loaded — 812
+  declared" (a static first page), "the first 100 listed — the listing
+  goes on" (static `child` links with a `rel: next`, recorded as
+  `childPagesNext`), a list endpoint stopped at the 2,000 cap, and "of
+  the first 2000 returned by the server's search … — it has more".
+- Collection Search goes to the `rel: data` link, now recorded as
+  `dataHref` even when `child` links exist (`collectionsEndpoint` is only
+  set without them — CMR's `ALL` has both).
+
+**Found on the way.**
+- A deep link selects a Catalog without opening it, so its children's
+  count was unknown and the list never opened; the `child` links' count
+  is now used until the node is opened (the list then opens it).
+- Returning to a small root's list through "‹ Collections in …" closed
+  the panel (browsing moved to a node that does not auto-open); returning
+  to the list's origin keeps it open.
+- The dev server's watcher missed one edit during the CMR checks and
+  served a stale module ("loader is not defined"); a rebuild was clean —
+  noted for when a live check fails in an unexplainable way.
+
+**Checks.**
+- Live (1400 px): Copernicus Data Space opens with "Collections 423";
+  "sentinel-2" → 36 of 423 with 387 tree nodes dimmed; a keyword facet
+  narrows; a row shows its Collection in the Inspector with the list
+  kept; "Items →" and back keep the text and facets. Planetary Computer:
+  138, "landsat" → 8, 130 dimmed in Outline and in Icicle. Earth Search
+  (9) and Capella (few, mixed — "Children") stay closed. CDSE dark.
+  iPhone 13: no column, no API-root search fired. NASA CMR `ALL`: "the
+  first 100 listed — the listing goes on", Search the server → the
+  first 2,000 results, 93 tree nodes dimmed.
+- Vitest (166): text filter, facet values from summaries, all-of /
+  any-of, counts.
+- Smoke (77): the API root with few Collections keeps the column closed
+  and names its toggle Collections; text filter, keyword facet, tree
+  dimming, row select keeps the list, Items → and back; a 12-Collection
+  static catalog opens with its list before any selection and a license
+  facet narrows it.
+
+**The API root's cross-Collection Item search: removed.** Trying the
+list on Planetary Computer, the owner drew an area in the root's "Item
+search" tab and got "Search request failed: 400 — Item Search requires
+collections or a collection filter", and asked whether something had
+been misunderstood. It had: an API root's own `/search` had been treated
+as its Items since the first API support, and §92 had found that
+Planetary Computer refuses it (then a 422) and left open whether the
+root should carry it at all. This round had put it in a tab of its own.
+The owner: "这是你给我的功能，我自己没有想到是需要从根节点这一层就开始search
+item" — and chose to remove it. Collections are an API's way in (the
+premise of this section); Items are searched inside one.
+- `buildNode` no longer gives an API root `items: cursor` from its
+  `/search`; `sourceKind.searchHref` stays for scoping a Collection's
+  search to `collections=<id>`.
+- Gone with it: the root's tabs (an API root's column is its
+  Collections list), the root's "API" Items tag and Item leaves in the
+  tree, the "a search across every Collection" wording, the URL rule
+  that a root search with no conditions writes no page, and the
+  exception that opened a root's panel for a linked root search. A link
+  that still carries a root query opens the root; the query has nothing
+  to apply to and drops from the address bar.
+- Smoke: the rejected-search check now runs inside a Collection (the
+  fixture answers 400 for a 1900 date range), and a new check asserts
+  that no `/search` request is ever sent without `collections=`.
+  Smoke 79, Vitest 165. The owner's link (Planetary Computer root with a
+  bbox) opens on the 138-Collection list with no request and no error.
+
+**Pane settings do not carry from one catalog to the next.** Reported
+as a bug: "对于窗口的设定的话，是不应该跨数据的！每个新打开的数据就应该全新
+reset，该打开什么就应该要打开什么！" What carried over:
+- the Inspector's hidden state, persisted with its width in
+  `localStorage` (§122) — so hiding it once kept it hidden in every
+  catalog after, even after a reload;
+- the chosen view, when the same catalog was reopened from the landing
+  page (it was keyed by the root's href only);
+- the facets' open state and the page-size preferences (session-wide).
+
+Now only widths persist (a per-browser preference, like the Items
+panel's). The Inspector's hidden state is remembered with the root it
+was hidden for, and, with the view, reset on the landing page, so even
+the same catalog reopened starts fresh; the facets' state and the page
+sizes reset with the per-catalog stores. The contents pane already
+decided its open state from each newly browsed node. The Legend keeps
+remembering that it was closed — an explicit earlier choice (its
+reopening on every visit was found annoying), and it is a help card,
+not a pane. Smoke (80): a reload brings the Inspector back with the
+Items width kept; hiding both panes and picking the Outline, then
+reopening the same catalog from the landing page, gives the tree, the
+Collections list open, and the Inspector on selecting.
+
+**The list's rows get the hover card.** Reported: the Collections list had
+no hover popup, unlike every view and the Items list. Rows now show the
+shared card (`hoverInfoFor` → `NodeTooltip`, portaled to `body`): type,
+full title, description excerpt, a note such as "API-searched", and the
+preview. Smoke (81) hovers a row and finds its title in the card
+(`data-node-tooltip`).
+
+**The list is "Children", with a neutral glyph.** Reported: the pane and
+its toggle wore the Collection icon even when the children were Catalogs
+or a mix (a static catalog such as Capella), while the label already
+switched between Collections / Catalogs / Children — the pane borrowing
+an object's identity, against the §121 rule. Offered: name and icon
+following the content (Collections ⧉, Catalogs ▱, both side by side), one
+name and a neutral glyph always, or type names with "Children" only when
+mixed. The owner chose the second: always "Children" (STAC's own word,
+`rel: child`), with a new indented-list glyph (`ChildrenIcon`: a parent
+row with two rows hanging under it), in the pane header, on the header
+toggle and on the tab of a node that also has Items. Rows keep their own
+Catalog/Collection icons. The header reads "Children of X" ("of", where
+Items read "in"), and the way back "‹ Children of X". The per-type label
+plumbing (`browsedChildren.label`) is gone. Checked in light and dark on
+Copernicus Data Space and on Capella (mixed); smoke (81) expects the
+toggle to say Children and the way back to start "‹ Children of".
+
+**The pager no longer widens the Items panel.** Reported: with much data
+the page-size select pushed the panel wider and the horizontal scrollbar
+came back. Measured on Earth Search Sentinel-2 (51,533,674 Items, last
+page 1,288,342 at 40 per page) with the panel at its 300 px minimum: the
+pager row was 72 px wider than the panel — "← Prev" and "Next →" broken
+over two lines, the last page number cut, the select pushed out. The row
+was one unwrappable line holding navigation, a loading label and a
+setting. Now the row is navigation only (‹ Prev, page numbers, Next ›,
+a spinner), its buttons never break their labels, and it wraps rather
+than widening; the page-size select ("Items per page") and the loading
+text moved to the footer, beside the page count they describe, whose
+text wraps while the select keeps its place. At 400 px the pager is
+still one line; at 300 it takes two and nothing scrolls sideways.
+Smoke (82) shrinks the panel to its minimum and asserts no horizontal
+overflow and the select in the footer.
+
+**Filter and Search: one anatomy, two words.** Reported: "FACETS" in the
+Children list meant nothing, and next to the Items panel's "SEARCH" —
+both uppercase headings with a disclosure triangle — the two read as one
+thing while doing different ones.
+
+*Research.* NN/g: faceted navigation is "multiple filters, one for each
+aspect of the content" — the term is the field's, not a word people use
+in an interface. Baymard (large-scale testing, 50-site benchmark): show
+the applied filters in an overview, each removable, plus clear-all;
+without one people lose track of what took effect (28% of sites lack it,
+42% do it poorly). NN/g on applying filters: update at once for small,
+fast, exploratory sets; batch behind an Apply button when requests are
+slow or several conditions are set together. STAC Browser puts Item
+filters behind "Show Filters" and a submit. Our two panels sit on
+opposite sides of that line: the Children list filters a loaded list
+locally and instantly; an API Collection's Search is a request.
+
+*Decisions (asked).* Name them for what they do — **Filter** (no button,
+applies as you type) and **Search** (applies when Search is pressed) —
+on one anatomy: conditions, then the applied conditions as removable
+chips, then the count, then the results. The facets became a filter bar:
+one bordered button per field ("Keywords ▾", with the number selected),
+opening its values in a small panel (find field, counts, "a child must
+have all the selected" / "any of the selected"); a field no child
+declares is a disabled button saying so. The stacked groups, which took
+half the pane on Copernicus Data Space, are gone. The Items Search lost
+its uppercase heading and triangle for a plain line — "Search", where it
+stands ("edited, not searched", or the summary when hidden), and an
+Edit/Hide command — and gained chips for the applied date, area and sort;
+removing one searches again without it. `useDismiss` (Escape returns
+focus; outside press by containment) is now shared by the Share panel
+and the filter buttons. Checked live on Copernicus Data Space (popover,
+chips, Escape focus, removal, 300 px without sideways scroll) and on
+Planetary Computer Landsat in dark (a January search, its chip, hiding
+the form, removing the chip re-runs the search without `datetime`).
+Smoke (82).
+
+**A full review before committing (2026-10-04).** Asked for a broad look
+— bugs, tests, docs, memory — after the share, Children list and
+Filter/Search work. Two independent reviews (code; docs/tests/memory)
+and a known-catalog re-check.
+
+*Bugs fixed.*
+- **The list re-opened the node it listed, in a loop** (a burst of
+  `/collections` on an API root): it called `toggle` whenever its node
+  read "not open", and `expand` built its state as `{ expanded: true,
+  loading: true, ...existing }`, so a node collapsed once read
+  `expanded: false` until its fetch returned. Now the spread is the
+  other way round, the structure has an `open` that never collapses, the
+  list opens a node once and never after it has seen it open (a collapse
+  in a view is respected: the list says the node is closed there), and a
+  node not drawn in the structure is its own `absent` state.
+- **Picking a row never brought it into view in the tree**: the tree
+  panned to the browsed node, which `keepBrowsing` leaves on the
+  container. It now pans to the selection unless that is an Item; the
+  space view's body likewise.
+- **A deep link selecting a Catalog of 10+ children left its list
+  closed**: the per-catalog clear wiped the child count the bridge had
+  just published in the same commit (children's effects run first). The
+  count names its node, so it is no longer cleared.
+- **A share link could carry the container's page or search under a
+  picked Collection** (selected with `keepBrowsing`), or the Items tab's
+  page while the Children tab was shown. Search and page go into the
+  link only when the selection is inside what is browsed and the column
+  shows Items.
+- **The views stayed dimmed when the list was out of sight** (pane
+  hidden, Items tab, phone). Dimming now needs the list shown.
+- **Every hover recounted the facets** over up to 2,000 children; the
+  counts are memoized on the pool and the filter.
+- **A server answer could land after the text changed**; it is dropped.
+- Smaller: the child count kept the declared total once loaded (NZ
+  Imagery: 800, not 100); the way back is forgotten when browsing leaves
+  the list's node, and returning to a root list selects nothing; the
+  container's own Item leaves are not dimmed; the "selection is inside"
+  ring means a selected Item only; a root link with a page no longer
+  selects the root; the Inspector's hidden state drops when a link opens
+  another catalog (Back/Forward included); removing a Search chip keeps
+  other unsearched edits; a disabled filter button is focusable with its
+  reason (`aria-disabled`) and is disabled only when no child declares
+  the field (not when the text narrows it to nothing); the value panel
+  closes on scroll and resize; focus moves to the next chip after a
+  removal; stale comments and detached doc comments fixed;
+  `knownChildCount` removed.
+
+*Tests added.* Vitest 165 → 184: `containerChildren` (not-open, loading,
+"+N more", `rel: next`, list endpoint at the cap, no Items), the pane
+decision (extracted as `decidePane`), the list store's `clear`,
+`describeShare`, page sizes reset by `itemSetSessions.clear`,
+`supportsCollectionFreeText`, `childPagesNext` / `dataHref` in
+`buildNode`, `fetchCollectionsPage` with `q` and `numberMatched`.
+Smoke 82 → 87: a deep link selecting a nested Catalog of 12 opens its
+list; a partial list (child links + `rel: next`, free text declared)
+sends `q` to `rel: data` and counts the answer; hiding the list
+un-dims the views; removing a Search chip searches again without it;
+the phone opening an API root lists it without a column or a search.
+Two assertions that passed on a broken feature were hardened (an empty
+`searchRequests`; the phone's "no canvas", now `data-structure-canvas`).
+
+*Docs.* README (Collection Search row, Item Search scoped, the Children
+pane, project tree), CONTRIBUTING (§96's place, the review principle that
+replaced "search-first", the phone section, where tests live),
+ARCHITECTURE (four stores, Share under Components, shared parts, panes),
+HEALTH-RULES (B-01's PC example, B-07 status, B-09 count, the API-search
+wording) and §96 (settled items marked, new ones added) brought in line.
+Live re-checks: collapsing the listed root fires no request and the list
+says it is closed; picking the last row of Planetary Computer's 138 pans
+the tree to it.
 

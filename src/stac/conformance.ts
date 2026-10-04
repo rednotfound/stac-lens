@@ -16,6 +16,16 @@ export function supportsSort(conformsTo: string[] | undefined): boolean {
   return !!conformsTo?.some((uri) => SORT_CONFORMANCE_URIS.includes(uri))
 }
 
+// STAC API - Collection Search's free-text class (`q` on `/collections`).
+// A candidate extension that real servers declare under whichever version
+// they built against (`v1.0.0-rc.1`, `v1.0.0`, …), so it is matched by path
+// suffix, not an exact list (DESIGN §92, §128).
+const COLLECTION_FREE_TEXT_RE = /^https:\/\/api\.stacspec\.org\/v[\w.-]+\/collection-search#free-text$/
+
+export function supportsCollectionFreeText(conformsTo: string[] | undefined): boolean {
+  return !!conformsTo?.some((uri) => COLLECTION_FREE_TEXT_RE.test(uri))
+}
+
 /** Resolves the `conformsTo` array that actually governs a node's own
  *  search endpoint. Per spec, `conformsTo` is only ever declared on a STAC
  *  API's landing page/root — never repeated on a nested Collection reached
@@ -25,6 +35,7 @@ export function supportsSort(conformsTo: string[] | undefined): boolean {
  *  genuinely unknown (no root link, an unresolvable root, or a root that
  *  itself never declared conformsTo) — callers must treat that as "don't
  *  know" and hide any conformance-gated UI, never guess either way. */
+
 export interface SearchTarget {
   endpoint: string
   /** The `collections=` constraint to send with a fresh request — set only
