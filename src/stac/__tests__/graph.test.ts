@@ -95,9 +95,10 @@ describe('buildNode — how Items are reached', () => {
     expect(node.items).toEqual({ kind: 'cursor', endpoint: 'https://api.example.org/v1/collections/x/items' })
   })
 
-  it('an API root with only a search link searches through it', () => {
+  it('an API root has no Items of its own: its /search is not a list of them (DESIGN §128)', () => {
     const node = buildNode(ROOT, { type: 'Catalog', conformsTo: [], links: [{ rel: 'search', href: './search' }] })
-    expect(node.items).toEqual({ kind: 'cursor', endpoint: 'https://api.example.org/v1/search' })
+    expect(node.items).toEqual({ kind: 'links', hrefs: [] })
+    expect(node.sourceKind).toEqual({ kind: 'api-search', searchHref: 'https://api.example.org/v1/search' })
   })
 
   it('nothing at all is an empty, finite list — not an unknown', () => {
@@ -309,5 +310,39 @@ describe('buildNode — preview link', () => {
       links: [{ rel: 'preview', href: './p.html', type: 'text/html' }],
     } as unknown as RawStacObject
     expect(buildNode('https://x/cat/collection.json', html).previewHref).toBeUndefined()
+  })
+})
+
+describe('buildNode — links recorded for the Children list (DESIGN §128)', () => {
+  it("records a Catalog's own rel:next (its child links go on), not an Item's", () => {
+    const cat = buildNode(CAT, {
+      type: 'Catalog',
+      links: [
+        { rel: 'child', href: './a.json' },
+        { rel: 'next', href: './catalog.json?page=2' },
+      ],
+    })
+    expect(cat.childPagesNext).toBe('https://example.org/stac/catalog.json?page=2')
+    const item = buildNode('https://example.org/stac/i.json', {
+      type: 'Feature',
+      id: 'i',
+      geometry: null,
+      properties: {},
+      links: [{ rel: 'next', href: './j.json' }],
+      assets: {},
+    } as RawStacObject)
+    expect(item.childPagesNext).toBeUndefined()
+  })
+
+  it('records rel:data as dataHref even beside child links, where collectionsEndpoint stays unset (NASA CMR ALL)', () => {
+    const n = buildNode(ROOT, {
+      type: 'Catalog',
+      links: [
+        { rel: 'child', href: './a' },
+        { rel: 'data', href: './collections' },
+      ],
+    })
+    expect(n.dataHref).toBe('https://api.example.org/v1/collections')
+    expect(n.collectionsEndpoint).toBeUndefined()
   })
 })

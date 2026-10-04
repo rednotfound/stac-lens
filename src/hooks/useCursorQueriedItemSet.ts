@@ -20,10 +20,11 @@ const EMPTY_QUERY: CursorQuery = {}
 export type CursorItemSetState =
   | { status: 'empty' }
   | {
-      /** `idle`: no search has been run yet — only an API root (a search
-       *  across every Collection) starts here, waiting for conditions; a
-       *  Collection runs its default, unconditioned search on open, and a
-       *  shareable URL's query runs at once. Deliberately not `loading`. */
+      /** `idle`: no search has been run yet — only a searchable node that
+       *  is not a Collection starts here (rare since an API root's own
+       *  `/search` stopped being its Items, DESIGN §128); a Collection runs
+       *  its default, unconditioned search on open, and a shareable URL's
+       *  query runs at once. Deliberately not `loading`. */
       status: 'idle' | 'loading' | 'ready' | 'error'
       /** Set while `status === 'error'`: the last request for the current
        *  query failed — shown as such, never as an empty result. A server
@@ -91,10 +92,9 @@ export function useCursorQueriedItemSet(
   // A Collection opens with its default search already run — no
   // conditions, the server's order — so one can see at once whether there
   // is data, and the views draw its first page; the Search panel then
-  // narrows it. An API root (a search across every Collection) still waits
-  // for conditions: it is a different, much larger question, and some
-  // servers refuse it outright (Planetary Computer: "collection is
-  // required"). See docs/DESIGN.md §118, which revises §78.
+  // narrows it. Anything else searchable waits for conditions. See
+  // docs/DESIGN.md §118, which revises §78; an API root's own `/search` is
+  // no longer anyone's Items (§128).
   const autoSearch = node?.type === 'Collection'
   const autoSearchNow = autoSearch && !restored && initialQuery === undefined
 

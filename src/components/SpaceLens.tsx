@@ -46,7 +46,13 @@ export function SpaceLens() {
   // still shows the map, and it must already be Titan's grid, not Earth.
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const selectedHref = useSelectionStore((s) => s.selectedHref)
-  const bodyNode = node ?? loader.get(browsingHref ?? selectedHref ?? '')
+  // The selection's own body, unless it is an Item (then its browsed
+  // Collection's): a Collection picked from the Children list is selected
+  // while its container stays browsed.
+  const selectedNode = selectedHref ? loader.get(selectedHref) : undefined
+  const bodyNode =
+    node ??
+    (selectedNode && selectedNode.type !== 'Item' ? selectedNode : loader.get(browsingHref ?? selectedHref ?? ''))
   const body = resolveBody(bodyNode, loader)
   const itemFootprintCount = items.filter((i) => !!i.spatial?.bbox).length
 

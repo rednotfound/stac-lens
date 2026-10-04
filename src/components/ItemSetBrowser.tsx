@@ -289,6 +289,8 @@ export function pagerButtonStyle(disabled: boolean): React.CSSProperties {
     background: 'var(--color-surface)',
     color: disabled ? 'var(--color-text-faint)' : 'var(--color-text-muted)',
     cursor: disabled ? 'not-allowed' : 'pointer',
+    // "← Prev" / "Next →" stay one line; the pager row wraps instead.
+    whiteSpace: 'nowrap',
   }
 }
 
@@ -303,6 +305,8 @@ export function pageNumberButtonStyle(selected: boolean): React.CSSProperties {
     color: selected ? 'var(--color-bg)' : 'var(--color-text-muted)',
     fontWeight: selected ? 700 : 400,
     cursor: selected ? 'default' : 'pointer',
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
   }
 }
 

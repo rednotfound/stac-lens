@@ -239,20 +239,18 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   // (the OGC API - Features query endpoint STAC APIs put on individual
   // Collections instead — confirmed directly on Earth Search and Microsoft
   // Planetary Computer, neither of which has a single `rel:item` link
-  // anywhere, only `rel:items`, see docs/DESIGN.md, "STAC API sources"); or, only for a node that is
-  // itself an API root (`conformsTo`/`rel:search` on its own landing
-  // page), its own cross-collection `/search` endpoint — a Catalog-typed
-  // landing page has no items of its own to flatly list, but the spec's
-  // own example shows exactly this pattern (browse via `child` links,
-  // search across everything via the same root).
+  // anywhere, only `rel:items`, see docs/DESIGN.md, "STAC API sources").
+  // An API root's own cross-collection `/search` is not its Items: it used
+  // to be, and it was a search Planetary Computer refuses outright ("Item
+  // Search requires collections") and nobody had asked for — Collections
+  // are an API's way in, and Items are searched inside one (DESIGN §128).
+  // `sourceKind.searchHref` stays, for scoping a Collection's search.
   const items: ItemEnumeration =
     itemHrefs.length > 0
       ? { kind: 'links', hrefs: itemHrefs }
       : itemsLink
         ? { kind: 'cursor', endpoint: resolveHref(href, itemsLink.href!) }
-        : sourceKind.kind === 'api-search'
-          ? { kind: 'cursor', endpoint: sourceKind.searchHref }
-          : { kind: 'links', hrefs: [] }
+        : { kind: 'links', hrefs: [] }
   // Kept as two separate source facts rather than one `.find()` over both
   // rel types — the two can genuinely disagree (a file crawled from one
   // directory structure via `rel:parent` while its `collection` field/link
@@ -265,6 +263,7 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
   const collectionLink = links.find((l) => l.rel === 'collection' && l.href)
   const parentLink = links.find((l) => l.rel === 'parent' && l.href)
   const rootLink = links.find((l) => l.rel === 'root' && l.href)
+  const nextLink = links.find((l) => l.rel === 'next' && l.href)
   const declaredCollectionHref = collectionLink ? resolveHref(href, collectionLink.href!) : undefined
   const declaredParentHref = parentLink ? resolveHref(href, parentLink.href!) : undefined
   const declaredRootHref = rootLink ? resolveHref(href, rootLink.href!) : undefined
@@ -298,6 +297,8 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     childHrefs,
     collectionsEndpoint,
     childrenEndpoint,
+    childPagesNext: type !== 'Item' && nextLink ? resolveHref(href, nextLink.href!) : undefined,
+    dataHref: dataLink ? resolveHref(href, dataLink.href!) : undefined,
     items,
     sourceKind,
     declaredConformsTo: raw.conformsTo,

@@ -15,7 +15,7 @@ const EXPAND_ALL_BUDGET = 60
 /** Safety backstop for a `collectionsEndpoint` / `childrenEndpoint` walk:
  *  a defensive cap on the total against a hypothetical implementation with
  *  many thousands of Collections, not a limit expected to bind today. */
-const COLLECTIONS_SAFETY_CAP = 2000
+export const COLLECTIONS_SAFETY_CAP = 2000
 /** The `limit` asked of a list endpoint per page. Not the cap above: on
  *  2026-09-29 Planetary Computer started answering `limit=2000` with 400
  *  "Collection limit must be between 1 and 1000" (it used to return all
@@ -44,6 +44,7 @@ interface NodeUiState {
 export interface StructureTreeState {
   root: TreeDatum | undefined
   toggle: (href: string) => void
+  open: (href: string) => void
   collapseAll: () => void
   expandAllCatalogs: () => Promise<void>
   isLoading: (href: string) => boolean
@@ -106,7 +107,10 @@ export function useStructureTree(rootHref: string): StructureTreeState {
     setUiState((prev) => {
       const next = new Map(prev)
       const existing = next.get(href)
-      next.set(href, { expanded: true, loading: true, ...existing, error: undefined })
+      // The new state wins over what a collapse left: spread the other way
+      // round, a node collapsed once read `expanded: false` until its fetch
+      // came back, and anything re-opening it in the meantime opened it again.
+      next.set(href, { ...existing, expanded: true, loading: true, error: undefined })
       return next
     })
 
@@ -205,6 +209,16 @@ export function useStructureTree(rootHref: string): StructureTreeState {
       else void expand(href)
     },
     [uiState, expand, collapse],
+  )
+  // Opens a node that is neither open nor opening; never closes one — for
+  // callers that need a node's children (the Children list), unlike a
+  // click that toggles.
+  const open = useCallback(
+    (href: string) => {
+      const s = uiState.get(href)
+      if (!s?.expanded && !s?.loading) void expand(href)
+    },
+    [uiState, expand],
   )
 
   // Root starts pre-expanded — the user shouldn't have to click the root
@@ -327,5 +341,5 @@ export function useStructureTree(rootHref: string): StructureTreeState {
   const isExpanded = (href: string) => uiState.get(href)?.expanded ?? false
   const rootError = !rootDatum ? uiState.get(rootHref)?.error : undefined
 
-  return { root: rootDatum, toggle, collapseAll, expandAllCatalogs, isLoading, isExpanded, rootError }
+  return { root: rootDatum, toggle, open, collapseAll, expandAllCatalogs, isLoading, isExpanded, rootError }
 }

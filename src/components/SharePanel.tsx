@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { copyToClipboard } from './clipboard'
+import { useDismiss } from './useDismiss'
 
 const PANEL_WIDTH = 360
 
@@ -51,26 +52,13 @@ export function SharePanel({ url, facts, iconOnly }: { url: string; facts: Share
     if (returnFocus) buttonRef.current?.focus()
   }
 
+  useDismiss(open, { button: buttonRef, panel: panelRef }, close)
   useEffect(() => {
     if (!open) return
     inputRef.current?.focus()
     inputRef.current?.select()
-    function onPointerDown(e: PointerEvent) {
-      const t = e.target as Node
-      if (panelRef.current?.contains(t) || buttonRef.current?.contains(t)) return
-      close(false)
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') close(true)
-    }
-    window.addEventListener('pointerdown', onPointerDown)
-    window.addEventListener('keydown', onKeyDown)
     window.addEventListener('resize', place)
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown)
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('resize', place)
-    }
+    return () => window.removeEventListener('resize', place)
   }, [open])
 
   // "Copied" is a moment, not a state: it fades back after two seconds.

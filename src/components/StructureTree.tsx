@@ -14,14 +14,10 @@ import { Spinner } from './Spinner'
 import { Legend } from './tree/Legend'
 import { NodeTooltip } from './tree/NodeTooltip'
 import { TreeNodeView } from './tree/TreeNodeView'
-import {
-  BLOCK_PAN_ATTR,
-  hasDirectItems,
-  LEVEL_WIDTH,
-  linkGenerator,
-  ROW_HEIGHT,
-  type TooltipState,
-} from './tree/treeGeometry'
+import { useCollectionHighlight } from './collections/useCollectionHighlight'
+import { DIMMED_OPACITY } from './collections/dimming'
+import { usePaneState } from './collections/usePaneMode'
+import { BLOCK_PAN_ATTR, LEVEL_WIDTH, linkGenerator, ROW_HEIGHT, type TooltipState } from './tree/treeGeometry'
 
 const resetLayoutButtonStyle: React.CSSProperties = {
   background: 'var(--color-surface)',
@@ -40,7 +36,7 @@ const resetLayoutButtonStyle: React.CSSProperties = {
  *  handlers. This component owns the canvas: layout, pan/zoom, manual node
  *  offsets, per-node box geometry, auto-pan to an off-screen selection, and
  *  the layer boxes are portaled into. A node itself is `TreeNodeView`; a
- *  Items are in the Items panel (`ItemsPanel`), and their page shows here as leaves. */
+ *  Items are in the contents pane (`ContentsPane`), and their page shows here as leaves. */
 export function StructureTree() {
   const { root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
@@ -51,11 +47,12 @@ export function StructureTree() {
   // Item selections inside it (see `store/selection.ts`) — is what the
   // Items panel shows and reads as "contains the selection"; `selectedHref`
   // may point at one Item within it, which is never a tree node.
-  const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
   const panelOpen = useItemSetStore((s) => s.panelOpen)
   const setPanelOpen = useItemSetStore((s) => s.setPanelOpen)
-  const itemsOpenHref =
-    panelOpen && browsingHref && browsingNode && hasDirectItems(browsingNode) ? browsingHref : undefined
+  // Open only while the contents pane shows its Items — for a node with
+  // children too, the pane may be showing its Collections list instead.
+  const pane = usePaneState()
+  const itemsOpenHref = panelOpen && pane.mode === 'items' && pane.itemsNode ? pane.itemsNode.href : undefined
   // The Items panel's page, to draw as leaves under the browsed
   // Collection (and the page last seen under other browsed ones).
   const windowForHref = useItemSetStore((s) => s.forHref)
@@ -178,6 +175,23 @@ export function StructureTree() {
   }, [viewRoot])
 
   const nodes = useMemo(() => (layout?.descendants() ?? []) as HierarchyPointNode<ViewDatum>[], [layout])
+  // The Collections list's filter: the browsed node's non-matching
+  // children, and everything drawn under them, are dimmed (DESIGN §128).
+  const highlight = useCollectionHighlight()
+  // The dashed ring means "the selected Item is in here" — not a Collection
+  // picked from the Children list while its container stays browsed.
+  const selectedIsItemNode = !!selectedHref && loader.get(selectedHref)?.type === 'Item'
+  function isDimmed(n: HierarchyPointNode<ViewDatum>): boolean {
+    if (!highlight) return false
+    for (let a: HierarchyPointNode<ViewDatum> | null = n; a?.parent; a = a.parent) {
+      if (a.parent.data.href === highlight.containerHref) {
+        // The container's own Item leaves are not children being filtered.
+        if (a.data.itemLeaf || a.data.moreItems) return false
+        return !highlight.matches.has(a.data.href)
+      }
+    }
+    return false
+  }
   const links = useMemo(
     () =>
       (layout?.links() ?? []) as {
@@ -203,7 +217,11 @@ export function StructureTree() {
     // off-page leaf; that pans only if the leaf is off-screen, and it sits
     // first under its Collection, so it rarely is.
     const offPageLeaf = nodes.find((n) => n.data.itemLeaf?.offPage)
-    const panHref = offPageLeaf?.data.href ?? browsingHref ?? selectedHref
+    // An Item is never a node: pan to the Collection it is browsed in. A
+    // Catalog/Collection picked from the Children list is selected without
+    // being browsed (the container stays browsed), so it is panned to itself.
+    const selectedIsItem = loader.get(selectedHref)?.type === 'Item'
+    const panHref = offPageLeaf?.data.href ?? (selectedIsItem ? (browsingHref ?? selectedHref) : selectedHref)
     // The browsed Collection's Item leaves arrive after it does (its default
     // search is a request), and they must be seen too — a docked Items
     // panel narrows the canvas enough to push them off its right edge. So
@@ -290,6 +308,7 @@ export function StructureTree() {
        * `svgRef` points at. */}
       <svg
         ref={svgRef}
+        data-structure-canvas
         width="100%"
         height="100%"
         style={{ display: 'block', fontFamily: 'var(--font-sans)', cursor: dragging ? 'grabbing' : 'grab' }}
@@ -305,7 +324,7 @@ export function StructureTree() {
                 style={{ stroke: 'var(--color-border)' }}
                 strokeWidth={leaf ? 1 : 1.5}
                 strokeDasharray={leaf ? '3,3' : undefined}
-                opacity={leaf && !leaf.current ? 0.55 : 1}
+                opacity={(leaf && !leaf.current ? 0.55 : 1) * (isDimmed(link.target) ? DIMMED_OPACITY : 1)}
               />
             )
           })}
@@ -315,6 +334,7 @@ export function StructureTree() {
               return (
                 <ItemLeafView
                   key={n.data.href}
+                  dimmed={isDimmed(n)}
                   datum={n.data}
                   x={pos.x}
                   y={pos.y}
@@ -350,13 +370,14 @@ export function StructureTree() {
               <TreeNodeView
                 key={n.data.href}
                 datum={n.data}
+                dimmed={isDimmed(n)}
                 x={pos.x}
                 y={pos.y}
                 hasRenderedChildren={!!n.children?.some((c) => !c.data.itemLeaf && !c.data.moreItems)}
                 isRoot={n.depth === 0}
                 loading={isLoading(n.data.href)}
                 selected={selectedHref === n.data.href}
-                containsSelection={browsingHref === n.data.href}
+                containsSelection={selectedIsItemNode && browsingHref === n.data.href}
                 itemsOpen={itemsOpenHref === n.data.href}
                 onToggle={() => toggle(n.data.href)}
                 onSelect={() => select_(n.data.href)}

@@ -3,6 +3,7 @@ import type { StacNode } from '../../stac/types'
 import { useItemSetStore } from '../../store/itemSet'
 import { sessionPage } from '../../store/itemSetSessions'
 import { OFF_PAGE_NOTE, selectedItemOffPage } from './selectedItem'
+import { DIMMED_OPACITY } from '../collections/dimming'
 import { estimateTextWidth, hoverInfoFor, knownItemCount, type HoverInfo } from '../tree/treeGeometry'
 
 /** The Item row under a browsed Collection: for the Items panel's
@@ -23,7 +24,10 @@ export function IcicleItems({
   selectedHref,
   onSelect,
   onHover,
+  dimmed = false,
 }: {
+  /** Its Collection does not match the Collections list's filter. */
+  dimmed?: boolean
   node: StacNode
   /** This Collection is the Items panel's subject: its row is the live
    *  page, full color. Otherwise the row is the page last seen, dimmed. */
@@ -75,7 +79,7 @@ export function IcicleItems({
   return (
     <g
       transform={`translate(${x}, ${y})`}
-      opacity={current ? 1 : 0.5}
+      opacity={(current ? 1 : 0.5) * (dimmed ? DIMMED_OPACITY : 1)}
       data-items-row={current ? 'current' : 'remembered'}
     >
       {drawn.map((item, i) => {

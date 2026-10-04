@@ -27,6 +27,7 @@ export function NodeTooltip({ tooltip }: { tooltip: TooltipState }) {
 
   return (
     <div
+      data-node-tooltip
       style={{
         position: 'fixed',
         left,

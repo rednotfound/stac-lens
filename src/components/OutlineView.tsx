@@ -13,6 +13,8 @@ import { Spinner } from './Spinner'
 import { OFF_PAGE_NOTE, selectedItemOffPage } from './views/selectedItem'
 import { TypeIcon } from './TypeIcon'
 import { NodeTooltip } from './tree/NodeTooltip'
+import { useCollectionHighlight, type CollectionHighlight } from './collections/useCollectionHighlight'
+import { DIMMED_OPACITY } from './collections/dimming'
 import { hasDirectItems, hoverInfoFor, type HoverInfo, type TooltipState } from './tree/treeGeometry'
 
 /** The phone's Structure view: the same Catalog → Collection graph as the
@@ -39,6 +41,7 @@ export function OutlineView() {
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
+  const highlight = useCollectionHighlight()
   // The same hover card as the tree and the icicle (`hoverInfoFor`): full
   // title, description snippet, thumbnail. Desktop only — a phone has no
   // hover, and a tap must not leave a card behind.
@@ -72,6 +75,7 @@ export function OutlineView() {
         <OutlineRow
           datum={root}
           depth={0}
+          highlight={highlight}
           toggle={toggle}
           isLoading={isLoading}
           selectedHref={selectedHref}
@@ -88,6 +92,8 @@ export function OutlineView() {
 function OutlineRow({
   datum,
   depth,
+  highlight,
+  dimmed = false,
   toggle,
   isLoading,
   selectedHref,
@@ -97,6 +103,11 @@ function OutlineRow({
 }: {
   datum: TreeDatum
   depth: number
+  /** The Collections list's filter (DESIGN §128). */
+  highlight: CollectionHighlight | null
+  /** This row is a non-matching child of the filtered node: drawn faint,
+   *  with everything nested in it (CSS opacity carries down). */
+  dimmed?: boolean
   toggle: (href: string) => void
   isLoading: (href: string) => boolean
   selectedHref: string | null
@@ -121,7 +132,10 @@ function OutlineRow({
   // Open by default also when the selection is inside this Collection (an
   // Item opened from a link or after a reload): the selected Item must be
   // visible, and it is drawn among these rows.
-  const itemsOpen = manual ?? (selected || browsingHref === datum.href)
+  // Browsing alone (the root, while nothing is selected) does not open
+  // them: the root's contents are the Children list, and an Item search is
+  // a request that should follow a choice, not a page load.
+  const itemsOpen = manual ?? (selected || (!!selectedHref && browsingHref === datum.href))
   const openable = canExpand || hasItems
   const isOpen = (canExpand && expanded) || (hasItems && itemsOpen)
   function onChevron() {
@@ -133,7 +147,8 @@ function OutlineRow({
     if (canExpand && !expanded) toggle(datum.href)
     if (hasItems) setManual(true)
   }
-  const contains = !selected && browsingHref === datum.href
+  const contains =
+    !selected && !!selectedHref && loader.get(selectedHref)?.type === 'Item' && browsingHref === datum.href
   const color = node.type === 'Catalog' ? 'var(--color-node-catalog)' : 'var(--color-node-collection)'
   const isApi = node.items.kind === 'cursor'
 
@@ -154,7 +169,13 @@ function OutlineRow({
   const itemCount = node.items.kind === 'links' ? node.items.hrefs.length : 0
 
   return (
-    <div role="treeitem" aria-expanded={openable ? isOpen : undefined} aria-selected={selected}>
+    <div
+      role="treeitem"
+      aria-expanded={openable ? isOpen : undefined}
+      aria-selected={selected}
+      data-dimmed={dimmed || undefined}
+      style={dimmed ? { opacity: DIMMED_OPACITY } : undefined}
+    >
       <div
         style={{
           display: 'flex',
@@ -269,6 +290,8 @@ function OutlineRow({
             key={child.href + (child.moreCount ? ':more' : '')}
             datum={child}
             depth={depth + 1}
+            highlight={highlight}
+            dimmed={!!highlight && highlight.containerHref === datum.href && !highlight.matches.has(child.href)}
             toggle={toggle}
             isLoading={isLoading}
             selectedHref={selectedHref}

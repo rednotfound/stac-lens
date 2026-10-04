@@ -12,11 +12,21 @@ import { StructureProvider } from './components/StructureProvider'
 import { TabButton } from './components/TabButton'
 import { EXPLORER_VIEWS, type ExplorerView } from './components/views/explorerViews'
 import { IcicleView } from './components/views/IcicleView'
-import { ItemsPanel } from './components/ItemsPanel'
-import { InspectorIcon, ItemSetIcon, PaneHeader, PaneSplitter, PaneToggle, SPLITTER_WIDTH } from './components/panes'
+import { ContentsPane } from './components/ContentsPane'
+import { usePaneState } from './components/collections/usePaneMode'
+import { ChildCountBridge } from './components/collections/ChildCountBridge'
+import { useCollectionListStore } from './store/collectionList'
+import {
+  InspectorIcon,
+  ChildrenIcon,
+  ItemSetIcon,
+  PaneHeader,
+  PaneSplitter,
+  PaneToggle,
+  SPLITTER_WIDTH,
+} from './components/panes'
 import { StructureActions } from './components/views/StructureActions'
 import { itemSetSessions } from './store/itemSetSessions'
-import { hasDirectItems } from './components/tree/treeGeometry'
 import { TypeIcon } from './components/TypeIcon'
 import { useSelectionStore } from './store/selection'
 import { DEFAULT_ITEMS_PANEL_WIDTH, useItemSetStore } from './store/itemSet'
@@ -53,20 +63,16 @@ const MIN_ITEMS_PANEL_WIDTH = 300
 const MIN_CANVAS_WIDTH = 360
 const INSPECTOR_PREFS_KEY = 'stac-lens.inspector'
 
-/** The Inspector's remembered width and whether the user hid it. A
- *  throwing or empty `localStorage` falls back to the defaults. */
-function readInspectorPrefs(): { width: number; hidden: boolean } {
+/** The Inspector's remembered width — a per-browser preference, like the
+ *  Items panel's. Whether it is hidden is not remembered here: that belongs
+ *  to the catalog it was hidden in (see `inspectorHiddenFor`). A throwing
+ *  or empty `localStorage` falls back to the default. */
+function readInspectorPrefs(): { width: number } {
   try {
-    const raw = JSON.parse(localStorage.getItem(INSPECTOR_PREFS_KEY) ?? 'null') as {
-      width?: unknown
-      hidden?: unknown
-    } | null
-    return {
-      width: typeof raw?.width === 'number' && raw.width > 0 ? raw.width : DEFAULT_INSPECTOR_WIDTH,
-      hidden: raw?.hidden === true,
-    }
+    const raw = JSON.parse(localStorage.getItem(INSPECTOR_PREFS_KEY) ?? 'null') as { width?: unknown } | null
+    return { width: typeof raw?.width === 'number' && raw.width > 0 ? raw.width : DEFAULT_INSPECTOR_WIDTH }
   } catch {
-    return { width: DEFAULT_INSPECTOR_WIDTH, hidden: false }
+    return { width: DEFAULT_INSPECTOR_WIDTH }
   }
 }
 
@@ -88,7 +94,13 @@ function App() {
   const clearPendingLink = useItemSetStore((s) => s.clearPendingLink)
   const itemSetPageIndex = useItemSetStore((s) => s.pageIndex)
   const itemSetPageSize = useItemSetStore((s) => s.pageSize)
-  const itemSetIsBrowsed = !!itemSetForHref && itemSetForHref === browsingHref
+  // The Items panel's search and page belong in the link only when the
+  // selection is inside what is browsed: nothing selected, the browsed node
+  // itself, or an Item in it — not a Collection picked from the Children
+  // list while its container stays browsed (its link must not carry the
+  // container's page).
+  const selectionInBrowsed = !selectedHref || selectedHref === browsingHref || loader.get(selectedHref)?.type === 'Item'
+  const itemSetIsBrowsed = !!itemSetForHref && itemSetForHref === browsingHref && selectionInBrowsed
   const queryStringForSelection = itemSetIsBrowsed ? encodeSearchQuery(itemSetAppliedQuery ?? {}) : ''
   // Time/Space are not their own toggleable panels stacked below Detail's
   // facts, nor a pair of Inspector tabs — they live directly in the Human
@@ -102,6 +114,12 @@ function App() {
   // DetailPanel.tsx/ItemSetBrowser.tsx.
   const [containerRef, { width: containerWidth }] = useElementSize<HTMLDivElement>()
   const [inspectorPrefs, setInspectorPrefs] = useState(readInspectorPrefs)
+  // Hiding the Inspector, like every pane's open state, belongs to the
+  // catalog it was done in: a newly opened catalog starts fresh, with
+  // whatever should be open, open (reported: hiding it once kept it hidden
+  // in every catalog after, even after a reload). Remembered with the root
+  // it was hidden for, so no effect is needed to reset it.
+  const [inspectorHiddenFor, setInspectorHiddenFor] = useState<string | null>(null)
   useEffect(() => {
     try {
       localStorage.setItem(INSPECTOR_PREFS_KEY, JSON.stringify(inspectorPrefs))
@@ -113,42 +131,41 @@ function App() {
   // a second column. A new selection pops it from peek to half so the
   // detail appears without hiding the tree entirely.
   const narrow = useIsNarrow()
-  // The Items panel: the browsed Collection's Item Set, docked as a column
-  // between the views and the Inspector. It appears whenever browsing is
-  // on a node with Items to list and gives the canvas its width back
-  // otherwise; hidden from its toggle, it stays hidden only until the next
-  // act of selecting.
-  const browsingNode = browsingHref ? loader.get(browsingHref) : undefined
-  const itemsNode = browsingNode && hasDirectItems(browsingNode) ? browsingNode : undefined
+  // The contents pane: what the browsed node contains, docked as a column
+  // between the views and the Inspector — a Collection's Items, or a
+  // Catalog's children as the Collections list (DESIGN §128), or both as
+  // tabs. It appears whenever browsing is on a node with something to list
+  // and gives the canvas its width back otherwise; hidden from its toggle,
+  // it stays hidden only until the next act of selecting.
+  const { node: paneNode, itemsNode, hasChildren, mode: paneMode, childInfo, toShow: paneToShow } = usePaneState()
   const panelOpen = useItemSetStore((s) => s.panelOpen)
   const setPanelOpen = useItemSetStore((s) => s.setPanelOpen)
-  const itemsHref = itemsNode?.href
+  const paneHref = paneNode?.href
   // Keyed on the *act* of selecting (`selectSeq`), not only on which
   // Collection: clicking the same Collection again after closing the
   // panel must reopen it — with the href alone nothing changed and the
   // panel stayed shut, which read as broken.
   const selectSeq = useSelectionStore((s) => s.selectSeq)
-  // Opened only when there are Items to list: a static node's item links,
-  // or a Collection, whose default search runs on open. An API root's
-  // Items are a search across every Collection that waits for conditions
-  // — nothing to show yet — so browsing it closes the panel; its toggle
-  // still opens it for that search (reported: an empty panel stayed open).
-  // A link that carries an API root's search is the exception: that search
-  // has conditions, so its panel opens to run it.
-  const linkedSearchFor = useItemSetStore((s) => s.pendingInitialQuery?.forHref)
-  const itemsToShow =
-    !!itemsNode &&
-    (!(itemsNode.items.kind === 'cursor' && itemsNode.type !== 'Collection') || linkedSearchFor === itemsNode.href)
-  // Forced closed only when browsing moves to such a node — not on every
-  // select: picking a result of an API root's search (opened from the
-  // toggle) keeps browsing on the root, and must not close the panel it
-  // was picked from.
+  // Forced closed only when browsing moves to a node with nothing to show —
+  // not on every select: picking an Item from the Items panel, or a row of
+  // the Children list, keeps browsing where it is and must not close
+  // the panel it was picked from. Nor when browsing returns to the node
+  // whose Collections list a row's "Items →" left: "‹ Children of …"
+  // goes back to that list, opened by hand or not.
+  const listOrigin = useCollectionListStore((s) => s.origin)
+  // The way back lasts while browsing stays on the list's node or one of
+  // its children; anywhere else, it is forgotten (else any later visit to
+  // that node would force its pane open).
+  useEffect(() => {
+    if (!listOrigin || !browsingHref || browsingHref === listOrigin) return
+    if (loader.get(browsingHref)?.parentHref !== listOrigin) useCollectionListStore.getState().setOrigin(null)
+  }, [browsingHref, listOrigin])
   const lastBrowsedRef = useRef<string | null | undefined>(null)
   useEffect(() => {
-    if (itemsToShow) setPanelOpen(true)
-    else if (lastBrowsedRef.current !== itemsHref) setPanelOpen(false)
-    lastBrowsedRef.current = itemsHref
-  }, [itemsHref, itemsToShow, selectSeq, setPanelOpen])
+    if (paneToShow || (paneHref && paneHref === listOrigin)) setPanelOpen(true)
+    else if (lastBrowsedRef.current !== paneHref) setPanelOpen(false)
+    lastBrowsedRef.current = paneHref
+  }, [paneHref, paneToShow, listOrigin, selectSeq, setPanelOpen])
   const panelWidth = useItemSetStore((s) => s.panelWidth)
   const setPanelWidth = useItemSetStore((s) => s.setPanelWidth)
   // Which view of the open catalog the desktop shows. Remembered with the
@@ -162,19 +179,16 @@ function App() {
   // What the hash says beyond the selection: the API search, then the view
   // and the Items page (DESIGN §127). The phone has one view and no pages,
   // so it writes neither.
-  // An API root's search runs only with conditions; one run with none is
-  // not in the URL (no query), so its page would name nothing to re-run.
-  const browsedWaitsForConditions =
-    !!browsingNode && browsingNode.items.kind === 'cursor' && browsingNode.type !== 'Collection'
+  // …and only while the column shows those Items (not the Children tab).
+  const itemsInLink = itemSetIsBrowsed && paneMode === 'items'
   const sharedPage =
-    itemSetIsBrowsed &&
-    !narrow &&
-    itemSetPageIndex > 0 &&
-    itemSetPageSize > 0 &&
-    !(browsedWaitsForConditions && !queryStringForSelection)
+    itemsInLink && !narrow && itemSetPageIndex > 0 && itemSetPageSize > 0
       ? { page: itemSetPageIndex + 1, pageSize: itemSetPageSize }
       : undefined
-  const hashQuery = joinViewState(queryStringForSelection, { view: narrow ? undefined : view, ...sharedPage })
+  const hashQuery = joinViewState(itemsInLink ? queryStringForSelection : '', {
+    view: narrow ? undefined : view,
+    ...sharedPage,
+  })
   // Derived in render, not synced in an effect: a snap is remembered
   // together with the selection it was made for, and a "peek" made for a
   // previous selection reads as "half" once a new node is selected.
@@ -182,15 +196,16 @@ function App() {
   // Pane widths, clamped in render so the views keep MIN_CANVAS_WIDTH:
   // each pane gets what is left after the canvas, the splitters and the
   // other pane (at its minimum, if it is shown).
-  const itemsShown = !narrow && !!itemsNode && panelOpen
-  const inspectorShown = !narrow && !!selectedHref && !inspectorPrefs.hidden
+  const itemsShown = !narrow && !!paneNode && panelOpen
+  const inspectorHidden = inspectorHiddenFor === rootHref
+  const inspectorShown = !narrow && !!selectedHref && !inspectorHidden
   const room =
     containerWidth - MIN_CANVAS_WIDTH - (itemsShown ? SPLITTER_WIDTH : 0) - (inspectorShown ? SPLITTER_WIDTH : 0)
   const inspectorMax = Math.max(MIN_INSPECTOR_WIDTH, room - (itemsShown ? MIN_ITEMS_PANEL_WIDTH : 0))
   const inspectorWidth = Math.min(Math.max(inspectorPrefs.width, MIN_INSPECTOR_WIDTH), inspectorMax)
   const itemsMax = Math.max(MIN_ITEMS_PANEL_WIDTH, room - (inspectorShown ? inspectorWidth : 0))
   const itemsPanelWidth = Math.min(Math.max(panelWidth, MIN_ITEMS_PANEL_WIDTH), itemsMax)
-  const setInspectorHidden = (hidden: boolean) => setInspectorPrefs((p) => ({ ...p, hidden }))
+  const setInspectorHidden = (hidden: boolean) => setInspectorHiddenFor(hidden ? rootHref : null)
 
   // Selecting a new node reuses this same scrolled-down container for
   // completely different content — without this, a selection made while
@@ -243,6 +258,8 @@ function App() {
         setPendingInitialPage(t.page.forHref, t.page.pageIndex, t.page.pageSize)
       }
       setViewChoice({ view: t.view ?? 'tree', forRoot: t.rootHref })
+      // Another catalog (Back/Forward across catalogs too) starts fresh.
+      setInspectorHiddenFor((h) => (h === t.rootHref ? h : null))
       setRootHref(t.rootHref)
       // Browsing starts over: selecting an Item keeps the Collection being
       // browsed, which across catalogs would be the previous catalog's —
@@ -250,7 +267,16 @@ function App() {
       select(null)
       select(t.selectedHref)
     },
-    [select, setPendingInitialQuery, setPendingInitialPage, clearPendingLink, setNotice, setViewChoice, setRootHref],
+    [
+      select,
+      setPendingInitialQuery,
+      setPendingInitialPage,
+      clearPendingLink,
+      setNotice,
+      setViewChoice,
+      setRootHref,
+      setInspectorHiddenFor,
+    ],
   )
   useEffect(() => {
     // Synchronizing with an external system — the URL, resolved
@@ -298,7 +324,22 @@ function App() {
   // one's.
   useEffect(() => {
     itemSetSessions.clear()
+    useCollectionListStore.getState().clear()
+    // Back on the landing page: the next open — even of the same catalog —
+    // starts fresh, its view and panes as they should be for it.
+    if (!rootHref) {
+      // eslint-disable-next-line react/set-state-in-effect
+      setViewChoice({ view: 'tree', forRoot: null })
+      setInspectorHiddenFor(null)
+    }
   }, [rootHref])
+  // With nothing selected, the open catalog's root is what is browsed: its
+  // contents pane (an API root's Collections list) is there on open, and
+  // comes back when a selection is cleared (DESIGN §128).
+  const browse = useSelectionStore((s) => s.browse)
+  useEffect(() => {
+    if (rootHref && !browsingHref) browse(rootHref)
+  }, [rootHref, browsingHref, browse])
   // Descriptions are Markdown; fetch the parser as soon as a catalog is
   // open, not with the landing page.
   useEffect(() => {
@@ -377,8 +418,8 @@ function App() {
     rootTitle: rootNode?.title ?? rootNode?.id ?? rootHref,
     selected: selectedHref && selectedHref !== rootHref ? (selectedNode ?? null) : null,
     view: narrow ? 'outline' : view,
-    browsed: itemSetIsBrowsed && browsingHref ? (loader.get(browsingHref) ?? null) : null,
-    query: itemSetIsBrowsed ? itemSetAppliedQuery : undefined,
+    browsed: itemsInLink && browsingHref ? (loader.get(browsingHref) ?? null) : null,
+    query: itemsInLink ? itemSetAppliedQuery : undefined,
     page: sharedPage,
     narrow,
   })
@@ -393,6 +434,8 @@ function App() {
     // control larger than the divider it sat on.
     <StructureProvider key={rootHref} rootHref={rootHref}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+        {/* Tells App how many children the browsed node has (it sits outside the structure). */}
+        <ChildCountBridge />
         <header
           style={{
             padding: '10px 16px',
@@ -495,15 +538,15 @@ function App() {
             >
               <PaneToggle
                 id="items"
-                label="Items"
+                label={paneMode === 'collections' && paneNode ? 'Children' : 'Items'}
                 pressed={itemsShown}
-                disabled={!itemsNode}
+                disabled={!paneNode}
                 title={
-                  itemsNode
-                    ? `${itemsShown ? 'Hide' : 'Show'} the Items panel (${itemsToShow ? (itemsNode.title ?? itemsNode.id) : 'a search across every Collection'})`
-                    : 'Items panel — select a Collection that has Items'
+                  paneNode
+                    ? `${itemsShown ? 'Hide' : 'Show'} the ${paneMode === 'collections' ? 'children' : 'Items'} of ${paneNode.title ?? paneNode.id}`
+                    : 'Children or Items — browse a Catalog or a Collection'
                 }
-                icon={<ItemSetIcon color="currentColor" />}
+                icon={paneMode === 'collections' && paneNode ? <ChildrenIcon /> : <ItemSetIcon color="currentColor" />}
                 onToggle={() => setPanelOpen(!panelOpen)}
               />
               <PaneToggle
@@ -515,7 +558,7 @@ function App() {
                   selectedHref ? `${inspectorShown ? 'Hide' : 'Show'} the Inspector` : 'Inspector — select something'
                 }
                 icon={<InspectorIcon />}
-                onToggle={() => setInspectorHidden(!inspectorPrefs.hidden)}
+                onToggle={() => setInspectorHidden(!inspectorHidden)}
               />
             </span>
           )}
@@ -705,21 +748,28 @@ function App() {
               </div>
             )}
           </div>
-          {itemsShown && itemsNode && (
+          {itemsShown && paneNode && (
             <>
               <PaneSplitter
                 width={itemsPanelWidth}
                 min={MIN_ITEMS_PANEL_WIDTH}
                 max={itemsMax}
                 defaultWidth={DEFAULT_ITEMS_PANEL_WIDTH}
-                label="Resize the Items panel"
+                label={`Resize the ${paneMode === 'collections' ? 'Children list' : 'Items panel'}`}
                 returnFocusTo="items"
                 controls="stac-lens-items-pane"
                 onResize={setPanelWidth}
                 onHide={() => setPanelOpen(false)}
               />
               <div style={{ width: itemsPanelWidth, flexShrink: 0, minWidth: 0 }}>
-                <ItemsPanel node={itemsNode} />
+                <ContentsPane
+                  rootHref={rootHref}
+                  node={paneNode}
+                  mode={paneMode}
+                  hasItems={!!itemsNode}
+                  hasChildren={hasChildren}
+                  childCount={childInfo?.count}
+                />
               </div>
             </>
           )}

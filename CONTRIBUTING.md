@@ -27,7 +27,7 @@ Other scripts:
 npm run build            # tsc -b && vite build — the real type-check plus the production bundle
 npm run lint             # oxlint
 npm run format           # prettier --write (format:check is what CI runs)
-npm test                 # vitest — unit tests for the data layer (src/stac/__tests__)
+npm test                 # vitest — unit tests (src/**/__tests__: data layer, stores, pure view logic, catalog data)
 npm run test:e2e         # offline Playwright smoke suite against a running app (tests/smoke.mjs)
 npm run verify:fixtures  # headless data-layer checks against two reference catalogs
 npm run verify:catalogs  # live re-check of the landing-page catalog list (docs/CATALOGS.md); reports, never edits
@@ -56,7 +56,7 @@ This project has one hard rule about verification, learned the expensive way: **
 
    Read DOM state and computed styles rather than eyeballing where you can; take a screenshot where you can't. For behavior a public server won't trigger on demand (a POST pagination link, a `/children` endpoint), intercept with `page.route` and serve a recorded response.
    The desktop has three views over one structure state (Tree, Outline, Icicle) and the Items panel docked beside them: a change to the structure, the selection or the Item Set is checked in every view and in the panel (`tests/smoke.mjs` switches views, resizes and closes the panel).
-   The app has two layouts — desktop, and a phone layout below 720 px (`hooks/useMediaQuery.ts`: an outline instead of the tree, a bottom-sheet Inspector) — so a change to the landing page or the explorer is checked in both. Playwright's `devices['iPhone 13']` is the phone reference, and `tests/smoke.mjs` ends with three phone checks.
+   The app has two layouts — desktop, and a phone layout below 720 px (`hooks/useMediaQuery.ts`: an outline instead of the tree, a bottom-sheet Inspector) — so a change to the landing page or the explorer is checked in both. Playwright's `devices['iPhone 13']` is the phone reference, and `tests/smoke.mjs` has a phone section (landing, outline, bottom sheet, a Collection's Items, an API root browsed without a search).
 
 4. **Pin what you verified.** A fact about the data layer (a link rule, a parameter format, a server behavior you worked around) gets a Vitest case in `src/stac/__tests__/`; a user-visible path gets a check in `tests/smoke.mjs`, driven by recorded responses in `tests/fixtures/` so it runs offline. Record a fixture with `curl`, trim it, and keep it byte-for-byte otherwise — the point is that it is what a real server sent.
 5. **Facts about servers come from requests, not memory.** Before writing code against how an API behaves, `curl` it. Several of this project's design decisions exist because a server did not do what its documentation or the spec said (see `DESIGN.md`).
@@ -75,11 +75,11 @@ Catalogs that exercise specific paths:
 
 ## Principles that reviews check against
 
-These are stated in the README and made concrete in `docs/ARCHITECTURE.md` → *Invariants*. In short: never enumerate what the source doesn't; follow links as given; show the publisher's structure; gate UI on declared capability; search-first for APIs; a failure renders as a failure; selection shows exactly the selected object; no `stopPropagation` (use DOM containment checks); verified in a browser against real data.
+These are stated in the README and made concrete in `docs/ARCHITECTURE.md` → *Invariants*. In short: never enumerate what the source doesn't; follow links as given; show the publisher's structure; gate UI on declared capability; a Collection opens with one unconditioned page of Items, and an API root is never searched across every Collection; a failure renders as a failure; selection shows exactly the selected object; no `stopPropagation` (use DOM containment checks); verified in a browser against real data.
 
 ## Where to write things down
 
-- **A decision, a root cause, a reversal** → append a numbered section to `docs/DESIGN.md`. It is a log: never edit history, and the last section ("What's deliberately deferred") keeps its place at the end — re-run `grep -n "^## " docs/DESIGN.md` after inserting to confirm the numbering is contiguous.
+- **A decision, a root cause, a reversal** → append a numbered section to `docs/DESIGN.md`. It is a log: never edit history, and §96 ("What's deliberately deferred") stays where it is, mid-file, edited in place while new sections are appended at the end — re-run `grep -n "^## " docs/DESIGN.md` after inserting to confirm the numbering is contiguous.
 - **A new health check** → a row in `docs/HEALTH-RULES.md` first (source, tier, status), then the code.
 - **Moved or split code** → update `docs/ARCHITECTURE.md` in the same PR.
 - **User-visible behavior** → update the README if it describes the old behavior.

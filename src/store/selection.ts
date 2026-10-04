@@ -34,21 +34,32 @@ interface SelectionState {
    *  is clicked again after being closed, which `browsingHref` alone can
    *  never say. */
   selectSeq: number
-  select: (href: string | null) => void
+  /** `keepBrowsing`: select a Catalog/Collection without browsing it — a
+   *  row of the Collections list, which must stay on screen while one
+   *  Collection after another is looked at (DESIGN §128), as an Item
+   *  picked from a search's results keeps its Collection browsed. */
+  select: (href: string | null, opts?: { keepBrowsing?: boolean }) => void
+  /** Browse a node without selecting anything: an opened catalog's root,
+   *  so its contents (the Collections list of an API root's hundreds of
+   *  Collections) are there from the start while the Inspector waits for a
+   *  selection (DESIGN §128). Only when nothing is selected. */
+  browse: (href: string) => void
 }
 
 export const useSelectionStore = create<SelectionState>((set) => ({
+  browse: (href) => set((state) => (state.selectedHref ? state : { browsingHref: href })),
   selectedHref: null,
   browsingHref: null,
   selectSeq: 0,
-  select: (href) =>
+  select: (href, opts) =>
     set((state) => {
       if (!href) return { selectedHref: null, browsingHref: null, selectSeq: state.selectSeq + 1 }
       const node = loader.get(href)
       const isItem = node?.type === 'Item'
+      const keep = isItem || (opts?.keepBrowsing && state.browsingHref)
       return {
         selectedHref: href,
-        browsingHref: isItem ? (state.browsingHref ?? node?.parentHref ?? null) : href,
+        browsingHref: keep ? (state.browsingHref ?? node?.parentHref ?? null) : href,
         selectSeq: state.selectSeq + 1,
       }
     }),

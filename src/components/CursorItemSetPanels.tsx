@@ -21,6 +21,8 @@ import {
 import type { StacNode } from '../stac/types'
 import { declaredBboxes } from '../stac/spatial'
 import { resolveBody } from '../stac/body'
+import { ConditionChips, type ConditionChip } from './ConditionChips'
+import { describeBboxArea } from '../stac/describe'
 import { loader } from '../stac/loaderInstance'
 
 /** An API-backed Collection's Item Set: the Search section above the
@@ -78,6 +80,7 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
   // `draft.bbox` as a reference overlay (below), it just isn't itself
   // interactively drawable anymore.
   const [bboxModalOpen, setBboxModalOpen] = useState(false)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
 
   useResetShowOnLenses(node.href)
   const pageItems = state.status === 'empty' ? [] : state.pageItems
@@ -107,12 +110,48 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
   const appliedFilterActive = !isEmptyQuery(appliedQuery)
   const draftFilter = draftToFilter(draft)
   const draftDirty = JSON.stringify(draftFilter) !== JSON.stringify(appliedQuery)
-  // At an API root, before the first search, `draftFilter` and
-  // `appliedQuery` are both `{}` — identical — which would otherwise leave
+  // Before the first search of a node that waits for conditions (not a
+  // Collection), `draftFilter` and `appliedQuery` are both `{}` — identical
+  // — which would otherwise leave
   // Search permanently disabled. Any explicit click while `idle` goes
   // through, filters or not — that's what running a first search means. (A
   // Collection is never idle: its default search runs on open.)
   const searchDisabled = state.loadingMore || (state.status !== 'idle' && !draftDirty)
+
+  // The conditions the results answer (applied, not the draft), each
+  // removable: removing one runs the search again without it.
+  // Only that condition leaves the draft too; other edits not yet
+  // searched stay as they were.
+  const removeFromApplied = (patch: Partial<typeof appliedQuery>, draftPatch: Partial<QueryDraft>) => {
+    setDraft((d) => ({ ...d, ...draftPatch }))
+    applyQuery({ ...appliedQuery, ...patch })
+  }
+  const appliedChips: ConditionChip[] = []
+  if (appliedQuery.datetimeStart || appliedQuery.datetimeEnd) {
+    appliedChips.push({
+      key: 'date',
+      kind: 'Date',
+      value: `${appliedQuery.datetimeStart?.slice(0, 10) ?? '…'} – ${appliedQuery.datetimeEnd?.slice(0, 10) ?? '…'}`,
+      onRemove: () =>
+        removeFromApplied({ datetimeStart: undefined, datetimeEnd: undefined }, { dateStart: '', dateEnd: '' }),
+    })
+  }
+  if (appliedQuery.bbox) {
+    appliedChips.push({
+      key: 'area',
+      kind: 'Area',
+      value: describeBboxArea(appliedQuery.bbox),
+      onRemove: () => removeFromApplied({ bbox: undefined }, { bbox: undefined }),
+    })
+  }
+  if (appliedQuery.sortDirection) {
+    appliedChips.push({
+      key: 'sort',
+      kind: 'Sort',
+      value: appliedQuery.sortDirection === 'desc' ? 'newest first' : 'oldest first',
+      onRemove: () => removeFromApplied({ sortDirection: undefined }, { sortDirection: undefined }),
+    })
+  }
 
   function handleSearch() {
     applyQuery(draftToFilter(draft))
@@ -124,42 +163,48 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <button
-        type="button"
-        onClick={() => setSearchCollapsed((c) => !c)}
-        aria-expanded={!searchCollapsed}
-        aria-label={searchCollapsed ? 'Show the search conditions' : 'Hide the search conditions'}
-        title={searchCollapsed ? 'Show the search conditions' : 'Collapse the search conditions to one line'}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          width: '100%',
-          border: 'none',
-          background: 'none',
-          padding: '2px 0 6px',
-          font: 'inherit',
-          fontSize: 11,
-          color: 'var(--color-text-muted)',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <span aria-hidden="true" style={{ display: 'inline-block', width: 10 }}>
-          {searchCollapsed ? '▸' : '▾'}
+      {/* One line naming the section, saying where the search stands, and
+       * the way to edit or hide its conditions — a plain label and a
+       * command, not an uppercase heading with a disclosure triangle,
+       * which read the same as the Children list's filter while doing
+       * something else: this one runs a request when Search is pressed
+       * (DESIGN §128). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 6px', fontSize: 11.5 }}>
+        <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>Search</span>
+        <span
+          data-search-summary
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          {searchCollapsed ? describeDraft(draft, sortAvailable) : ''}
+          {draftDirty
+            ? `${searchCollapsed ? ' · ' : ''}edited, not searched`
+            : state.status === 'idle'
+              ? `${searchCollapsed ? ' · ' : ''}not searched yet`
+              : ''}
         </span>
-        <span style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', fontSize: 10 }}>Search</span>
-        {searchCollapsed && (
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {describeDraft(draft, sortAvailable)}
-            {state.status !== 'idle' && !draftDirty
-              ? ''
-              : draftDirty
-                ? ' · edited, not searched'
-                : ' · not searched yet'}
-          </span>
-        )}
-      </button>
+        <button
+          type="button"
+          ref={editButtonRef}
+          className="stac-lens-view-command"
+          onClick={() => setSearchCollapsed((c) => !c)}
+          aria-expanded={!searchCollapsed}
+          title={
+            searchCollapsed
+              ? 'Edit the search conditions'
+              : 'Hide the search conditions, to give the results the height'
+          }
+          style={{ height: 22, flexShrink: 0 }}
+        >
+          {searchCollapsed ? 'Edit' : 'Hide'}
+        </button>
+      </div>
       {!searchCollapsed && (
         <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', paddingBottom: 8 }}>
           <ItemSetSearchPanel
@@ -176,6 +221,13 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
           />
         </div>
       )}
+      <div style={{ paddingBottom: appliedChips.length ? 8 : 0 }}>
+        <ConditionChips
+          chips={appliedChips}
+          label="Applied search conditions"
+          fallbackFocus={() => editButtonRef.current?.focus()}
+        />
+      </div>
       {bboxModalOpen && (
         <BboxPickerModal
           initialBbox={draft.bbox}
@@ -195,7 +247,7 @@ export function CursorItemSetPanels({ node }: { node: StacNode & { items: { kind
           setView={setView}
           status={state.status}
           error={state.error}
-          idleMessage="A search across every Collection — set conditions above and click Search."
+          idleMessage="Set conditions above and click Search."
           pageItems={pageItems}
           dimmedItems={state.dimmedItems}
           pageIndex={state.pageIndex}

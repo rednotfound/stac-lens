@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveApiConformance, resolveSearchTarget, supportsSort } from '../conformance'
+import { resolveApiConformance, resolveSearchTarget, supportsCollectionFreeText, supportsSort } from '../conformance'
 import { buildNode } from '../graph'
 import { loader } from '../loaderInstance'
 import type { StacNode } from '../types'
@@ -63,10 +63,14 @@ describe('resolveSearchTarget', () => {
     const col = collectionUnder(undefined, 'c-items')
     expect(await resolveSearchTarget(col)).toEqual({ endpoint: `${ROOT}collections/c-items/items` })
   })
+})
 
-  it('searches an API root through its own endpoint, unscoped', async () => {
-    const root = apiRoot(['https://api.stacspec.org/v1.0.0/item-search']) as StacNode & { items: { kind: 'cursor' } }
-    expect(root.items.kind).toBe('cursor')
-    expect(await resolveSearchTarget(root)).toEqual({ endpoint: `${ROOT}search` })
+describe('supportsCollectionFreeText', () => {
+  it('matches the free-text class whatever version a server built against, and nothing else', () => {
+    expect(supportsCollectionFreeText(['https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text'])).toBe(true)
+    expect(supportsCollectionFreeText(['https://api.stacspec.org/v1.0.0/collection-search#free-text'])).toBe(true)
+    expect(supportsCollectionFreeText(['https://api.stacspec.org/v1.0.0/collection-search'])).toBe(false)
+    expect(supportsCollectionFreeText(['https://example.org/v1.0.0/collection-search#free-text'])).toBe(false)
+    expect(supportsCollectionFreeText(undefined)).toBe(false)
   })
 })

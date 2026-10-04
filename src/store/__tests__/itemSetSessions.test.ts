@@ -34,6 +34,15 @@ describe('itemSetSessions', () => {
     expect(itemSetSessions.getCursor('a')).toBeUndefined()
   })
 
+  it('clear also forgets the page sizes carried between Collections: a new catalog starts at the defaults', () => {
+    itemSetSessions.setCursor('a', { pageSize: 100 })
+    itemSetSessions.setLinks('b', { pageSize: 200 })
+    itemSetSessions.clear()
+    itemSetSessions.setCursor('c', {})
+    expect(itemSetSessions.getCursor('c')?.pageSize).toBe(40)
+    expect(itemSetSessions.preferredLinksPageSize).toBeUndefined()
+  })
+
   it('reports the page a Collection last showed, or nothing before it was browsed', () => {
     const item = (id: string) => ({ href: id, id }) as unknown as StacNode
     const cursorNode = { href: 'c', items: { kind: 'cursor', endpoint: 'x' } } as unknown as StacNode
