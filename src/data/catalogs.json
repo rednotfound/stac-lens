@@ -316,7 +316,11 @@
     "regions": ["global"],
     "publisher": "commercial",
     "addedOn": "2026-09-10",
-    "verifiedOn": "2026-09-17"
+    "verifiedOn": "2026-09-17",
+    "issue": {
+      "since": "2026-10-04",
+      "note": "The URL now answers 404: the sample bucket's website configuration is gone."
+    }
   },
   {
     "title": "GHSL Population Grids (GHS-POP R2023A)",
@@ -589,7 +593,11 @@
     "topics": ["eo-imagery"],
     "regions": ["europe"],
     "publisher": "research",
-    "addedOn": "2026-09-10"
+    "addedOn": "2026-09-10",
+    "issue": {
+      "since": "2026-09-17",
+      "note": "The server sends its CORS header twice (\"*, *\"), which browsers reject as invalid."
+    }
   },
   {
     "title": "TriMet Geospatial Data",
@@ -1115,7 +1123,11 @@
     "topics": ["eo-imagery"],
     "regions": ["global"],
     "publisher": "government",
-    "addedOn": "2026-09-11"
+    "addedOn": "2026-09-11",
+    "issue": {
+      "since": "2026-09-17",
+      "note": "The server's CORS header names its own origin whatever page asks, so a browser refuses the response (it passed on 2026-09-11)."
+    }
   },
   {
     "title": "WorldPop STAC API",

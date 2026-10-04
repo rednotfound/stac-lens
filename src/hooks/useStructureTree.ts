@@ -42,6 +42,8 @@ interface NodeUiState {
  *  instance per open catalog, shared by every view through
  *  `StructureProvider`, so switching views keeps the same expansion. */
 export interface StructureTreeState {
+  /** The catalog this structure is of — what a failure names. */
+  rootHref: string
   root: TreeDatum | undefined
   toggle: (href: string) => void
   open: (href: string) => void
@@ -341,5 +343,5 @@ export function useStructureTree(rootHref: string): StructureTreeState {
   const isExpanded = (href: string) => uiState.get(href)?.expanded ?? false
   const rootError = !rootDatum ? uiState.get(rootHref)?.error : undefined
 
-  return { root: rootDatum, toggle, open, collapseAll, expandAllCatalogs, isLoading, isExpanded, rootError }
+  return { rootHref, root: rootDatum, toggle, open, collapseAll, expandAllCatalogs, isLoading, isExpanded, rootError }
 }

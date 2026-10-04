@@ -50,6 +50,8 @@ export interface CatalogRecord {
   publisher: keyof typeof PUBLISHERS
   addedOn: string
   verifiedOn?: string
+  /** A failure a re-check found on an entry kept on purpose (CATALOGS.md). */
+  issue?: { since: string; note: string }
 }
 
 export function escapeHtml(s: string): string {
@@ -187,11 +189,12 @@ export function renderCatalogsMarkdown(
 ): string {
   const sorted = [...catalogs].sort((a, b) => a.title.localeCompare(b.title, 'en'))
   const apis = sorted.filter((c) => c.kind === 'api').length
+  const failing = sorted.filter((c) => c.issue).length
   const lines: string[] = []
   lines.push(`# Public STAC catalogs and APIs`)
   lines.push('')
   lines.push(
-    `${sorted.length} public STAC catalogs and STAC APIs — ${apis} APIs with Item Search and ${sorted.length - apis} static catalogs — that open in STAC Lens from its landing page. Every entry is a real, live, cross-origin-readable STAC root, checked by a script against the server itself (reachable, CORS, \`stac_version\`, declared kind, something to show within three link hops) and re-checked every week; the last full pass was ${lastVerified}. This is the list of catalogs the maintainers verified, not a directory of all STAC in the world — [STAC Index](https://stacindex.org/) is that, and most entries here were taken from it. Criteria, tags and the removal log: [docs/CATALOGS.md](CATALOGS.md).`,
+    `${sorted.length} public STAC catalogs and STAC APIs — ${apis} APIs with Item Search and ${sorted.length - apis} static catalogs — that open in STAC Lens from its landing page. Every entry is a real, live, cross-origin-readable STAC root${failing ? ` — except ${failing} that currently fail and are kept, each marked "not reachable since" below with the reason —` : ''}, checked by a script against the server itself (reachable, CORS, \`stac_version\`, declared kind, something to show within three link hops) and re-checked every week; the last full pass was ${lastVerified}. This is the list of catalogs the maintainers verified, not a directory of all STAC in the world — [STAC Index](https://stacindex.org/) is that, and most entries here were taken from it. Criteria, tags and the removal log: [docs/CATALOGS.md](CATALOGS.md).`,
   )
   lines.push('')
   lines.push(
@@ -210,7 +213,11 @@ export function renderCatalogsMarkdown(
       labelList([c.publisher], PUBLISHERS),
       c.regions.length ? labelList(c.regions, REGIONS) : undefined,
       labelList(c.topics, TOPICS),
-      c.verifiedOn ? `verified ${c.verifiedOn}` : undefined,
+      c.issue
+        ? `**not reachable since ${c.issue.since}**: ${c.issue.note}`
+        : c.verifiedOn
+          ? `verified ${c.verifiedOn}`
+          : undefined,
     ].filter(Boolean)
     lines.push(`- ${meta.join(' · ')}`)
     lines.push(`- Root: <${c.href}>`)
@@ -289,7 +296,7 @@ export function renderLlmsTxt(pages: readonly PageSpec[], config: SiteConfig): s
     )
   if (catalogs)
     lines.push(
-      `- [Public STAC catalogs](${md(catalogs)}): the verified list of public STAC catalogs and APIs on the landing page, with tags`,
+      `- [Public STAC catalogs](${md(catalogs)}): the verified list of public STAC catalogs and APIs on the landing page, with tags (entries that currently fail are marked)`,
     )
   if (deploy) lines.push(`- [Deploying](${md(deploy)}): self-hosting on any static host, Docker, sub-paths`)
   lines.push('', '## Source', '')
