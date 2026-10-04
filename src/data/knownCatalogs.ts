@@ -29,6 +29,22 @@ export interface KnownCatalog {
   /** Last date `verify:catalogs --stamp` found the entry passing every
    *  check. Absent until the first stamped run after the entry was added. */
   verifiedOn?: string
+  /** A failure found by a re-check and kept in the list on purpose (the
+   *  owner decides removals — docs/CATALOGS.md): since when, and what is
+   *  wrong, in words. Shown on its landing card and, if it fails to open,
+   *  in place of the generic reasons. Remove it once the entry passes. */
+  issue?: { since: string; note: string }
 }
 
 export const KNOWN_CATALOGS: readonly KnownCatalog[] = catalogs as KnownCatalog[]
+
+/** A known catalog's recorded issue, by href (a trailing slash ignored),
+ *  for the page that failed to open it. */
+export function knownIssueFor(
+  href: string | undefined,
+  list: readonly KnownCatalog[] = KNOWN_CATALOGS,
+): KnownCatalog['issue'] {
+  if (!href) return undefined
+  const key = href.replace(/\/$/, '')
+  return list.find((c) => c.href.replace(/\/$/, '') === key)?.issue
+}

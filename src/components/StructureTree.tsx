@@ -17,6 +17,7 @@ import { TreeNodeView } from './tree/TreeNodeView'
 import { useCollectionHighlight } from './collections/useCollectionHighlight'
 import { DIMMED_OPACITY } from './collections/dimming'
 import { usePaneState } from './collections/usePaneMode'
+import { RootLoadError } from './views/StructureFallback'
 import { BLOCK_PAN_ATTR, LEVEL_WIDTH, linkGenerator, ROW_HEIGHT, type TooltipState } from './tree/treeGeometry'
 
 const resetLayoutButtonStyle: React.CSSProperties = {
@@ -38,7 +39,7 @@ const resetLayoutButtonStyle: React.CSSProperties = {
  *  the layer boxes are portaled into. A node itself is `TreeNodeView`; a
  *  Items are in the contents pane (`ContentsPane`), and their page shows here as leaves. */
 export function StructureTree() {
-  const { root, toggle, isLoading, rootError } = useStructure()
+  const { rootHref, root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select_ = useSelectionStore((s) => s.select)
@@ -272,20 +273,7 @@ export function StructureTree() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHref, nodes, browsingHref])
 
-  if (rootError) {
-    return (
-      <div style={{ padding: 24, maxWidth: 480 }}>
-        <div style={{ color: 'var(--color-node-warning)', fontWeight: 600, marginBottom: 8 }}>
-          Failed to load this catalog
-        </div>
-        <div style={{ color: 'var(--color-text-muted)', fontSize: 13, marginBottom: 8 }}>{rootError}</div>
-        <div style={{ color: 'var(--color-text-faint)', fontSize: 12 }}>
-          This can happen if the URL doesn't point to valid STAC JSON, the server doesn't allow cross-origin browser
-          requests (CORS), or the catalog is temporarily unreachable.
-        </div>
-      </div>
-    )
-  }
+  if (rootError) return <RootLoadError rootHref={rootHref} error={rootError} />
 
   const layoutCustomized = dragOffsets.size > 0 || leafGroupOffsets.size > 0
 

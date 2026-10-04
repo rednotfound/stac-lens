@@ -8959,3 +8959,52 @@ Live re-checks: collapsing the listed root fires no request and the list
 says it is closed; picking the last row of Planetary Computer's 138 pans
 the tree to it.
 
+## 129. Known failing catalogs: kept, and said so
+
+**What was asked.** The full review's catalog re-check found three entries
+failing: USGS Landsat Collection 2 API and UK NCEO ARD (CORS, flagged
+"kept" on 2026-09-17, still failing) and Maxar ARD Sample Data (newly
+404). Asked whether to remove them, the owner: "可以先不移除，只要有反馈就
+行" — keep them, as long as there is feedback.
+
+**What there was.** Opening one showed "Failed to load this catalog",
+"Failed to fetch", and the generic suspects ("not STAC JSON, CORS, or
+temporarily unreachable") — in three copies, worded differently, in the
+tree, the outline and the icicle — although the actual reason was already
+written in CATALOGS.md's log.
+
+**Decision (asked).** Say it on the card *and* on the failure page.
+- `catalogs.json` entries take an optional `issue: { since, note }`
+  (CATALOGS.md documents it; a data test checks the date is ISO and not
+  before `addedOn`, and the note is words).
+- The landing card shows "⚠ Not reachable since <date>: <note>" under its
+  description.
+- One `RootLoadError` (`views/StructureFallback.tsx`) replaces the three
+  copies; for a known entry (`knownIssueFor`, trailing slash ignored) it
+  shows "Probably the known issue (since <date>): <note> It stays in the catalog list in
+  case it comes back." instead of the generic reasons. The structure state
+  now carries its `rootHref` for it.
+- `verify:catalogs` prints `[known issue since …]` for a still-failing
+  entry and asks for the field's removal once it passes.
+- CATALOGS.md: a "flagged, kept" row for Maxar; the rule that a kept
+  failing entry gets an `issue`.
+
+**Checks.** Live (light, dark, iPhone 13): the Maxar card's line, and its
+failure page with the recorded reason. Vitest 186 (issue field integrity,
+`knownIssueFor`). Smoke 88: whichever entry has an issue shows it on its
+card, and its failure page gives the recorded reason. The verifier marks
+all three as known.
+
+**Review before committing.** Fixed: the data test no longer needs some
+entry to be failing (it runs `knownIssueFor` on a fixed list), and a new
+one says no entry is verified after its issue began; the smoke check skips
+rather than aborting the run when no entry has an issue; the published
+`/catalogs/` page and llms.txt no longer claim every entry is live — the
+intro names the exceptions and each failing entry's line says "not
+reachable since …: note" instead of "verified"; the weekly report (the
+job summary people read) carries the known-issue notes and lists entries
+passing again with an issue still recorded, and `--stamp` clears such an
+issue; the failure page says "Probably the known issue" (the visitor may
+simply be offline); CATALOGS.md says the owner decides when "several
+weeks" is reached.
+

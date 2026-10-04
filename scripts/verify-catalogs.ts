@@ -47,6 +47,8 @@ interface Entry {
   publisher: string
   addedOn: string
   verifiedOn?: string
+  /** A recorded failure kept in the list (docs/CATALOGS.md). */
+  issue?: { since: string; note: string }
 }
 
 type Level = 'ok' | 'warn' | 'fail'
@@ -232,11 +234,24 @@ async function runAll(): Promise<Result[]> {
       const i = next++
       results[i] = await verify(selected[i])
       const r = results[i]
-      console.log(`${r.level.padEnd(4)} ${r.entry.title}  —  ${r.notes.join('; ')}`)
+      // A recorded issue: still failing says since when; passing again says
+      // the `issue` field can go.
+      const note = issueNote(r)
+      console.log(`${r.level.padEnd(4)} ${r.entry.title}  —  ${r.notes.join('; ')}${note ? `  [${note}]` : ''}`)
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   return results
+}
+
+/** A recorded issue: still failing says since when; passing again says
+ *  the `issue` field can go (`--stamp` removes it). */
+function issueNote(r: Result): string {
+  const issue = r.entry.issue
+  if (!issue) return ''
+  return r.level === 'ok'
+    ? `recorded issue since ${issue.since} — passing again: remove its "issue"`
+    : `known issue since ${issue.since}`
 }
 
 const started = Date.now()
@@ -247,9 +262,14 @@ const summary = `${results.length} entries — ${count('ok')} ok, ${count('warn'
 console.log(`\n${summary}`)
 
 if (reportPath) {
+  // Failures, and entries passing again with an `issue` still recorded —
+  // the report is what people read, so both must be in it.
   const rows = results
-    .filter((r) => r.level !== 'ok')
-    .map((r) => `| ${r.level} | ${r.entry.title} | \`${r.entry.href}\` | ${r.notes.join('; ')} |`)
+    .filter((r) => r.level !== 'ok' || r.entry.issue)
+    .map((r) => {
+      const note = issueNote(r)
+      return `| ${r.level} | ${r.entry.title} | \`${r.entry.href}\` | ${r.notes.join('; ')}${note ? ` — ${note}` : ''} |`
+    })
   const md = [
     `## Known-catalog verification — ${today}`,
     '',
@@ -268,7 +288,15 @@ if (reportPath) {
 
 if (stamp) {
   const passed = new Set(results.filter((r) => r.level === 'ok').map((r) => r.entry.href))
-  for (const e of entries) if (passed.has(e.href)) e.verifiedOn = today
+  for (const e of entries) {
+    if (!passed.has(e.href)) continue
+    e.verifiedOn = today
+    // Passing again: the recorded failure no longer holds.
+    if (e.issue) {
+      console.log(`cleared the recorded issue of ${e.title} (since ${e.issue.since})`)
+      delete e.issue
+    }
+  }
   writeFileSync(DATA_PATH, JSON.stringify(entries, null, 2) + '\n')
   console.log(`stamped verifiedOn=${today} on ${passed.size} entries`)
 }

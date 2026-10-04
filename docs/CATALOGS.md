@@ -37,6 +37,7 @@ is that, and most entries here were taken from it.
 | `publisher` | Exactly one value: what kind of organization is behind the catalog. |
 | `addedOn` | Date of the first commit that listed this href. |
 | `verifiedOn` | Last date the verifier found the entry passing every check. |
+| `issue` | Optional: `{ "since", "note" }` for a failure a re-check found on an entry that is **kept** (a "flagged, kept" row in the log). The landing card says "Not reachable since …" with the note, and opening it gives the note instead of the generic reasons. The verifier prints `[known issue since …]` while it still fails — in the console and in the weekly report — lists an entry passing again with its issue still recorded, and `--stamp` removes the field from entries that pass. |
 
 ## Inclusion criteria
 
@@ -156,6 +157,11 @@ an Item was found within the walk's budget). `fail` means a visitor clicking it 
 error (unreachable, no CORS, not STAC, or an API whose `/collections` is
 down).
 
+A failing entry the owner keeps gets an `issue` field (above) and a
+"flagged, kept" row in the log, so a visitor is told before and after the
+click. When it has failed for several weeks, the rule below applies —
+and the owner decides whether it goes.
+
 ## Removing an entry
 
 Remove the record and add a row to the log below with the date, the
@@ -181,3 +187,4 @@ reproducible observation, or it does not happen.
 | 2026-09-10 | ~11 STAC Index static entries | not added | Out of ~73 checked, 62 passed. Excluded: missing CORS, dead or redirecting links, not actually STAC, and one that passed but is served over plain `http://`. |
 | 2026-09-17 | USGS Landsat Collection 2 API, `https://landsatlook.usgs.gov/stac-server/` | flagged, kept | Fails CORS: `Access-Control-Allow-Origin` echoes the server's own origin (`https://landsatlook.usgs.gov/stac-server`) whatever origin asks. Confirmed in Chromium: "blocked by CORS policy". Passed the same check when added on 2026-09-11, so the server changed. Left in the list pending the weekly re-checks. |
 | 2026-09-17 | UK NCEO Analysis Ready Data (ARD), `https://gws-access.jasmin.ac.uk/public/nceo_ard/NCEO_ARD_STAC/catalog.json` | flagged, kept | Fails CORS: the header is sent twice (`*, *`), which browsers reject as multiple values. Confirmed in Chromium. `curl` shows a single `*`, so the duplication is request-dependent (likely a proxy layer). Left in the list pending the weekly re-checks. |
+| 2026-10-04 | Maxar ARD Sample Data, `https://ard.maxar.com/samples/catalog.json` | flagged, kept | The URL answers `404 NoSuchWebsiteConfiguration — The specified bucket does not have a website configuration` (`curl -s -w '%{http_code}' https://ard.maxar.com/samples/catalog.json`); it passed on 2026-09-17. Kept by the owner's decision with an `issue` field; USGS Landsat Collection 2 and UK NCEO ARD (rows above, still failing the same way) got one too. |

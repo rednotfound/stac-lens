@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KNOWN_CATALOGS } from '../knownCatalogs'
+import { knownIssueFor, KNOWN_CATALOGS } from '../knownCatalogs'
 import { KINDS, PUBLISHERS, REGIONS, TOPICS } from '../catalogTags'
 
 // Offline integrity of the known-catalog list (docs/CATALOGS.md). The live
@@ -31,6 +31,40 @@ describe('src/data/catalogs.json', () => {
       for (const t of cat.topics) expect(Object.keys(TOPICS), `${cat.title}: topic ${t}`).toContain(t)
       for (const r of cat.regions) expect(Object.keys(REGIONS), `${cat.title}: region ${r}`).toContain(r)
       expect(Object.keys(PUBLISHERS), `${cat.title}: publisher`).toContain(cat.publisher)
+    }
+  })
+
+  it('a recorded issue has an ISO since-date no earlier than addedOn, and a note in words', () => {
+    const iso = /^\d{4}-\d{2}-\d{2}$/
+    for (const cat of KNOWN_CATALOGS) {
+      if (!cat.issue) continue
+      expect(cat.issue.since, cat.title).toMatch(iso)
+      expect(cat.issue.since >= cat.addedOn, `${cat.title}: issue before addedOn`).toBe(true)
+      expect(cat.issue.note.trim().length, `${cat.title}: issue note`).toBeGreaterThan(10)
+    }
+  })
+
+  it('knownIssueFor finds an entry by href, a trailing slash ignored', () => {
+    // A fixed list, so the test does not depend on some entry failing today.
+    const issue = { since: '2026-10-04', note: 'The URL answers 404.' }
+    const list = [
+      { ...KNOWN_CATALOGS[0], href: 'https://a.example/stac/', issue },
+      { ...KNOWN_CATALOGS[0], href: 'https://b.example/catalog.json', issue: undefined },
+    ]
+    expect(knownIssueFor('https://a.example/stac/', list)).toEqual(issue)
+    expect(knownIssueFor('https://a.example/stac', list)).toEqual(issue)
+    expect(knownIssueFor('https://b.example/catalog.json', list)).toBeUndefined()
+    expect(knownIssueFor('https://nowhere.example/catalog.json', list)).toBeUndefined()
+    expect(knownIssueFor(undefined, list)).toBeUndefined()
+  })
+
+  it('no entry is verified after its recorded issue began (a passing entry drops its issue)', () => {
+    for (const cat of KNOWN_CATALOGS) {
+      if (!cat.issue || !cat.verifiedOn) continue
+      expect(
+        cat.verifiedOn <= cat.issue.since,
+        `${cat.title}: verified ${cat.verifiedOn}, issue since ${cat.issue.since}`,
+      ).toBe(true)
     }
   })
 

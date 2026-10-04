@@ -803,6 +803,21 @@ function CatalogCard({
       >
         {known ? row.description : 'Not in the known-catalog list — opened by URL.'}
       </div>
+      {/* A failure a re-check found, kept in the list on purpose: said before
+       * the click, not only after it (DESIGN §129). */}
+      {known && row.issue && (
+        <div
+          data-card-issue
+          title={row.issue.note}
+          style={{ display: 'flex', gap: 5, fontSize: 11.5, lineHeight: 1.4, color: 'var(--color-node-warning)' }}
+        >
+          <span aria-hidden>⚠</span>
+          <span>
+            Not reachable since {row.issue.since}:{' '}
+            <span style={{ color: 'var(--color-text-muted)' }}>{row.issue.note}</span>
+          </span>
+        </div>
+      )}
       {/* Tags first, host last, in one wrapping flow: giving the host its
        * own right-aligned column squeezed the tags into three lines. */}
       <div

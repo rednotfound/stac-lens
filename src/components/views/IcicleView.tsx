@@ -52,7 +52,7 @@ type Rect = HierarchyRectangularNode<TreeDatum>
  *  opens it (the same lazy expansion as the tree); clicking anything
  *  selects it, so the Inspector follows. */
 export function IcicleView() {
-  const { root, toggle, isLoading, isExpanded, rootError } = useStructure()
+  const { rootHref, root, toggle, isLoading, isExpanded, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
@@ -83,7 +83,7 @@ export function IcicleView() {
     return h as Rect
   }, [root])
 
-  if (!root || !layout) return <StructureFallback rootError={rootError} />
+  if (!root || !layout) return <StructureFallback rootHref={rootHref} rootError={rootError} />
 
   const all = layout.descendants()
   const focus = all.find((n) => n.data.href === focusHref) ?? layout

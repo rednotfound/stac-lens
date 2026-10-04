@@ -15,6 +15,7 @@ import { TypeIcon } from './TypeIcon'
 import { NodeTooltip } from './tree/NodeTooltip'
 import { useCollectionHighlight, type CollectionHighlight } from './collections/useCollectionHighlight'
 import { DIMMED_OPACITY } from './collections/dimming'
+import { RootLoadError } from './views/StructureFallback'
 import { hasDirectItems, hoverInfoFor, type HoverInfo, type TooltipState } from './tree/treeGeometry'
 
 /** The phone's Structure view: the same Catalog → Collection graph as the
@@ -37,7 +38,7 @@ import { hasDirectItems, hoverInfoFor, type HoverInfo, type TooltipState } from 
 type HoverHandler = (info: HoverInfo | null, clientX: number, clientY: number) => void
 
 export function OutlineView() {
-  const { root, toggle, isLoading, rootError } = useStructure()
+  const { rootHref, root, toggle, isLoading, rootError } = useStructure()
   const selectedHref = useSelectionStore((s) => s.selectedHref)
   const browsingHref = useSelectionStore((s) => s.browsingHref)
   const select = useSelectionStore((s) => s.select)
@@ -51,16 +52,8 @@ export function OutlineView() {
     ? () => {}
     : (info, clientX, clientY) => setTooltip(info ? { ...info, x: clientX, y: clientY } : null)
 
-  if (rootError) {
-    return (
-      <div style={{ padding: 20 }}>
-        <div style={{ color: 'var(--color-node-warning)', fontWeight: 600, marginBottom: 8 }}>
-          Failed to load this catalog
-        </div>
-        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{rootError}</div>
-      </div>
-    )
-  }
+  if (rootError) return <RootLoadError rootHref={rootHref} error={rootError} />
+
   if (!root) {
     return (
       <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--color-text-muted)' }}>

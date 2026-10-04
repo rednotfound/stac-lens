@@ -379,6 +379,39 @@ check(
   'landing footer names the version and license',
   /STAC Lens v\d+\.\d+\.\d+[\s·]+Apache-2\.0 license/.test(await text()),
 )
+{
+  // A catalog a re-check found failing, kept in the list on purpose, says
+  // so on its card and, opened, gives its recorded reason instead of the
+  // generic ones (DESIGN §129). Generic over whichever entry has an issue.
+  const issueCard = page.locator('[role="button"]', { has: page.locator('[data-card-issue]') }).first()
+  if ((await issueCard.count()) === 0) {
+    console.log('skip   known-issue card — no entry records an issue today')
+  } else {
+    const issueText = (
+      (await issueCard
+        .locator('[data-card-issue]')
+        .textContent()
+        .catch(() => '')) ?? ''
+    ).trim()
+    await issueCard.click({ timeout: 5000 }).catch(() => {})
+    await page
+      .locator('[data-root-load-error]')
+      .waitFor({ timeout: 15000 })
+      .catch(() => {})
+    const pageIssue = (
+      (await page
+        .locator('[data-known-issue]')
+        .textContent()
+        .catch(() => '')) ?? ''
+    ).trim()
+    check(
+      'a known failing catalog says so on its card, and its failure page gives the recorded reason',
+      /Not reachable since \d{4}-\d{2}-\d{2}/.test(issueText) &&
+        /^Probably the known issue \(since \d{4}-\d{2}-\d{2}\)/.test(pageIssue),
+      `${issueText} | ${pageIssue}`,
+    )
+  }
+}
 
 // 2. API root: children discovered through /collections
 await page.goto(`${BASE_URL}/#${PC}/`)
