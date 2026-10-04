@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
-import { joinHashFragment, splitHashFragment, decodeSearchQuery } from '../stac/searchQueryUrl'
+import {
+  joinHashFragment,
+  splitHashFragment,
+  decodeSearchQuery,
+  splitViewState,
+  type ViewState,
+} from '../stac/searchQueryUrl'
 import type { SearchFilter } from '../stac/apiSearch'
 import type { ResolvedRoot } from '../stac/loader'
 import type { StacNode } from '../stac/types'
@@ -16,6 +22,11 @@ export interface DeepLinkTarget {
    *  already uses, so a query restored this way lands on the same box a
    *  freshly-applied one would. */
   appliedQuery?: { forHref: string; query: SearchFilter }
+  /** The explorer view the link names (the tree when absent). */
+  view?: ViewState['view']
+  /** The Items page the link names, 0-based, with the page size it was
+   *  counted in — for the same Collection `appliedQuery` is scoped to. */
+  page?: { forHref: string; pageIndex: number; pageSize: number }
   /** The catalog the linked node belongs to could not be reached through
    *  its `root`/`parent` links: it opened as far up as they went (perhaps
    *  on its own), and this says which link failed. */
@@ -56,16 +67,25 @@ async function resolveHashTarget(hash: string): Promise<DeepLinkTarget> {
   const { href, queryString } = splitHashFragment(hash)
   const node = await loader.load(href)
   const { rootHref, unreachable } = await loader.resolveRoot(node)
-  const appliedQuery = queryString
-    ? { forHref: queryOwnerHref(node), query: decodeSearchQuery(queryString) }
-    : undefined
+  // STAC Lens's own keys (view, page) come off first: only what remains is
+  // an API search, so a link with just `view=icicle` applies none.
+  const { search, state } = splitViewState(queryString ?? '')
+  const owner = queryOwnerHref(node)
+  const appliedQuery = search ? { forHref: owner, query: decodeSearchQuery(search) } : undefined
+  const page =
+    state.page && state.pageSize ? { forHref: owner, pageIndex: state.page - 1, pageSize: state.pageSize } : undefined
   // A node that opened on its own because its catalog was unreachable is
-  // still what the link named: select it, so the Inspector shows it.
+  // still what the link named: select it, so the Inspector shows it. So is
+  // a root whose own Items the link pages or searches: only a selected
+  // node is browsed, and only a browsed node's Items panel mounts its pager.
   const openedOnItsOwn = rootHref === node.href && !!unreachable
+  const carriesItems = !!appliedQuery || !!page
   return {
     rootHref,
-    selectedHref: node.href === rootHref && !openedOnItsOwn ? null : node.href,
+    selectedHref: node.href === rootHref && !openedOnItsOwn && !carriesItems ? null : node.href,
     appliedQuery,
+    view: state.view,
+    page,
     unreachable: unreachable && { ...unreachable, openedOnItsOwn },
   }
 }
@@ -126,37 +146,29 @@ export function useDeepLinkBootstrap(): BootstrapState {
  *  back to it) degrades to the landing page rather than a silent failure
  *  — the same safe fallback an invalid hash already gets on a fresh load. */
 export function usePopStateSync(
-  setRootHref: (href: string | null) => void,
-  select: (href: string | null) => void,
-  setPendingQuery: (forHref: string, query: SearchFilter) => void,
-  setUnreachable: (target: DeepLinkTarget | null) => void,
+  /** Opens what a resolved hash names — the same function the first load
+   *  uses (`App`), so the two paths cannot drift apart; `null` means the
+   *  landing page. */
+  applyTarget: (target: DeepLinkTarget | null) => void,
 ): void {
   useEffect(() => {
     function handlePopState() {
       const hash = readHashHref()
       if (!hash) {
-        setUnreachable(null)
-        setRootHref(null)
-        select(null)
+        applyTarget(null)
         return
       }
       void (async () => {
         try {
-          const target = await resolveHashTarget(hash)
-          if (target.appliedQuery) setPendingQuery(target.appliedQuery.forHref, target.appliedQuery.query)
-          setUnreachable(target)
-          setRootHref(target.rootHref)
-          select(target.selectedHref)
+          applyTarget(await resolveHashTarget(hash))
         } catch {
-          setUnreachable(null)
-          setRootHref(null)
-          select(null)
+          applyTarget(null)
         }
       })()
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [setRootHref, select, setPendingQuery, setUnreachable])
+  }, [applyTarget])
 }
 
 /** Keeps the address bar in sync with whatever's currently open, so copying

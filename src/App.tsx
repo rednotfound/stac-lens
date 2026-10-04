@@ -27,10 +27,14 @@ import {
   useShareableUrlSync,
   type DeepLinkTarget,
 } from './hooks/useShareableUrl'
-import { encodeSearchQuery } from './stac/searchQueryUrl'
+import { encodeSearchQuery, joinHashFragment, joinViewState } from './stac/searchQueryUrl'
+import { SharePanel } from './components/SharePanel'
+import { RESULTS_PAGE_SIZE_OPTIONS } from './components/ItemSetResultsPanel'
+import { describeShare } from './components/shareFacts'
 import { Spinner } from './components/Spinner'
 import { Logo } from './components/Logo'
 import { GitHubMark, REPO_URL } from './components/ProjectLinks'
+import { FavoriteStar } from './components/FavoriteStar'
 import { loader } from './stac/loaderInstance'
 import { loadMarkdown } from './stac/markdownLoader'
 import type { StacNode } from './stac/types'
@@ -80,8 +84,12 @@ function App() {
   const itemSetForHref = useItemSetStore((s) => s.forHref)
   const itemSetAppliedQuery = useItemSetStore((s) => s.appliedQuery)
   const setPendingInitialQuery = useItemSetStore((s) => s.setPendingInitialQuery)
-  const queryStringForSelection =
-    itemSetForHref && itemSetForHref === browsingHref ? encodeSearchQuery(itemSetAppliedQuery ?? {}) : ''
+  const setPendingInitialPage = useItemSetStore((s) => s.setPendingInitialPage)
+  const clearPendingLink = useItemSetStore((s) => s.clearPendingLink)
+  const itemSetPageIndex = useItemSetStore((s) => s.pageIndex)
+  const itemSetPageSize = useItemSetStore((s) => s.pageSize)
+  const itemSetIsBrowsed = !!itemSetForHref && itemSetForHref === browsingHref
+  const queryStringForSelection = itemSetIsBrowsed ? encodeSearchQuery(itemSetAppliedQuery ?? {}) : ''
   // Time/Space are not their own toggleable panels stacked below Detail's
   // facts, nor a pair of Inspector tabs — they live directly in the Human
   // tab's own field flow (DetailPanel.tsx: an inline timeline right where
@@ -125,7 +133,12 @@ function App() {
   // Items are a search across every Collection that waits for conditions
   // — nothing to show yet — so browsing it closes the panel; its toggle
   // still opens it for that search (reported: an empty panel stayed open).
-  const itemsToShow = !!itemsNode && !(itemsNode.items.kind === 'cursor' && itemsNode.type !== 'Collection')
+  // A link that carries an API root's search is the exception: that search
+  // has conditions, so its panel opens to run it.
+  const linkedSearchFor = useItemSetStore((s) => s.pendingInitialQuery?.forHref)
+  const itemsToShow =
+    !!itemsNode &&
+    (!(itemsNode.items.kind === 'cursor' && itemsNode.type !== 'Collection') || linkedSearchFor === itemsNode.href)
   // Forced closed only when browsing moves to such a node — not on every
   // select: picking a result of an API root's search (opened from the
   // toggle) keeps browsing on the root, and must not close the panel it
@@ -145,6 +158,23 @@ function App() {
     view: 'tree',
     forRoot: null,
   })
+  const view: ExplorerView = viewChoice.forRoot === rootHref ? viewChoice.view : 'tree'
+  // What the hash says beyond the selection: the API search, then the view
+  // and the Items page (DESIGN §127). The phone has one view and no pages,
+  // so it writes neither.
+  // An API root's search runs only with conditions; one run with none is
+  // not in the URL (no query), so its page would name nothing to re-run.
+  const browsedWaitsForConditions =
+    !!browsingNode && browsingNode.items.kind === 'cursor' && browsingNode.type !== 'Collection'
+  const sharedPage =
+    itemSetIsBrowsed &&
+    !narrow &&
+    itemSetPageIndex > 0 &&
+    itemSetPageSize > 0 &&
+    !(browsedWaitsForConditions && !queryStringForSelection)
+      ? { page: itemSetPageIndex + 1, pageSize: itemSetPageSize }
+      : undefined
+  const hashQuery = joinViewState(queryStringForSelection, { view: narrow ? undefined : view, ...sharedPage })
   // Derived in render, not synced in an effect: a snap is remembered
   // together with the selection it was made for, and a "peek" made for a
   // previous selection reads as "half" once a new node is selected.
@@ -189,29 +219,48 @@ function App() {
   // load or Back/Forward), cleared by any other open, shown only while the
   // catalog it was resolved for is the one open.
   const [notice, setNotice] = useState<{ rootHref: string; info: NonNullable<DeepLinkTarget['unreachable']> }>()
-  const showUnreachable = useCallback(
-    (t: DeepLinkTarget | null) => setNotice(t?.unreachable && { rootHref: t.rootHref, info: t.unreachable }),
-    [],
+  // Opens what a link names — on first load and on Back/Forward alike.
+  // `null` is the landing page.
+  const applyTarget = useCallback(
+    (t: DeepLinkTarget | null) => {
+      // A link replaces whatever an earlier one left for a pager to take.
+      clearPendingLink()
+      if (!t) {
+        setNotice(undefined)
+        setRootHref(null)
+        select(null)
+        return
+      }
+      setNotice(t.unreachable && { rootHref: t.rootHref, info: t.unreachable })
+      // Register the restored query and page *before* selecting — `select`
+      // can synchronously mount the Items panel's pager for that
+      // Collection, whose one-shot reads need to find them there already.
+      if (t.appliedQuery) setPendingInitialQuery(t.appliedQuery.forHref, t.appliedQuery.query)
+      // Only the page sizes the pager offers: a hand-edited `page-size=5000`
+      // would fetch five thousand Items at once and leave the size control
+      // naming a size it is not using.
+      if (t.page && RESULTS_PAGE_SIZE_OPTIONS.includes(t.page.pageSize)) {
+        setPendingInitialPage(t.page.forHref, t.page.pageIndex, t.page.pageSize)
+      }
+      setViewChoice({ view: t.view ?? 'tree', forRoot: t.rootHref })
+      setRootHref(t.rootHref)
+      // Browsing starts over: selecting an Item keeps the Collection being
+      // browsed, which across catalogs would be the previous catalog's —
+      // and its page and search would be written onto the new link.
+      select(null)
+      select(t.selectedHref)
+    },
+    [select, setPendingInitialQuery, setPendingInitialPage, clearPendingLink, setNotice, setViewChoice, setRootHref],
   )
   useEffect(() => {
-    if (!target) return
-    // eslint-disable-next-line react/set-state-in-effect
-    showUnreachable(target)
-    // Register the restored query *before* selecting — `select` can
-    // synchronously trigger `CursorItemSetPanels`'s mount (an already-open
-    // Structure Tree box for `target.rootHref`), whose one-shot
-    // `consumePendingInitialQuery(node.href)` call needs to find it there
-    // already.
-    if (target.appliedQuery) setPendingInitialQuery(target.appliedQuery.forHref, target.appliedQuery.query)
     // Synchronizing with an external system — the URL, resolved
     // asynchronously by `useDeepLinkBootstrap` — is the one job effects are
     // for; `rootHref` can't be derived, since the user changes it too.
     // eslint-disable-next-line react/set-state-in-effect
-    setRootHref(target.rootHref)
-    if (target.selectedHref) select(target.selectedHref)
-  }, [target, select, setPendingInitialQuery, showUnreachable])
+    if (target) applyTarget(target)
+  }, [target, applyTarget])
   const unreachable = notice && notice.rootHref === rootHref ? notice.info : undefined
-  useShareableUrlSync(rootHref, selectedHref, booting, queryStringForSelection)
+  useShareableUrlSync(rootHref, selectedHref, booting, hashQuery)
   // The browser's own Back/Forward must work here. Without this hook they
   // did nothing at all (the address bar changed, but nothing on screen
   // did), which combined with `useShareableUrlSync` only ever having one
@@ -220,10 +269,11 @@ function App() {
   // guess: pressing the browser's Back button went straight to the
   // browser's own default page. See both hooks' own docs for the full
   // mechanism.
-  usePopStateSync(setRootHref, select, setPendingInitialQuery, showUnreachable)
+  usePopStateSync(applyTarget)
 
   function openCatalog(href: string) {
     setNotice(undefined)
+    clearPendingLink()
     select(null) // a selection from a previous catalog can't mean anything here
     setRootHref(href)
   }
@@ -240,6 +290,7 @@ function App() {
   // this effect had to fetch itself, keyed by href so a previous catalog's
   // root is never shown under a new one.
   const [fetchedRoot, setFetchedRoot] = useState<{ href: string; node: StacNode } | undefined>(undefined)
+  const [failedRoot, setFailedRoot] = useState<string>()
   const rootNode = rootHref
     ? (loader.get(rootHref) ?? (fetchedRoot?.href === rootHref ? fetchedRoot.node : undefined))
     : undefined
@@ -273,7 +324,9 @@ function App() {
       })
       .catch(() => {
         // Structure Lens's own root fetch already surfaces this failure
-        // (rootError) — the header just quietly falls back to the href.
+        // (rootError) — the header just quietly falls back to the href,
+        // and the favorite star says why it is unavailable.
+        if (!cancelled) setFailedRoot(rootHref)
       })
     return () => {
       cancelled = true
@@ -315,7 +368,20 @@ function App() {
   }
 
   const hasSelection = !!selectedHref
-  const view: ExplorerView = viewChoice.forRoot === rootHref ? viewChoice.view : 'tree'
+  const shareUrl = (() => {
+    const url = new URL(window.location.href)
+    url.hash = joinHashFragment(selectedHref ?? rootHref, hashQuery)
+    return url.toString()
+  })()
+  const shareFacts = describeShare({
+    rootTitle: rootNode?.title ?? rootNode?.id ?? rootHref,
+    selected: selectedHref && selectedHref !== rootHref ? (selectedNode ?? null) : null,
+    view: narrow ? 'outline' : view,
+    browsed: itemSetIsBrowsed && browsingHref ? (loader.get(browsingHref) ?? null) : null,
+    query: itemSetIsBrowsed ? itemSetAppliedQuery : undefined,
+    page: sharedPage,
+    narrow,
+  })
   const sheetSnap: SheetSnap = sheet.snap === 'peek' && sheet.href !== selectedHref ? 'half' : sheet.snap
 
   return (
@@ -369,6 +435,14 @@ function App() {
             STAC Lens
           </button>
           <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', flexShrink: 0 }} />
+          {/* Stars the open catalog, next to its name — where every product
+           * puts it (GitHub's Star by the repo name, STAC Browser's by the
+           * title). DESIGN §125. */}
+          <FavoriteStar
+            href={rootHref}
+            title={rootNode && (rootNode.title ?? rootNode.id ?? rootHref)}
+            failed={failedRoot === rootHref}
+          />
           {/* The catalog's own name, not its URL, is what actually orients
            * someone here — per direct feedback, the href alone isn't very
            * useful on its own. Falls back to the raw href until
@@ -445,13 +519,18 @@ function App() {
               />
             </span>
           )}
+          {/* A command on the whole page, in the commands' borderless
+           * register — not one of the pane switches beside it. */}
+          <span style={{ marginLeft: narrow ? 'auto' : 8, display: 'flex' }}>
+            <SharePanel url={shareUrl} facts={shareFacts} iconOnly={narrow} />
+          </span>
           <a
             href={REPO_URL}
             target="_blank"
             rel="noreferrer"
             title="Source on GitHub"
             style={{
-              marginLeft: narrow ? 'auto' : 8,
+              marginLeft: narrow ? 4 : 8,
               flexShrink: 0,
               color: 'var(--color-text-muted)',
               display: 'flex',

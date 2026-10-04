@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { copyToClipboard } from './clipboard'
 import { ITEM_WINDOW_STEP } from '../hooks/useItemWindow'
 
 const DISMISSED_KEY = 'stac-lens.compact-banner-dismissed'
@@ -24,13 +25,12 @@ export function CompactBanner() {
   if (dismissed) return null
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(window.location.href)
+    if (await copyToClipboard(window.location.href)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
-    } catch {
-      // Clipboard unavailable (insecure context, denied permission): select
-      // the URL in a prompt so it can still be copied by hand.
+    } else {
+      // Clipboard unavailable (denied permission, no fallback either):
+      // select the URL in a prompt so it can still be copied by hand.
       window.prompt('Copy this link to open it on a desktop browser:', window.location.href)
     }
   }

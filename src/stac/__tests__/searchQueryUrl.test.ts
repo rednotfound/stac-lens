@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { decodeSearchQuery, encodeSearchQuery, joinHashFragment, splitHashFragment } from '../searchQueryUrl'
+import {
+  decodeSearchQuery,
+  encodeSearchQuery,
+  joinHashFragment,
+  joinViewState,
+  splitHashFragment,
+  splitViewState,
+} from '../searchQueryUrl'
 
 describe('encode / decode', () => {
   it('round-trips a full filter using the real request parameter names', () => {
@@ -40,5 +47,34 @@ describe('hash fragment', () => {
   it('joins without a trailing ? when there is no query', () => {
     expect(joinHashFragment('https://example.org/c.json', '')).toBe('https://example.org/c.json')
     expect(joinHashFragment('https://example.org/c.json', 'bbox=1')).toBe('https://example.org/c.json?bbox=1')
+  })
+})
+
+describe('view state in the hash query', () => {
+  const search = encodeSearchQuery({ datetimeStart: '2024-01-01T00:00:00Z', sortDirection: 'desc' })
+
+  it('splits STAC Lens keys off, leaving the search byte-identical', () => {
+    const { search: rest, state } = splitViewState(`${search}&view=icicle&page=3&page-size=40`)
+    expect(rest).toBe(search)
+    expect(state).toEqual({ view: 'icicle', page: 3, pageSize: 40 })
+    expect(decodeSearchQuery(rest)).toEqual(decodeSearchQuery(search))
+  })
+
+  it('a link with only a view carries no search', () => {
+    expect(splitViewState('view=outline')).toEqual({ search: '', state: { view: 'outline' } })
+  })
+
+  it('drops an unknown view, and a page without a valid size', () => {
+    expect(splitViewState('view=radial&page=2').state).toEqual({})
+    expect(splitViewState('page=0&page-size=40').state).toEqual({})
+    expect(splitViewState('page=2.5&page-size=40').state).toEqual({})
+    expect(splitViewState('page=1&page-size=40').state).toEqual({})
+  })
+
+  it('round-trips, leaving out the defaults (tree, page 1)', () => {
+    const qs = joinViewState(search, { view: 'outline', page: 2, pageSize: 20 })
+    expect(splitViewState(qs)).toEqual({ search, state: { view: 'outline', page: 2, pageSize: 20 } })
+    expect(joinViewState(search, { view: 'tree', page: 1, pageSize: 40 })).toBe(search)
+    expect(joinViewState('', {})).toBe('')
   })
 })

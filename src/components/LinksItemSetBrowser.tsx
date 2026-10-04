@@ -23,7 +23,12 @@ export function LinksItemSetBrowser({ node }: { node: StacNode & { items: { kind
 
   useResetShowOnLenses(node.href)
   const pageItems = state.status === 'empty' ? [] : state.pageItems
-  usePublishVisible(node.href, pageItems, state.status === 'empty' ? 0 : state.pageIndex)
+  usePublishVisible(
+    node.href,
+    pageItems,
+    state.status === 'empty' ? 0 : state.pageIndex,
+    state.status === 'empty' ? 0 : state.pageSize,
+  )
 
   if (state.status === 'empty') return null
 

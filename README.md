@@ -65,9 +65,9 @@ Both share a **List / Time & Space** switcher: the same page of Items as a scrol
 
 **Inspector** — one panel per selected object, with a colored identity (Catalog / Collection / Item) that matches the tree. A **Human** tab renders facts as their natural UI — the temporal extent as a timeline, the spatial extent as a map, extensions (`eo`, `view`, `proj`, `sat`, `sar`, `sci`, `processing`, `grid`, `s2`, …) as readable rows — and a **JSON** tab shows the untouched source. Every derived field is labeled as derived; a field that isn't in the source isn't shown. Where sources contradict themselves (a `rel:collection` that disagrees with `rel:parent`, two spatial bboxes where STAC 1.1 allows one meaning) the contradiction is surfaced, not resolved silently.
 
-**Shareable URLs** — the address bar always encodes what you're looking at: `#<absolute STAC href>`, plus an applied API search as `?datetime=…&bbox=…&sortby=…` using STAC's own parameter names. Paste the link anywhere and it reopens the same catalog, selection, and search. Browser Back/Forward move between catalogs and the landing page, not out of the app. On a phone the same link opens a compact view — the catalog as a document outline with each Collection's Items listed under it ten at a time, the Inspector as a bottom sheet — with a one-line pointer to the full experience on a desktop browser.
+**Shareable URLs** — the address bar always encodes what you're looking at: `#<absolute STAC href>`, plus an applied API search as `?datetime=…&bbox=…&sortby=…` using STAC's own parameter names, then the view (`view=outline`) and the Items page (`page=3&page-size=40`) when they differ from the defaults. Paste the link anywhere and it reopens the same catalog, selection, search, view and page — exactly for a static catalog, by re-running the search for an API, whose results may have moved. The **Share** button in the header says in words what the link will open, and copies it. Browser Back/Forward move between catalogs and the landing page, not out of the app. On a phone the same link opens a compact view — the catalog as a document outline with each Collection's Items listed under it ten at a time, the Inspector as a bottom sheet — with a one-line pointer to the full experience on a desktop browser.
 
-**Landing page** — one large field, two jobs: type a name, topic or place to filter the list live, or paste any STAC Catalog, Collection or API URL and open it. Below it, a faceted browser over 100+ verified public catalogs and APIs — sidebar facets (topic, region, publisher, static/API) over an editorial tag vocabulary of our own, since neither STAC nor STAC Index classifies catalogs — with each card carrying its tags; favorites and recently opened catalogs are remembered in your browser.
+**Landing page** — one large field, two jobs: type a name, topic or place to filter the list live, or paste any STAC Catalog, Collection or API URL and open it. Below it, a faceted browser over 100+ verified public catalogs and APIs — sidebar facets (topic, region, publisher, static/API) over an editorial tag vocabulary of our own, since neither STAC nor STAC Index classifies catalogs — with each card carrying its tags; favorites and recently opened catalogs are remembered in your browser. Any catalog you open can be starred from the star beside its name in the header, whether or not it is in the list.
 
 <p align="center">
   <img src="docs/images/screenshot-landing.png" alt="The landing page: one field to search or paste a URL, a sidebar of facets, and cards for 100+ verified public STAC catalogs and APIs" width="1000">
@@ -156,7 +156,7 @@ src/
                      for both the real request and the shareable-URL encoding
     conformance.ts   a node's governing API root's conformsTo (sort gating); resolveSearchTarget()
                      picks the root's GET /search?collections=<id> over the Collection's rel:items
-    searchQueryUrl.ts encode/decode an applied search into the URL hash's ?query suffix
+    searchQueryUrl.ts encode/decode an applied search, the view and the Items page into the URL hash's ?query suffix
     assetAccess.ts   declared asset href -> a usable one, lazily: the ordered access-method list, the cache
     access/          one file per access method: planetaryComputer.ts (PC's SAS signing), awsS3.ts (s3:// → public HTTPS)
     schemes.ts       auth:schemes / storage:schemes resolved up the parent chain, said in words
@@ -175,13 +175,13 @@ src/
     usePagedCursorResults.ts   the cursor buffer presented as numbered pages ("catch-up" on a far jump)
     useApiConformance.ts       reactive root-conformance resolution for gating UI
     useElementSize.ts          ResizeObserver -> real container size
-    useShareableUrl.ts         URL hash <-> catalog / selection / applied search, both directions
+    useShareableUrl.ts         URL hash <-> catalog / selection / applied search / view / Items page, both directions
     useItemWindow.ts           the phone's ten-at-a-time Item rows (sliding window)
     useDocumentTitle.ts        the tab title follows the open catalog and selection
     useStickySidebar.ts        a sidebar that stays in view with one page scroll, no nested scrolling
   store/
     selection.ts     the shared selection (selected vs. browsed node)
-    itemSet.ts       what the Items panel has in view, its applied query, the panel's open state and remembered width
+    itemSet.ts       what the Items panel has in view (and its page), its applied query, a linked query/page waiting for its pager, the panel's open state and remembered width
     itemSetSessions.ts  per-Collection memory (cursor buffer, next link, query, page, tab) so the window can close and come back
     landingPrefs.ts  favorites and recently opened catalogs, persisted per browser
   components/
@@ -209,6 +209,9 @@ src/
     ItemSetResultsPanel.tsx  numbered-page results, List / Time & Space
     BboxPickerModal.tsx      full-size map dialog: pan by default, explicit Draw-box tool
     Logo.tsx / ProjectLinks.tsx  the mark; repo link, GitHub mark, landing footer
+    FavoriteStar.tsx         the star icon; the header star that favorites the open catalog
+    SharePanel.tsx / shareFacts.ts  the header's Share button: what the link opens, in words, and Copy link
+    clipboard.ts             copy with a fallback for plain-http origins (a LAN dev server)
     EmptyState.tsx / LoadingState.tsx / Spinner.tsx / TabButton.tsx  shared primitives
   design/
     tokens.css       color/spacing/type tokens, light + dark

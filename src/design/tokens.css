@@ -439,6 +439,11 @@ body {
   color: var(--color-text);
   background: var(--color-bg);
 }
+/* A command that opened a panel (Share) reads as held while it is open. */
+.stac-lens-view-command[aria-expanded='true'] {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
 .stac-lens-view-command:disabled {
   color: var(--color-text-faint);
   opacity: 0.6;
@@ -479,4 +484,44 @@ body {
   width: 3px;
   background: var(--color-selection);
   transition-delay: 0s;
+}
+
+/* Favorite stars (DESIGN §125). The landing card's star is revealed on
+ * hover; on a touch screen (including hybrid devices whose primary pointer
+ * hovers) or on keyboard focus it must be visible anyway, or an unstarred
+ * card has no way to be starred. */
+@media (hover: none), (pointer: coarse) {
+  .stac-lens-card-star[aria-pressed='false'] {
+    color: var(--color-text-faint) !important;
+  }
+}
+.stac-lens-card-star:focus-visible[aria-pressed='false'] {
+  color: var(--color-text-faint) !important;
+}
+/* The explorer header's star: the view-command register (borderless,
+ * muted, a quiet hover), with the selection colour when on. */
+.stac-lens-favorite-star {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.stac-lens-favorite-star:hover:not([aria-disabled='true']) {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+.stac-lens-favorite-star[aria-pressed='true'] {
+  color: var(--color-selection);
+}
+.stac-lens-favorite-star[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
 }

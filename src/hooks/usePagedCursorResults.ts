@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCursorQueriedItemSet, type CursorQuery } from './useCursorQueriedItemSet'
 import type { StacNode } from '../stac/types'
 import { itemSetSessions } from '../store/itemSetSessions'
+import { useItemSetStore } from '../store/itemSet'
 
 export const CURSOR_RESULTS_PAGE_SIZE_OPTIONS = [20, 40, 100, 200]
 export const DEFAULT_CURSOR_RESULTS_PAGE_SIZE = 40
@@ -64,8 +65,16 @@ export function usePagedCursorResults(
   // page size is a preference that carries over to the next Collection.
   const restored = node && initialQuery === undefined ? itemSetSessions.getCursor(node.href) : undefined
   const [pageIndex, setPageIndex] = useState(restored?.pageIndex ?? 0)
+  // A shared link's page is counted in its own page size: take that size
+  // from the first request on (peeked; the page itself is applied below).
+  const linkedPage = useItemSetStore((s) =>
+    node && s.pendingInitialPage?.forHref === node.href ? s.pendingInitialPage : null,
+  )
   const [pageSize, setPageSizeState] = useState(
-    restored?.pageSize ?? itemSetSessions.preferredCursorPageSize ?? DEFAULT_CURSOR_RESULTS_PAGE_SIZE,
+    linkedPage?.pageSize ??
+      restored?.pageSize ??
+      itemSetSessions.preferredCursorPageSize ??
+      DEFAULT_CURSOR_RESULTS_PAGE_SIZE,
   )
   // One request fills one page: the server is asked for `pageSize` Items.
   const inner = useCursorQueriedItemSet(node, initialQuery, pageSize)
@@ -89,6 +98,27 @@ export function usePagedCursorResults(
     lastQueryRef.current = appliedQuery
     if (pageIndex !== 0) setPageIndex(0)
   }
+
+  // The page a shared link named, applied once the result set it belongs to
+  // is the current one: after the link's own query when it arrives at a
+  // mounted panel (still pending in the store until `CursorItemSetPanels`
+  // applies it; its new `appliedQuery` resets to page 1 above, in render,
+  // and this effect re-runs on it), and as soon as a search is running
+  // otherwise — on a fresh mount the first search's `appliedQuery` keeps
+  // its identity, so nothing resets it afterwards. The catch-up below then
+  // walks the cursor to it; an API may hold different Items on that page
+  // by now, which the Share panel says.
+  useEffect(() => {
+    if (!node || !linkedPage || inner.status === 'empty' || inner.status === 'idle') return
+    if (useItemSetStore.getState().pendingInitialQuery?.forHref === node.href) return
+    if (lastQueryRef.current === undefined) return
+    const page = useItemSetStore.getState().consumePendingInitialPage(node.href)
+    if (!page) return
+    // Synchronizing with the URL store's one-shot hand-off.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPageSizeState(page.pageSize)
+    setPageIndex(page.pageIndex)
+  }, [node, linkedPage, inner.status, appliedQuery])
 
   const items = inner.status === 'empty' ? [] : inner.items
   const hasMore = inner.status !== 'empty' && inner.hasMore

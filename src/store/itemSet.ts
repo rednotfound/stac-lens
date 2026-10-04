@@ -15,7 +15,10 @@ interface ItemSetStoreState {
   /** 0-based page the panel is on, published with `visibleHrefs`, for
    *  views that name the page ("+30 more on this page · page 2"). */
   pageIndex: number
-  setVisible: (forHref: string, hrefs: string[], pageIndex?: number) => void
+  /** The page size `pageIndex` was counted in — a shared link carries both
+   *  (`?page=3&page-size=40`), since a page number alone means nothing. */
+  pageSize: number
+  setVisible: (forHref: string, hrefs: string[], pageIndex?: number, pageSize?: number) => void
   /** Whether the currently-visible items are also being shown on Time/Space
    *  Lens — a plain feature toggle, *not* a "selection" of Item Set as its
    *  own object (deliberately no `aggregateSelected` field and no synthetic
@@ -68,6 +71,18 @@ interface ItemSetStoreState {
    *  since-abandoned Collection is never silently picked up by a different
    *  one later. */
   consumePendingInitialQuery: (forHref: string) => SearchFilter | undefined
+  /** The Items page a shared link named (0-based, with the page size it was
+   *  counted in), waiting for that Collection's pager — the same one-shot
+   *  hand-off as `pendingInitialQuery`. A pager peeks at it for its page
+   *  size when it mounts, and consumes it once the result set the page
+   *  belongs to is in place (after the link's query, if it has one). */
+  pendingInitialPage: { forHref: string; pageIndex: number; pageSize: number } | null
+  setPendingInitialPage: (forHref: string, pageIndex: number, pageSize: number) => void
+  consumePendingInitialPage: (forHref: string) => { pageIndex: number; pageSize: number } | undefined
+  /** Drops both hand-offs. Called whenever something else is opened (a new
+   *  link, a catalog from the landing page, the landing page itself), so a
+   *  page or query no pager took never lands on a later, unrelated search. */
+  clearPendingLink: () => void
   /** Whether the Items panel — the docked column that shows the browsed
    *  Collection's Item Set beside every view — is showing. Opened again
    *  on every act of selecting a node with Items to list (`App`); hidden
@@ -95,18 +110,21 @@ export const useItemSetStore = create<ItemSetStoreState>()(
       forHref: null,
       visibleHrefs: [],
       pageIndex: 0,
+      pageSize: 0,
       showOnLenses: false,
       appliedQuery: undefined,
       pendingInitialQuery: null,
+      pendingInitialPage: null,
       panelOpen: true,
       panelWidth: DEFAULT_ITEMS_PANEL_WIDTH,
       setPanelOpen: (open) => set({ panelOpen: open }),
       setPanelWidth: (width) => set({ panelWidth: width }),
-      setVisible: (forHref, hrefs, pageIndex = 0) =>
+      setVisible: (forHref, hrefs, pageIndex = 0, pageSize = 0) =>
         set((state) => ({
           forHref,
           visibleHrefs: hrefs,
           pageIndex,
+          pageSize,
           // Switching to a *different* box (a new `forHref`) must not let a
           // stale `appliedQuery` from the abandoned one survive — otherwise
           // switching from a just-searched API Collection to a plain static
@@ -126,6 +144,15 @@ export const useItemSetStore = create<ItemSetStoreState>()(
         if (!pending || pending.forHref !== forHref) return undefined
         set({ pendingInitialQuery: null })
         return pending.query
+      },
+      clearPendingLink: () => set({ pendingInitialQuery: null, pendingInitialPage: null }),
+      setPendingInitialPage: (forHref, pageIndex, pageSize) =>
+        set({ pendingInitialPage: { forHref, pageIndex, pageSize } }),
+      consumePendingInitialPage: (forHref) => {
+        const pending = get().pendingInitialPage
+        if (!pending || pending.forHref !== forHref) return undefined
+        set({ pendingInitialPage: null })
+        return { pageIndex: pending.pageIndex, pageSize: pending.pageSize }
       },
     }),
     {

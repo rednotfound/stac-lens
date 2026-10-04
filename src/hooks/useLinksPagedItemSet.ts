@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
 import type { StacNode } from '../stac/types'
 import { itemSetSessions } from '../store/itemSetSessions'
+import { useItemSetStore } from '../store/itemSet'
 
 export const DEFAULT_LINKS_PAGE_SIZE = 40
 
@@ -54,11 +55,18 @@ export function useLinksPagedItemSet(
   // A session left by a previous mount for this Collection brings its
   // fetched pages and page position back — no re-fetch, no flicker.
   const restored = nodeHref ? itemSetSessions.getLinks(nodeHref) : undefined
-  const [pageCache, setPageCache] = useState<Record<number, StacNode[]>>(restored?.pageCache ?? {})
-  const [pageIndex, setPageIndex] = useState(restored?.pageIndex ?? 0) // target/requested page
-  const [renderedIndex, setRenderedIndex] = useState(restored?.renderedIndex ?? 0) // page whose items are actually shown
+  // A shared link's page (below) is peeked at here too, so the very first
+  // fetch is for that page rather than for page 1 and then that page.
+  const peeked = useItemSetStore.getState().pendingInitialPage
+  const linkedAtMount = nodeHref && peeked?.forHref === nodeHref ? peeked : undefined
+  const restoredFits = !linkedAtMount || restored?.pageSize === linkedAtMount.pageSize
+  const [pageCache, setPageCache] = useState<Record<number, StacNode[]>>(
+    restoredFits ? (restored?.pageCache ?? {}) : {},
+  )
+  const [pageIndex, setPageIndex] = useState(linkedAtMount?.pageIndex ?? restored?.pageIndex ?? 0) // target/requested page
+  const [renderedIndex, setRenderedIndex] = useState(restoredFits ? (restored?.renderedIndex ?? 0) : 0) // page whose items are actually shown
   const [pageSize, setPageSizeState] = useState(
-    restored?.pageSize ?? itemSetSessions.preferredLinksPageSize ?? DEFAULT_LINKS_PAGE_SIZE,
+    linkedAtMount?.pageSize ?? restored?.pageSize ?? itemSetSessions.preferredLinksPageSize ?? DEFAULT_LINKS_PAGE_SIZE,
   )
 
   const generationRef = useRef(0)
@@ -74,6 +82,33 @@ export function useLinksPagedItemSet(
     setPageIndex(session?.pageIndex ?? 0)
     setRenderedIndex(session?.renderedIndex ?? 0)
   }, [nodeHref])
+
+  // The page a shared link named. A static Collection's href list is fixed,
+  // so the page holds exactly the Items it held for whoever shared it.
+  // Declared after the node-change effect, so on a fresh mount it wins over
+  // the session's position.
+  const linkedPage = useItemSetStore((s) =>
+    nodeHref && s.pendingInitialPage?.forHref === nodeHref ? s.pendingInitialPage : null,
+  )
+  useEffect(() => {
+    if (!nodeHref || !linkedPage || totalItems === 0) return
+    const page = useItemSetStore.getState().consumePendingInitialPage(nodeHref)
+    if (!page) return
+    const lastPage = Math.max(0, Math.ceil(totalItems / page.pageSize) - 1)
+    const sessionSize = itemSetSessions.getLinks(nodeHref)?.pageSize
+    if (page.pageSize !== pageSize || (sessionSize !== undefined && sessionSize !== page.pageSize)) {
+      // Page boundaries shift with the size: the cached pages are the wrong
+      // slices now (same reset as `setPageSize`).
+      generationRef.current += 1
+      // Synchronizing with the URL store's one-shot hand-off.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPageCache({})
+      setRenderedIndex(0)
+      setPageSizeState(page.pageSize)
+    }
+    setPageIndex(Math.min(page.pageIndex, lastPage))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pageSize is read to compare, not a trigger
+  }, [nodeHref, linkedPage, totalItems])
 
   useEffect(() => {
     if (!nodeHref) return

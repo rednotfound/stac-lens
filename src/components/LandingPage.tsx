@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Logo } from './Logo'
+import { StarIcon } from './FavoriteStar'
 import { LandingFooter } from './ProjectLinks'
 import { KNOWN_CATALOGS, type KnownCatalog } from '../data/knownCatalogs'
 import { FACETS, type FacetDef, type FacetId } from '../data/catalogTags'
@@ -28,7 +29,7 @@ import { useIsNarrow } from '../hooks/useMediaQuery'
  *     was tried and reverted for that reason.
  *  2. **Browse the known catalogs**: a faceted catalog browser — sidebar
  *     of collapsible facet groups with counts, main area of cards, each
- *     card carrying its own clickable tags, and the list's own name
+ *     card carrying its own tags (labels, not filters — §126), and the list's own name
  *     filter in its toolbar. The pattern Hugging Face's dataset hub, NASA
  *     Earthdata and CKAN portals share; Baymard's testing calls sidebar
  *     filtering proven, and calls a wall of horizontal filter chips (our
@@ -296,7 +297,6 @@ export function LandingPage({
                   key={row.href}
                   row={row}
                   selection={selection}
-                  onToggle={toggle}
                   onOpen={onOpen}
                   openedAt={view === 'recent' ? recent.find((r) => r.href === row.href)?.openedAt : undefined}
                 />
@@ -699,22 +699,23 @@ function relativeTime(epochMs: number): string {
 }
 
 /** One catalog card: star, title with the API badge, a two-line
- *  description, and — pinned to the bottom — the card's own tags, each a
- *  button that applies that value as a filter, plus the host name (the
- *  full URL is the card's tooltip). The card is a `<div role="button">`,
- *  not a `<button>`: the star and the tags are real buttons, and a button
- *  may not contain another. Their clicks are excluded from "open" by DOM
- *  containment, never `stopPropagation()`. */
+ *  description, and — pinned to the bottom — the card's own tags plus the
+ *  host name (the full URL is the card's tooltip). The tags are labels,
+ *  not buttons: they sit where a click on the card lands, and a tag that
+ *  quietly added a filter left people on the same page wondering why the
+ *  catalog did not open (DESIGN §126). A tag that matches an active filter
+ *  is drawn in the selection color, so the card still says why it is
+ *  listed. The card is a `<div role="button">`, not a `<button>`: the star
+ *  is a real button, and a button may not contain another. Its click is
+ *  excluded from "open" by DOM containment, never `stopPropagation()`. */
 function CatalogCard({
   row,
   selection,
-  onToggle,
   onOpen,
   openedAt,
 }: {
   row: Row
   selection: FacetSelection
-  onToggle: (facet: FacetId, value: string) => void
   onOpen: (href: string) => void
   openedAt?: number
 }) {
@@ -821,25 +822,17 @@ function CatalogCard({
           const on = selection[facet.id].has(value)
           return (
             <span key={`${facet.id}:${value}`} style={{ display: 'inline-flex', alignItems: 'baseline' }}>
-              <button
-                type="button"
-                data-card-control
-                onClick={() => onToggle(facet.id, value)}
-                title={`${on ? 'Remove' : 'Add'} filter: ${facet.label} = ${facet.values[value]}`}
+              <span
                 style={{
-                  border: 'none',
-                  background: 'none',
-                  padding: 0,
-                  font: 'inherit',
                   color: on ? 'var(--color-selection)' : 'var(--color-text-faint)',
+                  // Not colour alone (WCAG 1.4.1): a matching tag is underlined too.
                   textDecoration: on ? 'underline' : 'none',
                   textUnderlineOffset: 2,
-                  cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
               >
                 {facet.values[value]}
-              </button>
+              </span>
               <span aria-hidden style={{ color: 'var(--color-border)', margin: '0 5px' }}>
                 ·
               </span>
@@ -862,52 +855,35 @@ function CatalogCard({
           {openedAt !== undefined ? relativeTime(openedAt) : host}
         </span>
       </div>
-      {/* Favorites are limited to list entries by decision — a recent root
-       * that is not in the list has no star. */}
-      {known && (
-        <button
-          type="button"
-          data-card-control
-          aria-pressed={favorite}
-          aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}
-          title={favorite ? 'Remove from favorites' : 'Add to favorites'}
-          onClick={() => toggleFavorite({ href: row.href, title: row.title })}
-          style={{
-            position: 'absolute',
-            top: 9,
-            right: 9,
-            width: 24,
-            height: 24,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            color: favorite ? 'var(--color-selection)' : hover ? 'var(--color-text-faint)' : 'transparent',
-          }}
-        >
-          <StarIcon filled={favorite} size={14} />
-        </button>
-      )}
+      {/* Any catalog can be a favorite (DESIGN §125), so a recent root that
+       * is not in the list has a star too. Revealed on hover; always shown
+       * on touch screens and on focus (tokens.css). */}
+      <button
+        type="button"
+        data-card-control
+        aria-pressed={favorite}
+        aria-label={`Favorite ${row.title}`}
+        title={favorite ? 'Remove from favorites' : 'Add to favorites'}
+        onClick={() => toggleFavorite({ href: row.href, title: row.title })}
+        className="stac-lens-card-star"
+        style={{
+          position: 'absolute',
+          top: 9,
+          right: 9,
+          width: 24,
+          height: 24,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          color: favorite ? 'var(--color-selection)' : hover ? 'var(--color-text-faint)' : 'transparent',
+        }}
+      >
+        <StarIcon filled={favorite} size={14} />
+      </button>
     </div>
-  )
-}
-
-function StarIcon({ filled, size = 14 }: { filled: boolean; size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={filled ? 'currentColor' : 'none'}
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z" />
-    </svg>
   )
 }
 

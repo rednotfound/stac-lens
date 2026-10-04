@@ -70,6 +70,58 @@ const localPathItem = {
   ],
   assets: {},
 }
+// A static Collection of 50 Items, for an Items page carried in a shared link
+// (a static href list is fixed, so page 2 holds exactly Items 21–40).
+const PAGED_ROOT = 'https://fixtures.stac-lens.test/paged/catalog.json'
+const PAGED_COLLECTION = 'https://fixtures.stac-lens.test/paged/collection/collection.json'
+const pagedRoot = {
+  type: 'Catalog',
+  stac_version: '1.0.0',
+  id: 'paged-root',
+  title: 'Paged root',
+  description: 'One Collection.',
+  links: [
+    { rel: 'root', href: './catalog.json' },
+    { rel: 'child', href: './collection/collection.json' },
+  ],
+}
+const pagedItemId = (n) => `paged-${String(n).padStart(2, '0')}`
+const pagedCollection = {
+  type: 'Collection',
+  stac_version: '1.0.0',
+  id: 'paged',
+  title: 'Paged fixture',
+  description: 'Fifty Items.',
+  license: 'CC0-1.0',
+  extent: { spatial: { bbox: [[0, 0, 1, 1]] }, temporal: { interval: [['2024-01-01T00:00:00Z', null]] } },
+  links: [
+    { rel: 'root', href: '../catalog.json' },
+    { rel: 'parent', href: '../catalog.json' },
+    ...Array.from({ length: 50 }, (_, i) => ({ rel: 'item', href: `./items/${pagedItemId(i + 1)}.json` })),
+  ],
+}
+// The same fifty Items in a Collection that is its own root (no root or
+// parent link): a link to it with a page must still select and page it.
+const SOLO_COLLECTION = 'https://fixtures.stac-lens.test/solo/collection.json'
+const soloCollection = {
+  ...pagedCollection,
+  id: 'solo',
+  title: 'Solo fixture',
+  links: Array.from({ length: 50 }, (_, i) => ({ rel: 'item', href: `./items/${pagedItemId(i + 1)}.json` })),
+}
+const pagedItem = (id) => ({
+  type: 'Feature',
+  stac_version: '1.0.0',
+  id,
+  geometry: { type: 'Point', coordinates: [0.5, 0.5] },
+  bbox: [0.5, 0.5, 0.5, 0.5],
+  properties: { datetime: '2024-01-01T00:00:00Z' },
+  links: [
+    { rel: 'collection', href: '../collection.json' },
+    { rel: 'parent', href: '../collection.json' },
+  ],
+  assets: {},
+})
 const fixtureRoot = {
   type: 'Catalog',
   stac_version: '1.1.0',
@@ -119,6 +171,23 @@ const handleRoute = async (route) => {
   if (url.startsWith(BASE_URL)) return route.continue()
   if (url === FIXTURE_ITEM) {
     return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(fixtureItem) })
+  }
+  if (url === SOLO_COLLECTION) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(soloCollection) })
+  }
+  if (url.startsWith('https://fixtures.stac-lens.test/solo/items/')) {
+    const id = url.split('/').pop().replace('.json', '')
+    return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pagedItem(id)) })
+  }
+  if (url === PAGED_ROOT) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pagedRoot) })
+  }
+  if (url === PAGED_COLLECTION) {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pagedCollection) })
+  }
+  if (url.startsWith('https://fixtures.stac-lens.test/paged/collection/items/')) {
+    const id = url.split('/').pop().replace('.json', '')
+    return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(pagedItem(id)) })
   }
   if (url === LOCAL_PATH_ITEM) {
     return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(localPathItem) })
@@ -664,6 +733,127 @@ await page.waitForFunction(
   await lp.close()
 }
 
+// 3g. Any opened catalog can be starred from the header and found again
+// under the landing page's Favorites — the inline fixture root is not in
+// the known list, which is the case that used to have no star at all.
+{
+  const fv = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  await fv.route('**/*', handleRoute)
+  await fv.goto(`${BASE_URL}/#${FIXTURE_ROOT}`)
+  const star = fv.locator('[data-favorite-star]')
+  await star.waitFor({ timeout: 15000 }).catch(() => {})
+  await fv
+    .waitForFunction(
+      () => document.querySelector('[data-favorite-star]')?.getAttribute('aria-disabled') !== 'true',
+      null,
+      { timeout: 10000 },
+    )
+    .catch(() => {})
+  const enabled = (await star.count()) === 1 && (await star.getAttribute('aria-disabled')) !== 'true'
+  if (enabled) await star.click({ timeout: 5000 }).catch(() => {})
+  const pressed = enabled ? await star.getAttribute('aria-pressed') : 'star never became available'
+  await fv.getByTitle('Back to catalogs').click()
+  await fv
+    .getByRole('button', { name: /^Favorites/ })
+    .first()
+    .click()
+  const favCard = fv.locator(`[role="button"][title="${FIXTURE_ROOT}"]`)
+  await favCard.waitFor({ timeout: 5000 }).catch(() => {})
+  const favCardStar = favCard.locator('.stac-lens-card-star')
+  check(
+    'a catalog not in the list is starred from the header and listed under Favorites, star on',
+    pressed === 'true' && (await favCard.count()) === 1 && (await favCardStar.getAttribute('aria-pressed')) === 'true',
+    `pressed ${pressed}, cards ${await favCard.count()}`,
+  )
+  if ((await favCardStar.count()) === 1) await favCardStar.click({ timeout: 5000 }).catch(() => {})
+  check('unstarring it on the card removes it from Favorites', (await favCard.count()) === 0)
+  await fv.close()
+}
+
+// 3h. A shared link carries the view and the Items page; the Share panel
+// says so in words, copies the link, and closes on Escape.
+{
+  const ctx = await browser.newContext({
+    viewport: { width: 1400, height: 900 },
+    permissions: ['clipboard-read', 'clipboard-write'],
+  })
+  const sh = await ctx.newPage()
+  await sh.route('**/*', handleRoute)
+  await sh.goto(`${BASE_URL}/#${PAGED_COLLECTION}?view=outline&page=2&page-size=20`)
+  const shPanel = sh.locator('[data-items-panel]')
+  await shPanel
+    .getByText('page 2 of 3')
+    .waitFor({ timeout: 15000 })
+    .catch(() => {})
+  await shPanel
+    .getByText(pagedItemId(21), { exact: true })
+    .waitFor({ timeout: 10000 })
+    .catch(() => {})
+  const shText = (await shPanel.innerText().catch(() => '')) ?? ''
+  check(
+    'a link with page=2&page-size=20 opens a static Collection on exactly Items 21–40',
+    /page 2 of 3/.test(shText) &&
+      shText.includes(pagedItemId(21)) &&
+      shText.includes(pagedItemId(40)) &&
+      !shText.includes(pagedItemId(20)) &&
+      !shText.includes(pagedItemId(41)),
+    shText.match(/page \d+ of[^\n]*/)?.[0],
+  )
+  const outlineTab = sh.locator('button[aria-selected="true"]', { hasText: /^Outline$/ })
+  check(
+    'a link with view=outline opens the Outline view, and the hash keeps view and page',
+    (await outlineTab.count()) === 1 &&
+      (await sh.evaluate(() => location.hash)).endsWith('?view=outline&page=2&page-size=20'),
+    await sh.evaluate(() => location.hash),
+  )
+  await sh.locator('[data-share-button]').click()
+  const sharePanel = sh.locator('[data-share-panel]')
+  await sharePanel.waitFor({ timeout: 5000 }).catch(() => {})
+  const facts = (await sharePanel.innerText().catch(() => '')) ?? ''
+  check(
+    'the Share panel lists what the link opens: catalog, selection, view, Items page (no API caveat for a static list)',
+    /Paged root/.test(facts) &&
+      /Paged fixture · Collection/.test(facts) &&
+      /Outline/.test(facts) &&
+      /page 2, 20 per page/.test(facts) &&
+      !/runs again/.test(facts),
+    facts.replace(/\n+/g, ' | '),
+  )
+  await sh.locator('[data-share-copy]').click()
+  await sh.waitForTimeout(200)
+  const clip = await sh.evaluate(() => navigator.clipboard.readText()).catch(() => '')
+  check(
+    'Copy link puts the same link on the clipboard and says Copied',
+    clip === (await sh.evaluate(() => location.href)) &&
+      (await sh.locator('[data-share-copy]').innerText()) === 'Copied',
+    clip,
+  )
+  await sh.keyboard.press('Escape')
+  check(
+    'Escape closes the Share panel and returns focus to its button',
+    (await sharePanel.count()) === 0 &&
+      (await sh.evaluate(() => document.activeElement?.hasAttribute('data-share-button'))),
+  )
+  // A root that is itself a Collection: the link selects it so its page opens.
+  await sh.goto(`${BASE_URL}/#${SOLO_COLLECTION}?page=2&page-size=20`)
+  await sh.reload()
+  await shPanel
+    .getByText('page 2 of 3')
+    .waitFor({ timeout: 15000 })
+    .catch(() => {})
+  await shPanel
+    .getByText(pagedItemId(21), { exact: true })
+    .waitFor({ timeout: 10000 })
+    .catch(() => {})
+  const soloText = (await shPanel.innerText().catch(() => '')) ?? ''
+  check(
+    'a link paging a root Collection’s own Items selects it and opens that page',
+    /page 2 of 3/.test(soloText) && soloText.includes(pagedItemId(21)),
+    soloText.match(/page \d+ of[^\n]*/)?.[0] ?? 'no Items panel',
+  )
+  await ctx.close()
+}
+
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result
 await page.goto(`${BASE_URL}/#${PC}/`)
 await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 15000 })
@@ -717,6 +907,15 @@ phone.on('pageerror', (e) => pageErrors.push('phone: ' + e.message))
 await phone.route('**/*', handleRoute)
 await phone.goto(`${BASE_URL}/`)
 await phone.waitForSelector('[role="button"][title^="http"]')
+const phoneStarColor = await phone
+  .locator('.stac-lens-card-star[aria-pressed="false"]')
+  .first()
+  .evaluate((el) => getComputedStyle(el).color)
+check(
+  'phone landing: an unstarred card shows its star (no hover to reveal it on touch)',
+  !/rgba\(0, 0, 0, 0\)|transparent/.test(phoneStarColor),
+  phoneStarColor,
+)
 check(
   'phone landing: sidebar behind a Filters button, no horizontal overflow',
   (await phone.locator('aside').count()) === 0 &&
@@ -739,6 +938,21 @@ check(
   (await phone.locator('[role="separator"]').count()) === 0 &&
     (await phone.locator('[data-pane-toggle]').count()) === 0,
 )
+{
+  const shareButton = phone.locator('[data-share-button]')
+  await shareButton.tap()
+  const box = await phone.locator('[data-share-panel]').boundingBox()
+  check(
+    'phone explorer: Share is an icon button whose panel fits inside the screen',
+    (await shareButton.getAttribute('aria-label')) === 'Share' &&
+      (await shareButton.innerText()).trim() === '' &&
+      !!box &&
+      box.x >= 0 &&
+      box.x + box.width <= 390,
+    JSON.stringify(box),
+  )
+  await phone.keyboard.press('Escape')
+}
 check(
   "phone explorer: a Collection's Items listed inline from the recorded search page",
   (await phone.locator('[role="group"] [role="treeitem"]').count()) === 5 &&
