@@ -5452,10 +5452,9 @@ server omits — both loosened to match what matters, not the accident.
   than 360 px (124 px at 720) because each pane keeps its minimum. Options:
   hide the Items panel automatically there, overlay it, or lower the
   minimums.
-- **The Items window's page number in the URL (§115, §118).** Since
-  §118 a reload re-runs a Collection's default search, so page 1 comes
-  back; the page an Item was found on does not — never guaranteed
-  anyway, since API result order drifts.
+- **Done (§127): the Items page number in the URL** (§115, §118) — as
+  `page` + `page-size`; exact for a static list, re-walked for an API,
+  with the drift said in the Share panel.
 - **The phone Inspector's timeline still scrolls inside the sheet
   (§114, "No scroll inside the Inspector").** Plotting a Collection's
   first 10–100 Items can stack more than 240px of lanes; needs a lane
@@ -5714,9 +5713,9 @@ server omits — both loosened to match what matters, not the accident.
 - CQL2 arbitrary-property filtering on an API search, and per-field sort
   beyond `properties.datetime` (§68, reaffirmed in §84's own research
   pass) — still genuinely out of scope, not just unmentioned.
-- Added 2026-09-29 (§108–§110): the chosen *view* in the URL (the hash's
-  query segment carries API search parameters; a `view=` key there would
-  pollute that contract); the three overview views researched and set
+- Added 2026-09-29 (§108–§110): the chosen *view* in the URL — **done in
+  §127**, as a STAC Lens key split off before the search is decoded, so
+  the contract stays clean; the three overview views researched and set
   aside — Time (one lane per Collection's temporal extent), Space (a grid
   of small maps of declared bboxes), Health (rules × objects, needing the
   Inspector's inline checks extracted into a pure `health.ts`); an
@@ -8502,4 +8501,144 @@ it now says the catalog did not load. Both stars got fixed accessible
 names (above), the touch rule took `pointer: coarse`, the disabled star
 became focusable, and smoke 3g reports a failed check instead of
 aborting the run if the star never becomes available.
+
+
+## 126. A card's tags are labels, not filters
+
+**What was reported.** On the landing page people meant to open a card
+and hit one of its tags instead. The tag quietly became a filter, the
+page stayed where it was, and nothing said why the catalog had not
+opened ("用户大部分只是想点击一下卡片，但是却误操作点击了tag，导致其实做了
+一次筛选而因为界面没有进入数据本身而陷入困惑").
+
+**Why.** The card is one click target, so its whole surface means
+"open". The tags sit along its bottom edge, right where a click on the
+card lands, and each was its own button with a different job. §100
+borrowed "a tag on an item is the way into the filter" from Earth Engine
+and the AWS Registry. There only the title is a link and the card body is
+inert, so a tag has no larger target to compete with. Here it did. The
+only result was a small change in the sidebar and the list, far from
+where the person was looking.
+
+**Decision.** The tags stay on the card, because they teach the
+vocabulary and say why a card is in the list. But they are plain labels
+now: a click anywhere on the card, tags included, opens the catalog.
+Filtering lives in one place, the sidebar facets, with the active
+values as removable chips above the list. A tag whose value is an active
+filter is still drawn in the selection color, so a filtered list still
+shows which tag matched. The star stays the card's only inner control.
+
+**Checked.** Playwright at 1400 px in light and dark and on iPhone 13:
+clicking a card's first tag opens that catalog, and no button is left
+inside a card other than the star. With Imagery ticked in the sidebar,
+the Imagery tag on every card turns blue and the others stay faint.
+
+## 127. Share: the view and the Items page in the link, and a Share button
+
+**What was asked.** "我们有哪一层级的分享功能还没做么？然后可以考虑把分享按钮也做出来，允许用户可以复制分享链接".
+
+**Inventory, before.** The address bar already carried the catalog, the
+selection (its root found on open) and an applied API search. Not
+carried: the Items page and the view (§96, both deferred), the landing
+page's filters (§100–§101), the tree's open branches and pan (by design:
+moment-to-moment state). Only the phone had a Copy link (in the compact
+banner, which can be dismissed); on a desktop the address bar was the
+only way to share.
+
+**Prior art.** Google Maps' Share opens a small panel with the link and
+Copy; YouTube's adds "start at 1:23"; Figma and GitHub copy at once.
+A panel earns its place when there is something to see or choose.
+
+**Decisions (asked).** Add the view and the Items page; leave the
+landing filters for later. The button opens a small panel that says in
+words what the link opens, rather than copying blind.
+
+**The link.** The new keys share the hash's `?` segment with the
+search: `#<href>?<search>&view=icicle&page=3&page-size=40`. §96 had
+deferred the view because a `view=` key "would pollute" the search
+contract; that is avoided by splitting STAC Lens's keys off
+(`splitViewState`) before anything is decoded as a search, so they never
+reach a server and a link with only `view=outline` applies no search.
+A page needs its page size: page 3 at 20 per page is not page 3 at 40.
+Defaults (the tree, page 1) are left out, so older links are unchanged.
+
+**Restoring the page.**
+- Static Collection: the href list is fixed, so the page is exact. The
+  pager peeks at the linked page when it mounts and fetches that page
+  first (not page 1 and then that page). If a session cache for the
+  Collection holds a different page size, its pages are dropped.
+- API Collection: a cursor cannot be asked for page 3. The pager takes
+  the link's page size from the first request, applies the page once the
+  link's query (if any) and the first search are in place, and the
+  existing catch-up walks the cursor there — three requests for page 3.
+  The API may hold other Items on that page by then; the Share panel
+  says so.
+- One function, `applyTarget` in `App`, now opens a link on first load
+  and on Back/Forward alike (the two paths had been written twice).
+
+**The Share button.** In the header's trailing end, before the GitHub
+mark: a borderless command (`.stac-lens-view-command`, held while open),
+not one of the segmented pane switches — §123's rule that commands and
+layout switches look different. Icon and "Share" on a desktop; the
+icon alone on a phone, where the arrow-out-of-a-box is the platform's
+own share glyph. The panel:
+- "This link opens": Catalog, Selected (title · type), View (if not the
+  tree), Search (in words, `describeDraft`, with the Collection), Items
+  (page, per page, Collection; the API caveat). Only what the link
+  carries, built from the same state the hash is written from.
+- "Not kept: which branches are open, and the pan and zoom."
+- The link, selected on open, and Copy link → "Copied" for two seconds;
+  if the browser refuses, the link stays selected with a Ctrl+C / ⌘C
+  hint. The copy helper (moved to `clipboard.ts`, with the
+  `execCommand` fallback for a plain-http LAN server) is now also used
+  by the phone banner.
+- A disclosure, not a modal: Escape returns focus to the button; a press
+  outside closes it (DOM containment). It is `fixed` under the button
+  and kept 16 px inside both window edges — at 390 px it first opened
+  18 px off the left edge.
+
+**Checks.**
+- Live, Planetary Computer Landsat (1400 px): paging to 3 and switching
+  to Icicle writes `?view=icicle&page=3&page-size=40`; the panel lists
+  catalog, selection, view and page with the API caveat; Copy puts the
+  same link on the clipboard; opening it fresh lands on Icicle, page 3,
+  with 120 Items buffered after the catch-up. Dark: 3DEP with a search
+  and Outline lists the search in words. iPhone 13: icon-only button,
+  panel inside the screen, a tap outside closes it.
+- Vitest (160): `splitViewState` / `joinViewState` — split leaves the
+  search byte-identical, a view-only link carries no search, bad values
+  are dropped, defaults left out.
+- Smoke (70): a static fixture Collection of 50 Items opened with
+  `view=outline&page=2&page-size=20` shows exactly Items 21–40 in
+  Outline and keeps the keys in the hash; the panel lists catalog,
+  selection, view and page with no API caveat; Copy and Escape; on the
+  phone the icon button's panel fits the screen; a Collection that is its
+  own root, linked with a page, is selected and opens on that page.
+
+**What the independent review changed before the commit.**
+- A link that searched or paged a *root*'s own Items restored neither:
+  a link to the root opened it unselected, and only a selected node is
+  browsed and mounts a pager — yet the Share panel listed the page. Such
+  a link now keeps the root selected; an API root's panel, which
+  otherwise waits closed for conditions, opens when the link carries its
+  search.
+- A linked page no pager took (a phone, a panel that never opened)
+  stayed in the store and could land on the person's own next search.
+  Every link, catalog open and return to the landing page now clears
+  both hand-offs first. An API root searched with no conditions writes
+  no page, since there is no query to re-run.
+- Back/Forward to an Item in another catalog kept the previous catalog's
+  browsed Collection (selecting an Item keeps what is browsed), so that
+  Collection's page and search were written onto the new link. Opening a
+  link now starts browsing over before selecting.
+- A hand-edited `page-size=5000` would have fetched 5,000 Items at once
+  and left the size control naming another size; only the sizes the
+  pager offers are taken, and `page=1` is ignored on read.
+- When copying failed, "press Ctrl+C" copied nothing: the link was
+  selected but not focused. It is focused now, and the clipboard
+  fallback hands focus back after its hidden textarea. A copy that
+  answers after the panel closed no longer shows "Copied" on the next
+  open.
+- §126's active-tag colour regained its underline, so a matching tag is
+  not told by colour alone.
 

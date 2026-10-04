@@ -439,6 +439,11 @@ body {
   color: var(--color-text);
   background: var(--color-bg);
 }
+/* A command that opened a panel (Share) reads as held while it is open. */
+.stac-lens-view-command[aria-expanded='true'] {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
 .stac-lens-view-command:disabled {
   color: var(--color-text-faint);
   opacity: 0.6;

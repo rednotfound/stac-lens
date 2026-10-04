@@ -65,3 +65,52 @@ export function splitHashFragment(hash: string): { href: string; queryString?: s
 export function joinHashFragment(href: string, queryString: string): string {
   return queryString ? `${href}?${queryString}` : href
 }
+
+/** What a shared link keeps beyond the selection and the API search: the
+ *  explorer view, and the Items panel's page (1-based) with its page size —
+ *  a page number means nothing without the size it was counted in. */
+export interface ViewState {
+  view?: 'tree' | 'outline' | 'icicle'
+  page?: number
+  pageSize?: number
+}
+
+/** STAC Lens's own keys in the hash's `?` segment. They share the segment
+ *  with the API search parameters but are split off before anything is
+ *  decoded as a search, so they never reach a server and a link carrying
+ *  only `view=icicle` never counts as "a search was applied". */
+const VIEW_KEYS = ['view', 'page', 'page-size'] as const
+
+/** Splits a hash query string into the API search part and the view state.
+ *  Never throws; an unknown view or a page that is not an integer from 2
+ *  up is dropped (the page size is checked against the pager's options
+ *  where it is applied, `App`), as a malformed search field already is. */
+export function splitViewState(queryString: string): { search: string; state: ViewState } {
+  const params = new URLSearchParams(queryString)
+  const state: ViewState = {}
+  const view = params.get('view')
+  if (view === 'tree' || view === 'outline' || view === 'icicle') state.view = view
+  const page = Number(params.get('page'))
+  const pageSize = Number(params.get('page-size'))
+  // Page 1 is the default and never written; read, it would only hand a
+  // pager a page it is already on.
+  if (Number.isInteger(page) && page >= 2 && Number.isInteger(pageSize) && pageSize >= 1) {
+    state.page = page
+    state.pageSize = pageSize
+  }
+  for (const key of VIEW_KEYS) params.delete(key)
+  return { search: params.toString(), state }
+}
+
+/** Inverse of `splitViewState`: the search part first (byte-identical to
+ *  `encodeSearchQuery`'s output), then the view state. The tree and page 1
+ *  are the defaults and are left out, so a link only says what differs. */
+export function joinViewState(search: string, state: ViewState): string {
+  const params = new URLSearchParams(search)
+  if (state.view && state.view !== 'tree') params.set('view', state.view)
+  if (state.page && state.page > 1 && state.pageSize) {
+    params.set('page', String(state.page))
+    params.set('page-size', String(state.pageSize))
+  }
+  return params.toString()
+}

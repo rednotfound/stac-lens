@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { browserCanOpen, describeAssetType, hasEmptyPathSegment } from '../stac/assets'
+import { copyToClipboard } from './clipboard'
 import {
   accessAsset,
   accessMethodFor,
@@ -739,38 +740,4 @@ function KeyIcon() {
       <path d="M7 9l6.5-6.5M11 5l1.75 1.75M9.5 6.5l1.25 1.25" />
     </svg>
   )
-}
-
-/** Tries the modern Clipboard API first (works in any secure context —
- *  `https://` or `localhost`), then falls back to the legacy
- *  `execCommand('copy')` technique, which still works over a plain `http://`
- *  origin (e.g. testing over a LAN IP like `http://192.168.x.x:5173`,
- *  a real, reported scenario this session — `navigator.clipboard` is
- *  often unavailable entirely in that kind of insecure context, and the
- *  previous version's empty `catch {}` swallowed that failure silently).
- *  Returns whether it actually succeeded, so the caller can show real
- *  feedback instead of assuming. */
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      // fall through to the legacy fallback below
-    }
-  }
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
-  } catch {
-    return false
-  }
 }

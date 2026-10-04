@@ -29,7 +29,7 @@ import { useIsNarrow } from '../hooks/useMediaQuery'
  *     was tried and reverted for that reason.
  *  2. **Browse the known catalogs**: a faceted catalog browser — sidebar
  *     of collapsible facet groups with counts, main area of cards, each
- *     card carrying its own clickable tags, and the list's own name
+ *     card carrying its own tags (labels, not filters — §126), and the list's own name
  *     filter in its toolbar. The pattern Hugging Face's dataset hub, NASA
  *     Earthdata and CKAN portals share; Baymard's testing calls sidebar
  *     filtering proven, and calls a wall of horizontal filter chips (our
@@ -297,7 +297,6 @@ export function LandingPage({
                   key={row.href}
                   row={row}
                   selection={selection}
-                  onToggle={toggle}
                   onOpen={onOpen}
                   openedAt={view === 'recent' ? recent.find((r) => r.href === row.href)?.openedAt : undefined}
                 />
@@ -700,22 +699,23 @@ function relativeTime(epochMs: number): string {
 }
 
 /** One catalog card: star, title with the API badge, a two-line
- *  description, and — pinned to the bottom — the card's own tags, each a
- *  button that applies that value as a filter, plus the host name (the
- *  full URL is the card's tooltip). The card is a `<div role="button">`,
- *  not a `<button>`: the star and the tags are real buttons, and a button
- *  may not contain another. Their clicks are excluded from "open" by DOM
- *  containment, never `stopPropagation()`. */
+ *  description, and — pinned to the bottom — the card's own tags plus the
+ *  host name (the full URL is the card's tooltip). The tags are labels,
+ *  not buttons: they sit where a click on the card lands, and a tag that
+ *  quietly added a filter left people on the same page wondering why the
+ *  catalog did not open (DESIGN §126). A tag that matches an active filter
+ *  is drawn in the selection color, so the card still says why it is
+ *  listed. The card is a `<div role="button">`, not a `<button>`: the star
+ *  is a real button, and a button may not contain another. Its click is
+ *  excluded from "open" by DOM containment, never `stopPropagation()`. */
 function CatalogCard({
   row,
   selection,
-  onToggle,
   onOpen,
   openedAt,
 }: {
   row: Row
   selection: FacetSelection
-  onToggle: (facet: FacetId, value: string) => void
   onOpen: (href: string) => void
   openedAt?: number
 }) {
@@ -822,25 +822,17 @@ function CatalogCard({
           const on = selection[facet.id].has(value)
           return (
             <span key={`${facet.id}:${value}`} style={{ display: 'inline-flex', alignItems: 'baseline' }}>
-              <button
-                type="button"
-                data-card-control
-                onClick={() => onToggle(facet.id, value)}
-                title={`${on ? 'Remove' : 'Add'} filter: ${facet.label} = ${facet.values[value]}`}
+              <span
                 style={{
-                  border: 'none',
-                  background: 'none',
-                  padding: 0,
-                  font: 'inherit',
                   color: on ? 'var(--color-selection)' : 'var(--color-text-faint)',
+                  // Not colour alone (WCAG 1.4.1): a matching tag is underlined too.
                   textDecoration: on ? 'underline' : 'none',
                   textUnderlineOffset: 2,
-                  cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
               >
                 {facet.values[value]}
-              </button>
+              </span>
               <span aria-hidden style={{ color: 'var(--color-border)', margin: '0 5px' }}>
                 ·
               </span>
