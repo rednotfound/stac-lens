@@ -15,6 +15,7 @@ function node(href: string, type: StacNode['type'], itemHrefs: string[] = []): S
     assets: [],
     declaredExtensions: [],
     propertyNamespaces: [],
+    localPathLinks: [],
   }
 }
 const item = (id: string) => node(id, 'Item')

@@ -190,6 +190,11 @@ export interface StacNode {
    *  the fallback for publishers who omit this optional-but-recommended
    *  link. */
   declaredRootHref?: string
+  /** HEALTH-RULES L-07: links whose href, as written, is a local
+   *  file-system path (`/Users/…`, `C:\…`, `file:`), with their `rel` —
+   *  recorded raw, before resolution, since resolved they look like
+   *  ordinary URLs on the catalog's own host. Empty when there are none. */
+  localPathLinks: { rel: string; href: string }[]
   childHrefs: string[]
   /** An OGC API - Features "Collections" listing endpoint (`rel:data`) —
    *  an alternative way to discover this node's child Collections when

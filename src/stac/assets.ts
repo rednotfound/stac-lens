@@ -71,3 +71,16 @@ export function hasEmptyPathSegment(href: string): boolean {
 export function browserCanOpen(href: string): boolean {
   return /^https?:\/\//i.test(href)
 }
+
+/** HEALTH-RULES L-07: an href written as a local file-system path — a
+ *  `file:` URL, a drive letter (`C:\…`), a UNC path, or an absolute path
+ *  under a home or temp directory (`/Users/…`, `/home/…`, `/tmp/…`). Such a
+ *  link only ever worked on the publisher's own machine: CoCliCo's Items
+ *  carry `/Users/calkoen/dev/stac-phd/…` as their root, parent, collection
+ *  and self. Takes the href *as written*: once resolved against a web host
+ *  it is an ordinary URL, and a web URL whose path happens to start with
+ *  `/media/` or `/home/` is a real link, not a publisher error. */
+export function looksLikeLocalPath(href: string): boolean {
+  if (/^file:/i.test(href) || /^[A-Za-z]:[\\/]/.test(href) || /^\\\\/.test(href) || /^~\//.test(href)) return true
+  return /^\/(Users|home|mnt|media|tmp|private\/var|var\/folders)\//.test(href)
+}

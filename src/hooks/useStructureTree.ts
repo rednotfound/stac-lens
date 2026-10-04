@@ -271,12 +271,17 @@ export function useStructureTree(rootHref: string): StructureTreeState {
       // loaded, so the chain has to be fetched on the way up, not just
       // peeked — same as `StacLoader.resolveRoot`, and bounded the same way
       // against a malformed/cyclic parent chain in an arbitrary catalog.
-      const target = loader.get(targetHref) ?? (await loader.load(targetHref))
+      // A link that never loads (CoCliCo's Items point their `parent` at a
+      // `/Users/…` path, health rule L-07) ends the walk where it is — the
+      // ancestors that did load still open, nothing is thrown.
+      const target = loader.get(targetHref) ?? (await loader.load(targetHref).catch(() => undefined))
+      if (!target) return
       const ancestors: string[] = []
       let cur = target.parentHref
       for (let i = 0; i < 50 && cur; i++) {
+        const parent = loader.get(cur) ?? (await loader.load(cur).catch(() => undefined))
+        if (!parent) break
         ancestors.push(cur)
-        const parent = loader.get(cur) ?? (await loader.load(cur))
         // `parent.href` always equals `cur` here (that's the href we just
         // fetched it by) — the guard against a cyclic parent chain has to
         // compare the *next* hop instead.

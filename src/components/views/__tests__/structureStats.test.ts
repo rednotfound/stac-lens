@@ -15,6 +15,7 @@ function node(href: string, type: StacNode['type'], childHrefs: string[] = []): 
     assets: [],
     declaredExtensions: [],
     propertyNamespaces: [],
+    localPathLinks: [],
   }
 }
 

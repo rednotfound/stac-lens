@@ -13,7 +13,7 @@ import type {
 } from './types'
 import { normalizeCollectionTemporalExtent, normalizeItemTemporal, type TemporalProperties } from './temporal'
 import { firstBboxIsUnion, isValidBbox, normalizeSpatial } from './spatial'
-import { isInlineImageType } from './assets'
+import { isInlineImageType, looksLikeLocalPath } from './assets'
 import { mergeNamespaceScans, scanNamespaces } from './namespaces'
 
 interface StacLink {
@@ -292,6 +292,9 @@ export function buildNode(href: string, raw: RawStacObject): StacNode {
     declaredCollectionHref,
     declaredParentHref,
     declaredRootHref,
+    localPathLinks: links
+      .filter((l) => l.href && looksLikeLocalPath(l.href))
+      .map((l) => ({ rel: String(l.rel ?? ''), href: l.href! })),
     childHrefs,
     collectionsEndpoint,
     childrenEndpoint,

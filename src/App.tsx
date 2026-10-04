@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { StructureTree } from './components/StructureTree'
 import { DetailPanel } from './components/DetailPanel'
 import { LandingPage } from './components/LandingPage'
@@ -21,7 +21,12 @@ import { TypeIcon } from './components/TypeIcon'
 import { useSelectionStore } from './store/selection'
 import { DEFAULT_ITEMS_PANEL_WIDTH, useItemSetStore } from './store/itemSet'
 import { useElementSize } from './hooks/useElementSize'
-import { useDeepLinkBootstrap, usePopStateSync, useShareableUrlSync } from './hooks/useShareableUrl'
+import {
+  useDeepLinkBootstrap,
+  usePopStateSync,
+  useShareableUrlSync,
+  type DeepLinkTarget,
+} from './hooks/useShareableUrl'
 import { encodeSearchQuery } from './stac/searchQueryUrl'
 import { Spinner } from './components/Spinner'
 import { Logo } from './components/Logo'
@@ -179,8 +184,19 @@ function App() {
   // Lens (the parentHref chain: docs/DESIGN.md, "UX uplift pass" and "An
   // Item's parent is singular").
   const { booting, error: bootError, target } = useDeepLinkBootstrap()
+  // The linked node's catalog could not be reached (DESIGN §124): say so
+  // above the views. Set by whichever navigation resolved a hash (first
+  // load or Back/Forward), cleared by any other open, shown only while the
+  // catalog it was resolved for is the one open.
+  const [notice, setNotice] = useState<{ rootHref: string; info: NonNullable<DeepLinkTarget['unreachable']> }>()
+  const showUnreachable = useCallback(
+    (t: DeepLinkTarget | null) => setNotice(t?.unreachable && { rootHref: t.rootHref, info: t.unreachable }),
+    [],
+  )
   useEffect(() => {
     if (!target) return
+    // eslint-disable-next-line react/set-state-in-effect
+    showUnreachable(target)
     // Register the restored query *before* selecting — `select` can
     // synchronously trigger `CursorItemSetPanels`'s mount (an already-open
     // Structure Tree box for `target.rootHref`), whose one-shot
@@ -193,7 +209,8 @@ function App() {
     // eslint-disable-next-line react/set-state-in-effect
     setRootHref(target.rootHref)
     if (target.selectedHref) select(target.selectedHref)
-  }, [target, select, setPendingInitialQuery])
+  }, [target, select, setPendingInitialQuery, showUnreachable])
+  const unreachable = notice && notice.rootHref === rootHref ? notice.info : undefined
   useShareableUrlSync(rootHref, selectedHref, booting, queryStringForSelection)
   // The browser's own Back/Forward must work here. Without this hook they
   // did nothing at all (the address bar changed, but nothing on screen
@@ -203,9 +220,10 @@ function App() {
   // guess: pressing the browser's Back button went straight to the
   // browser's own default page. See both hooks' own docs for the full
   // mechanism.
-  usePopStateSync(setRootHref, select, setPendingInitialQuery)
+  usePopStateSync(setRootHref, select, setPendingInitialQuery, showUnreachable)
 
   function openCatalog(href: string) {
+    setNotice(undefined)
     select(null) // a selection from a previous catalog can't mean anything here
     setRootHref(href)
   }
@@ -456,6 +474,62 @@ function App() {
          * directly into Inspector's Human tab (DetailPanel.tsx), so there is
          * exactly one thing to resize/collapse here regardless of what's
          * rendering inside Inspector. */}
+        {unreachable && (
+          <div
+            role="status"
+            data-unreachable-catalog
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '6px 12px 6px 16px',
+              borderBottom: '1px solid var(--color-border)',
+              background: 'var(--color-surface)',
+              color: 'var(--color-node-warning)',
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+              ⚠{' '}
+              {unreachable.openedOnItsOwn
+                ? 'The catalog this node belongs to could not be reached'
+                : unreachable.rel === 'root' && unreachable.walkComplete
+                  ? 'This node’s root link is broken'
+                  : 'This node’s root catalog could not be reached'}
+              : its <code>{unreachable.rel}</code> link points to <code>{unreachable.href}</code> (
+              {/* The loader's message repeats the href; only the server's answer is new here. */}
+              {unreachable.error.replace(`Failed to fetch ${unreachable.href}: `, '')}).{' '}
+              {unreachable.openedOnItsOwn
+                ? 'It is opened on its own.'
+                : unreachable.walkComplete
+                  ? 'It is opened from the catalog its parent links lead to.'
+                  : 'It is opened from the highest ancestor its links did reach.'}{' '}
+              {unreachable.localPath && (
+                <span style={{ color: 'var(--color-text-muted)' }}>
+                  The link is a local file path from the publisher’s machine — a publisher error (health rule L-07).
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setNotice(undefined)}
+              aria-label="Dismiss"
+              title="Dismiss"
+              style={{
+                border: 'none',
+                background: 'none',
+                color: 'var(--color-text-muted)',
+                cursor: 'pointer',
+                fontSize: 14,
+                lineHeight: 1,
+                padding: 2,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div ref={containerRef} style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           <div
             style={{
