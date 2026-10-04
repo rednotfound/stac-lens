@@ -61,10 +61,14 @@ export function useSelectedItems(): SelectedItemsState {
   // whose parent Collection was never independently visited, which the
   // effect below fetches. The fetched node is keyed by the href it was
   // fetched for, so a stale result from a previous target is never shown.
-  const [fetched, setFetched] = useState<{ href: string; node: StacNode } | undefined>(undefined)
+  const [fetched, setFetched] = useState<{ href: string; node?: StacNode } | undefined>(undefined)
   const targetNode = targetHref
     ? (loader.get(targetHref) ?? (fetched?.href === targetHref ? fetched.node : undefined))
     : undefined
+  // The fetch finished without a node: the Item's Collection link points
+  // nowhere (CoCliCo's `/Users/…` paths, health rule L-07). Not "loading"
+  // forever — the Item still has its own time and footprint to show.
+  const targetFailed = !!targetHref && fetched?.href === targetHref && !fetched.node && !loader.get(targetHref)
 
   useEffect(() => {
     if (!targetHref || loader.get(targetHref)) return
@@ -76,6 +80,7 @@ export function useSelectedItems(): SelectedItemsState {
       })
       .catch((err) => {
         console.error('[useSelectedItems] failed', err)
+        if (!cancelled) setFetched({ href: targetHref })
       })
     return () => {
       cancelled = true
@@ -118,6 +123,11 @@ export function useSelectedItems(): SelectedItemsState {
 
   if (!selectedHref) return { status: 'empty', reason: 'no-selection' }
   if (!targetHref) return { status: 'empty', reason: 'no-direct-items' }
+  if (targetFailed && selectedNode?.type === 'Item') {
+    // No Collection to stand in as context: the Item stands for itself. Its
+    // Collection's extent would be suppressed for an Item selection anyway.
+    return { status: 'ready', node: selectedNode, items, highlightHref: selectedHref }
+  }
   if (!targetNode || targetNode.href !== targetHref) return { status: 'loading' }
 
   // A `cursor` (API-searched) node's real item count is unknown until

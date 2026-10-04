@@ -81,20 +81,72 @@ export class StacLoader {
    *  node (fetched directly, in isolation, with nothing else loaded yet) —
    *  the same "session root" Structure Lens needs to build a tree from.
    *  Prefers the node's own `rel:root` link (one hop, per commons/links.md's
-   *  "usually just one root entity"); falls back to walking `parentHref` all
-   *  the way up for publishers who omit it. Bounded to guard against a
-   *  malformed or cyclic parent chain in an arbitrary, unverified catalog. */
-  async resolveRoot(node: StacNode, maxHops = 50): Promise<string> {
-    if (node.declaredRootHref) return node.declaredRootHref
-
+   *  "usually just one root entity") — but only once it has actually
+   *  loaded; falls back to walking `parentHref` up, and stops at the last
+   *  node that loads. So a node whose links all point nowhere (CoCliCo's
+   *  Items carry `/Users/…` paths from the publisher's laptop) opens on
+   *  its own instead of failing the whole page; `unreachable` says which
+   *  link failed first, for the user, and whether the parent walk still
+   *  reached a node with no parent (only the `root` link was broken).
+   *  Bounded against a cyclic chain. */
+  async resolveRoot(node: StacNode, maxHops = 50): Promise<ResolvedRoot> {
+    let unreachable: ResolvedRoot['unreachable']
+    if (node.declaredRootHref === node.href) return { rootHref: node.href }
+    if (node.declaredRootHref) {
+      try {
+        await this.load(node.declaredRootHref)
+        return { rootHref: node.declaredRootHref }
+      } catch (err) {
+        unreachable = {
+          rel: 'root',
+          href: node.declaredRootHref,
+          error: errorMessage(err),
+          localPath: node.localPathLinks.some((l) => l.rel === 'root'),
+          walkComplete: true,
+        }
+      }
+    }
     let current = node
     for (let i = 0; i < maxHops && current.parentHref; i++) {
       const parentHref = current.parentHref
       if (parentHref === current.href) break // self-referencing link, bail out
-      current = this.get(parentHref) ?? (await this.load(parentHref))
+      try {
+        current = this.get(parentHref) ?? (await this.load(parentHref))
+      } catch (err) {
+        unreachable = unreachable
+          ? { ...unreachable, walkComplete: false }
+          : {
+              rel: 'parent',
+              href: parentHref,
+              error: errorMessage(err),
+              localPath: current.localPathLinks.some((l) => l.rel === 'parent'),
+              walkComplete: false,
+            }
+        break
+      }
     }
-    return current.href
+    return { rootHref: current.href, unreachable }
   }
+}
+
+/** Where `resolveRoot` landed, and the first structural link that did not
+ *  load on the way, if any. */
+export interface ResolvedRoot {
+  rootHref: string
+  unreachable?: {
+    rel: 'root' | 'parent'
+    /** Resolved, as fetched. */
+    href: string
+    error: string
+    /** The link was written as a local file path (health rule L-07). */
+    localPath: boolean
+    /** The parent walk ended at a node with no parent, not at a failure. */
+    walkComplete: boolean
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export { resolveHref }

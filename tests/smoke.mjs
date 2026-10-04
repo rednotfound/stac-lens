@@ -53,6 +53,23 @@ const OFF_PAGE_ID = 'not-on-the-search-page'
 // href with an empty path segment, and a plain https href.
 const FIXTURE_ROOT = 'https://fixtures.stac-lens.test/catalog.json'
 const FIXTURE_ITEM = 'https://fixtures.stac-lens.test/item.json'
+// An Item whose structural links were written on the publisher's laptop
+// (CoCliCo's real Items do this, health rule L-07): resolved, the host answers 400.
+const LOCAL_PATH_ITEM = 'https://fixtures.stac-lens.test/local/items/a.json'
+const localPathItem = {
+  type: 'Feature',
+  stac_version: '1.0.0',
+  id: 'local-path-item',
+  geometry: { type: 'Point', coordinates: [4.3, 52.1] },
+  bbox: [4.3, 52.1, 4.3, 52.1],
+  properties: { datetime: '2023-02-09T00:00:00Z' },
+  links: [
+    { rel: 'root', href: '/Users/someone/dev/stac/catalog.json' },
+    { rel: 'parent', href: '/Users/someone/dev/stac/local/collection.json' },
+    { rel: 'collection', href: '/Users/someone/dev/stac/local/collection.json' },
+  ],
+  assets: {},
+}
 const fixtureRoot = {
   type: 'Catalog',
   stac_version: '1.1.0',
@@ -102,6 +119,12 @@ const handleRoute = async (route) => {
   if (url.startsWith(BASE_URL)) return route.continue()
   if (url === FIXTURE_ITEM) {
     return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(fixtureItem) })
+  }
+  if (url === LOCAL_PATH_ITEM) {
+    return route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify(localPathItem) })
+  }
+  if (url.startsWith('https://fixtures.stac-lens.test/Users/')) {
+    return route.fulfill({ status: 400, contentType: 'text/plain', body: 'invalid resource name' })
   }
   if (url === FIXTURE_ROOT) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixtureRoot) })
@@ -587,6 +610,58 @@ await page.waitForFunction(
       /AWS is assumed/.test(await open.textContent()),
   )
   await fx.close()
+}
+
+// 3f. A deep link whose root and parent links point to the publisher's
+// own file system: the node still opens, and the page says why it is alone.
+{
+  const lp = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  const lpErrors = []
+  lp.on('pageerror', (e) => lpErrors.push(e.message))
+  await lp.route('**/*', handleRoute)
+  await lp.goto(`${BASE_URL}/#${LOCAL_PATH_ITEM}`)
+  await lp.waitForSelector('[data-unreachable-catalog]', { timeout: 15000 }).catch(() => {})
+  const notice =
+    (await lp
+      .locator('[data-unreachable-catalog]')
+      .textContent()
+      .catch(() => '')) ?? ''
+  check(
+    'deep link with unreachable root: the node opens on its own with a notice naming the link',
+    /opened on its own/.test(notice) &&
+      notice.includes('/Users/someone/dev/stac/catalog.json') &&
+      /L-07/.test(notice) &&
+      (await lp.getByText('Failed to load this catalog').count()) === 0,
+    notice,
+  )
+  await lp.waitForSelector('[data-local-path-links]', { timeout: 5000 }).catch(() => {})
+  const lpList =
+    (await lp
+      .locator('[data-local-path-links]')
+      .textContent()
+      .catch(() => '')) ?? ''
+  const lpInspector = (await lp.locator('[data-inspector-pane]').textContent()) ?? ''
+  check(
+    'the Inspector shows the Item, its own time, and lists the local-path links (L-07)',
+    lpInspector.includes('local-path-item') &&
+      /3 links/.test(lpList) &&
+      (await lp.locator('[data-inspector-pane]').getByText('Loading…').count()) === 0 &&
+      lpErrors.length === 0,
+    `${lpList} | errors ${lpErrors.join('; ')}`,
+  )
+  await lp.getByRole('button', { name: 'Dismiss' }).click()
+  check('the notice can be dismissed', (await lp.locator('[data-unreachable-catalog]').count()) === 0)
+  // Reaching the same link through history (popstate), not a fresh load,
+  // must explain it too; leaving for the landing page clears it.
+  await lp.evaluate(() => (location.hash = ''))
+  await lp.waitForSelector('[data-unreachable-catalog]', { state: 'detached', timeout: 5000 }).catch(() => {})
+  await lp.evaluate((h) => (location.hash = h), LOCAL_PATH_ITEM)
+  await lp.waitForSelector('[data-unreachable-catalog]', { timeout: 10000 }).catch(() => {})
+  check(
+    'the notice also appears when the link is reached through history, not only on first load',
+    (await lp.locator('[data-unreachable-catalog]').count()) === 1,
+  )
+  await lp.close()
 }
 
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result

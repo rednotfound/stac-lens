@@ -8337,3 +8337,96 @@ fixed unless noted:
   toggled does not happen: hiding the panel leaves its published page,
   and so the leaves, in place, so the pan key does not change.
 
+
+## 124. A deep link to a node whose catalog cannot be reached
+
+**What was reported.** The user opened
+`https://staclens.com/#https://coclico.blob.core.windows.net/stac/v1/coastal-zone/items/coastal_zone_10000m.json`
+and got "Failed to load this catalog". Reaching the same Item by opening
+CoCliCo's root and clicking down worked. They asked whether a visit
+picks something up that a refresh loses.
+
+**Why.** Nothing is remembered between visits. The two paths do
+different things. That Item's `root`, `parent`, `collection` and `self`
+links are all written as paths on the publisher's laptop:
+`/Users/calkoen/dev/stac-phd/release/v1/catalog.json` and so on.
+Resolved against the blob host, they become
+`https://coclico.blob.core.windows.net/Users/calkoen/…`, which answers
+`400 The specifed resource name contains invalid characters`. Browsing
+down from the root never follows an Item's own `root` link, so it works.
+A deep link starts from the Item alone. `resolveRoot` took
+`declaredRootHref` without checking it, and loading that root failed
+the whole page.
+
+**What was chosen.** Three fixes were offered. The user took the first
+two ("那就按照你说的做前两条"):
+
+1. **Still show the node, and say which link failed.**
+   `StacLoader.resolveRoot` now takes `rel:root` only once it has
+   loaded. Otherwise it walks `rel:parent` up and stops at the last node
+   that loads. It returns the first link that failed. When nothing
+   above loads, the node opens on its own as the session root: it is
+   selected and shown in the Inspector. A notice above the views says
+   which link (`root` or `parent`) pointed where, and what the server
+   answered. It also says whether the node is opened on its own or from
+   the highest ancestor that did load. It can be dismissed.
+2. **Health rule L-07: a link written as a local file path.**
+   `buildNode` records such links in `localPathLinks`. The test is
+   `looksLikeLocalPath`, applied to the raw href as written. It matches
+   `file:`, a drive letter, UNC, `~/`, and absolute paths under
+   `/Users`, `/home`, `/mnt`, `/media`, `/tmp`, `/var/folders` and
+   `/private/var`. A full web URL never matches, even when its path
+   starts with one of these (Django serves `/media/`). The
+   Inspector lists them under Containment with a ⚠ line naming the rule.
+   The notice adds a muted line when the failed link is one of these.
+
+The third fix was not taken: guessing the real root by trying the URL's
+ancestor directories (`…/stac/v1/catalog.json`). It would work for
+CoCliCo, but it invents a structure link the publisher never wrote
+(see the rule against deriving structure).
+
+**Two more places failed on the same links, found during live checks.**
+- The tree's ancestor walk, which opens the path down to a deep-linked
+  selection, threw an uncaught rejection on the dead `parent`. It now
+  stops where the links stop.
+- The Inspector's Temporal and Spatial stayed on "Loading…". They first
+  load the Item's Collection as context, and that never arrived. When
+  the Collection cannot load, the Item now stands for itself. Its
+  Collection's extent is hidden for an Item selection anyway.
+
+The notice shows only the server's answer. The loader's message repeats
+the href, which made the notice six lines long on a phone.
+
+**Checks.**
+- Live on the reported URL (1400 px light and dark, iPhone 13): the
+  Item opens, the Inspector shows its time and footprint, the notice
+  names the `root` link and the 400, and L-07 lists four links. No
+  page errors.
+- Planetary Computer Landsat as a control: no notice, no L-07.
+- Vitest: `looksLikeLocalPath`; `localPathLinks` recorded; `resolveRoot`
+  root-only-once-loaded, parent fallback, opened on its own.
+- Smoke (60): an inline Item with local-path links, deep-linked — it opens on its own, the notice names the link, the Inspector shows its time and lists the links, no page errors, the notice dismisses.
+
+**What the independent review changed before the commit.**
+- `looksLikeLocalPath` also tested the path of resolved URLs, so a
+  real link such as `https://data.example.org/media/stac/collection.json`
+  would have been flagged L-07. It now judges only the href as written.
+  The notice learns "local path" from the node's own raw links
+  (`unreachable.localPath`), not from the resolved URL.
+- The notice was wired only to the first page load. Pasting such a link
+  into an open app, or reaching it with Back/Forward, opened the node
+  alone with no explanation. Opening the real root later from the
+  landing page could also bring back a stale notice. The notice is now
+  App state: both hash paths set it, and any other open clears it. It
+  shows only while the catalog it was resolved for is open.
+- When only the `root` link is broken and the `parent` links still
+  reach the top, the notice said "the root catalog could not be
+  reached". It now says "This node's root link is broken … opened from
+  the catalog its parent links lead to" (`unreachable.walkComplete`).
+- The Inspector kept the Item standing for itself even after its
+  Collection later loaded by another path. It now checks the cache
+  first.
+- Not changed: a dead link can be fetched up to three times, by the
+  root search, the tree's ancestor walk and the Inspector, because the
+  loader does not cache failures. That costs requests, not correctness.
+

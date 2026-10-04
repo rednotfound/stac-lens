@@ -350,7 +350,7 @@ export function DetailPanel() {
             </Field>
           ))}
 
-          {(node.declaredCollectionHref || node.declaredParentHref) && (
+          {(node.declaredCollectionHref || node.declaredParentHref || node.localPathLinks.length > 0) && (
             <Field label="Containment (source)">
               {node.declaredCollectionHref && <div>collection: {node.declaredCollectionHref}</div>}
               {node.declaredParentHref && <div>parent: {node.declaredParentHref}</div>}
@@ -363,6 +363,19 @@ export function DetailPanel() {
                     one; the tree navigates/highlights through it.
                   </div>
                 )}
+              {node.localPathLinks.length > 0 && (
+                <div data-local-path-links style={{ color: 'var(--color-node-warning)', marginTop: 4 }}>
+                  ⚠ {node.localPathLinks.length === 1 ? 'A link is' : `${node.localPathLinks.length} links are`} written
+                  as a local file path from the publisher’s machine, unreachable on the web (health rule L-07):
+                  <ul style={{ margin: '2px 0 0', paddingLeft: 18 }}>
+                    {node.localPathLinks.map((l, i) => (
+                      <li key={i} style={{ overflowWrap: 'anywhere' }}>
+                        <code>{l.rel}</code> → <code>{l.href}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </Field>
           )}
 

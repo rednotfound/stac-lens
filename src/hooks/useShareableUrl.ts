@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { loader } from '../stac/loaderInstance'
 import { joinHashFragment, splitHashFragment, decodeSearchQuery } from '../stac/searchQueryUrl'
 import type { SearchFilter } from '../stac/apiSearch'
+import type { ResolvedRoot } from '../stac/loader'
 import type { StacNode } from '../stac/types'
 
 export interface DeepLinkTarget {
@@ -15,6 +16,10 @@ export interface DeepLinkTarget {
    *  already uses, so a query restored this way lands on the same box a
    *  freshly-applied one would. */
   appliedQuery?: { forHref: string; query: SearchFilter }
+  /** The catalog the linked node belongs to could not be reached through
+   *  its `root`/`parent` links: it opened as far up as they went (perhaps
+   *  on its own), and this says which link failed. */
+  unreachable?: NonNullable<ResolvedRoot['unreachable']> & { openedOnItsOwn: boolean }
 }
 
 function queryOwnerHref(node: StacNode): string {
@@ -50,11 +55,19 @@ function readHashHref(): string {
 async function resolveHashTarget(hash: string): Promise<DeepLinkTarget> {
   const { href, queryString } = splitHashFragment(hash)
   const node = await loader.load(href)
-  const rootHref = await loader.resolveRoot(node)
+  const { rootHref, unreachable } = await loader.resolveRoot(node)
   const appliedQuery = queryString
     ? { forHref: queryOwnerHref(node), query: decodeSearchQuery(queryString) }
     : undefined
-  return { rootHref, selectedHref: node.href === rootHref ? null : node.href, appliedQuery }
+  // A node that opened on its own because its catalog was unreachable is
+  // still what the link named: select it, so the Inspector shows it.
+  const openedOnItsOwn = rootHref === node.href && !!unreachable
+  return {
+    rootHref,
+    selectedHref: node.href === rootHref && !openedOnItsOwn ? null : node.href,
+    appliedQuery,
+    unreachable: unreachable && { ...unreachable, openedOnItsOwn },
+  }
 }
 
 /** Resolves the hash-encoded node href (if present) into a catalog root to
@@ -116,11 +129,13 @@ export function usePopStateSync(
   setRootHref: (href: string | null) => void,
   select: (href: string | null) => void,
   setPendingQuery: (forHref: string, query: SearchFilter) => void,
+  setUnreachable: (target: DeepLinkTarget | null) => void,
 ): void {
   useEffect(() => {
     function handlePopState() {
       const hash = readHashHref()
       if (!hash) {
+        setUnreachable(null)
         setRootHref(null)
         select(null)
         return
@@ -129,9 +144,11 @@ export function usePopStateSync(
         try {
           const target = await resolveHashTarget(hash)
           if (target.appliedQuery) setPendingQuery(target.appliedQuery.forHref, target.appliedQuery.query)
+          setUnreachable(target)
           setRootHref(target.rootHref)
           select(target.selectedHref)
         } catch {
+          setUnreachable(null)
           setRootHref(null)
           select(null)
         }
@@ -139,7 +156,7 @@ export function usePopStateSync(
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [setRootHref, select, setPendingQuery])
+  }, [setRootHref, select, setPendingQuery, setUnreachable])
 }
 
 /** Keeps the address bar in sync with whatever's currently open, so copying

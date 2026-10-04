@@ -107,6 +107,7 @@
 | L-04 | Warning | URLs to directories end with a slash, consistently | bp | 🟡 low priority |
 | L-05 | Observation | `alternate` (`text/html`), `canonical`, `via`, `derived_from`, `license`, `preview` links present | bp | 🟡 — a `preview` link with an image type is shown as the node's preview ✅; the others not yet surfaced in the Inspector (listed in `DESIGN.md` §96) |
 | L-06 | Invalid | a pagination `next` link's `method` / `headers` / `body` / `merge` are honored by the client | api (Features, Item Search); spec 1.1 links | ✅ client obligation, met |
+| L-07 | Warning | no link `href` is a local file-system path (`file:`, a drive letter, a UNC path, `~/`, or an absolute path under `/Users`, `/home`, `/mnt`, `/media`, `/tmp`, `/var/folders` or `/private/var` — judged as written, so a full web URL never matches) — written on the publisher's machine, unreachable once published | bp ("absolute links … should be valid URLs"); observed: CoCliCo's Items, whose `root` / `parent` / `collection` / `self` all point to `/Users/…` | ✅ Inspector lists them under Containment ⚠; a deep link to such a node still opens it and says which link failed |
 
 ## API — declared
 
