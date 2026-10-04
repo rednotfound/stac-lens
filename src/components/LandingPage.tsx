@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Logo } from './Logo'
+import { StarIcon } from './FavoriteStar'
 import { LandingFooter } from './ProjectLinks'
 import { KNOWN_CATALOGS, type KnownCatalog } from '../data/knownCatalogs'
 import { FACETS, type FacetDef, type FacetId } from '../data/catalogTags'
@@ -862,52 +863,35 @@ function CatalogCard({
           {openedAt !== undefined ? relativeTime(openedAt) : host}
         </span>
       </div>
-      {/* Favorites are limited to list entries by decision — a recent root
-       * that is not in the list has no star. */}
-      {known && (
-        <button
-          type="button"
-          data-card-control
-          aria-pressed={favorite}
-          aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}
-          title={favorite ? 'Remove from favorites' : 'Add to favorites'}
-          onClick={() => toggleFavorite({ href: row.href, title: row.title })}
-          style={{
-            position: 'absolute',
-            top: 9,
-            right: 9,
-            width: 24,
-            height: 24,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'none',
-            cursor: 'pointer',
-            color: favorite ? 'var(--color-selection)' : hover ? 'var(--color-text-faint)' : 'transparent',
-          }}
-        >
-          <StarIcon filled={favorite} size={14} />
-        </button>
-      )}
+      {/* Any catalog can be a favorite (DESIGN §125), so a recent root that
+       * is not in the list has a star too. Revealed on hover; always shown
+       * on touch screens and on focus (tokens.css). */}
+      <button
+        type="button"
+        data-card-control
+        aria-pressed={favorite}
+        aria-label={`Favorite ${row.title}`}
+        title={favorite ? 'Remove from favorites' : 'Add to favorites'}
+        onClick={() => toggleFavorite({ href: row.href, title: row.title })}
+        className="stac-lens-card-star"
+        style={{
+          position: 'absolute',
+          top: 9,
+          right: 9,
+          width: 24,
+          height: 24,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          color: favorite ? 'var(--color-selection)' : hover ? 'var(--color-text-faint)' : 'transparent',
+        }}
+      >
+        <StarIcon filled={favorite} size={14} />
+      </button>
     </div>
-  )
-}
-
-function StarIcon({ filled, size = 14 }: { filled: boolean; size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={filled ? 'currentColor' : 'none'}
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z" />
-    </svg>
   )
 }
 

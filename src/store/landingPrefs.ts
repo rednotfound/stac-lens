@@ -8,9 +8,11 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
  *  for the app to work: with storage unavailable (private window, blocked
  *  site data) the store simply runs in memory for the session.
  *
- *  Favorites are limited to entries of the known-catalog list by decision
- *  (the star lives on the landing card); the title is stored alongside the
- *  href so a favorite still has a name if the list entry is ever removed. */
+ *  Any opened catalog can be a favorite — starred from the explorer
+ *  header or from a landing card, list entry or not (DESIGN §125, which
+ *  lifted §100's list-only limit). The title is stored alongside the href
+ *  so a favorite has a name even when it is not, or no longer, a list
+ *  entry. */
 
 export interface FavoriteRef {
   href: string

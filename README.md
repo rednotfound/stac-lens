@@ -67,7 +67,7 @@ Both share a **List / Time & Space** switcher: the same page of Items as a scrol
 
 **Shareable URLs** — the address bar always encodes what you're looking at: `#<absolute STAC href>`, plus an applied API search as `?datetime=…&bbox=…&sortby=…` using STAC's own parameter names. Paste the link anywhere and it reopens the same catalog, selection, and search. Browser Back/Forward move between catalogs and the landing page, not out of the app. On a phone the same link opens a compact view — the catalog as a document outline with each Collection's Items listed under it ten at a time, the Inspector as a bottom sheet — with a one-line pointer to the full experience on a desktop browser.
 
-**Landing page** — one large field, two jobs: type a name, topic or place to filter the list live, or paste any STAC Catalog, Collection or API URL and open it. Below it, a faceted browser over 100+ verified public catalogs and APIs — sidebar facets (topic, region, publisher, static/API) over an editorial tag vocabulary of our own, since neither STAC nor STAC Index classifies catalogs — with each card carrying its tags; favorites and recently opened catalogs are remembered in your browser.
+**Landing page** — one large field, two jobs: type a name, topic or place to filter the list live, or paste any STAC Catalog, Collection or API URL and open it. Below it, a faceted browser over 100+ verified public catalogs and APIs — sidebar facets (topic, region, publisher, static/API) over an editorial tag vocabulary of our own, since neither STAC nor STAC Index classifies catalogs — with each card carrying its tags; favorites and recently opened catalogs are remembered in your browser. Any catalog you open can be starred from the star beside its name in the header, whether or not it is in the list.
 
 <p align="center">
   <img src="docs/images/screenshot-landing.png" alt="The landing page: one field to search or paste a URL, a sidebar of facets, and cards for 100+ verified public STAC catalogs and APIs" width="1000">
@@ -209,6 +209,7 @@ src/
     ItemSetResultsPanel.tsx  numbered-page results, List / Time & Space
     BboxPickerModal.tsx      full-size map dialog: pan by default, explicit Draw-box tool
     Logo.tsx / ProjectLinks.tsx  the mark; repo link, GitHub mark, landing footer
+    FavoriteStar.tsx         the star icon; the header star that favorites the open catalog
     EmptyState.tsx / LoadingState.tsx / Spinner.tsx / TabButton.tsx  shared primitives
   design/
     tokens.css       color/spacing/type tokens, light + dark

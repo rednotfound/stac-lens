@@ -664,6 +664,43 @@ await page.waitForFunction(
   await lp.close()
 }
 
+// 3g. Any opened catalog can be starred from the header and found again
+// under the landing page's Favorites — the inline fixture root is not in
+// the known list, which is the case that used to have no star at all.
+{
+  const fv = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+  await fv.route('**/*', handleRoute)
+  await fv.goto(`${BASE_URL}/#${FIXTURE_ROOT}`)
+  const star = fv.locator('[data-favorite-star]')
+  await star.waitFor({ timeout: 15000 }).catch(() => {})
+  await fv
+    .waitForFunction(
+      () => document.querySelector('[data-favorite-star]')?.getAttribute('aria-disabled') !== 'true',
+      null,
+      { timeout: 10000 },
+    )
+    .catch(() => {})
+  const enabled = (await star.count()) === 1 && (await star.getAttribute('aria-disabled')) !== 'true'
+  if (enabled) await star.click({ timeout: 5000 }).catch(() => {})
+  const pressed = enabled ? await star.getAttribute('aria-pressed') : 'star never became available'
+  await fv.getByTitle('Back to catalogs').click()
+  await fv
+    .getByRole('button', { name: /^Favorites/ })
+    .first()
+    .click()
+  const favCard = fv.locator(`[role="button"][title="${FIXTURE_ROOT}"]`)
+  await favCard.waitFor({ timeout: 5000 }).catch(() => {})
+  const favCardStar = favCard.locator('.stac-lens-card-star')
+  check(
+    'a catalog not in the list is starred from the header and listed under Favorites, star on',
+    pressed === 'true' && (await favCard.count()) === 1 && (await favCardStar.getAttribute('aria-pressed')) === 'true',
+    `pressed ${pressed}, cards ${await favCard.count()}`,
+  )
+  if ((await favCardStar.count()) === 1) await favCardStar.click({ timeout: 5000 }).catch(() => {})
+  check('unstarring it on the card removes it from Favorites', (await favCard.count()) === 0)
+  await fv.close()
+}
+
 // 4. Root-level search rejected by the server -> shown as an error, not as an empty result
 await page.goto(`${BASE_URL}/#${PC}/`)
 await page.waitForFunction(() => document.querySelectorAll('svg text').length > 3, null, { timeout: 15000 })
@@ -717,6 +754,15 @@ phone.on('pageerror', (e) => pageErrors.push('phone: ' + e.message))
 await phone.route('**/*', handleRoute)
 await phone.goto(`${BASE_URL}/`)
 await phone.waitForSelector('[role="button"][title^="http"]')
+const phoneStarColor = await phone
+  .locator('.stac-lens-card-star[aria-pressed="false"]')
+  .first()
+  .evaluate((el) => getComputedStyle(el).color)
+check(
+  'phone landing: an unstarred card shows its star (no hover to reveal it on touch)',
+  !/rgba\(0, 0, 0, 0\)|transparent/.test(phoneStarColor),
+  phoneStarColor,
+)
 check(
   'phone landing: sidebar behind a Filters button, no horizontal overflow',
   (await phone.locator('aside').count()) === 0 &&

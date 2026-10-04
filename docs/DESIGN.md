@@ -5973,7 +5973,7 @@ otherwise.
   list would recreate the original problem with better handwriting.
 - README says "100+" catalogs, not a number that goes stale.
 
-## 100. Finding something in a hundred catalogs — favorites, recents, and a tag vocabulary of our own
+## 100. Finding something in a hundred catalogs — favorites, recents, and a tag vocabulary of our own (list-only favorites lifted by §125)
 
 **Date:** 2026-09-17. The owner's observation: the landing page now lists a
 hundred-odd sources, which mostly *looks* like a lot of data. A visitor
@@ -6033,7 +6033,7 @@ filter.
   counts; zero-count chips stay visible but dimmed so the vocabulary itself
   can be read. The card became a `<div role="button">` because the star is
   a real `<button>` and a button may not contain one; the star's click is
-  excluded by DOM containment (`closest('[data-favorite-toggle]')`), never
+  excluded by DOM containment (`closest('[data-card-control]')`), never
   `stopPropagation()`.
 
 ### Verified in Chromium
@@ -8429,4 +8429,77 @@ the href, which made the notice six lines long on a phone.
 - Not changed: a dead link can be fetched up to three times, by the
   root search, the tree's ancestor walk and the Inspector, because the
   loader does not cache failures. That costs requests, not correctness.
+
+## 125. Star any catalog you open, from beside its name
+
+**What was reported.** Once a catalog was open there was no way to star
+it, and back on the landing page it could not be found again to star
+("我在打开的某一个数据之后我就没办法给他加上最喜爱的星星了，回到首页又找不到了").
+
+**Why.** §100 limited favorites to entries of the known list, starred
+only on landing cards. So nothing in the explorer could star, and a
+catalog opened by URL appeared in Recently opened with no star at all.
+A third gap turned up during the checks: the card star was revealed
+only on hover, so on a phone an unstarred card could never be starred.
+
+**Prior art.** The star sits beside the name of what it stars, wherever
+that thing is shown: STAC Browser next to each page's title, GitHub's
+Star next to the repository name, Chrome's bookmark star in the address
+bar.
+
+**Decision (asked).** Two options were offered: star the open catalog
+only, or also the selected Collection or Item, as STAC Browser does. The
+owner chose the open catalog. Collections and Items stay out, as §100
+had it.
+
+**How it is built.**
+- `components/FavoriteStar.tsx`: the star sits in the explorer header,
+  between the divider and the catalog's name, on desktop and phone. It
+  stars the session root under the known list's title when the root is a
+  list entry, so the two never disagree, and otherwise under the
+  catalog's own title (or its href, if it has neither title nor id). While
+  the root is loading, or if it failed to load, the star is unavailable
+  and its tooltip says which; it uses `aria-disabled` rather than
+  `disabled`, so keyboard users can still focus it and read why. Its
+  look lives in `tokens.css` (`.stac-lens-favorite-star`), in the
+  view-command register. The title is stored because a non-list favorite has no other
+  name. The same file holds `StarIcon`, moved out of `LandingPage.tsx`.
+- Landing cards: every card has a star, the list-only condition is gone.
+  A favorite or recent root that is not a list entry shows as the
+  existing thin card ("Not in the known-catalog list — opened by URL"),
+  now with its star.
+- `tokens.css`: with `hover: none` or `pointer: coarse` (touch, including
+  hybrid devices whose primary pointer hovers) or on `:focus-visible`, an
+  unstarred card's star shows in the faint text colour instead of
+  transparent.
+- Both stars have a fixed accessible name ("Favorite this catalog",
+  "Favorite <title>") with `aria-pressed` carrying the state. A label
+  that flipped to "Remove from favorites" while also announced as
+  "pressed" read as a double negative. The tooltip still names the
+  action.
+- `store/landingPrefs.ts` is unchanged except its header comment: its
+  `href` + `title` shape already took any root.
+
+**What a starred deep link stars.** It is the session root, whatever
+`resolveRoot` found. For a node opened on its own (§124), that is the
+node itself, which is what the header names.
+
+**Checks.**
+- Live, 1400 px light and dark: CoCliCo (a list entry) starred from the
+  header appears under Favorites with its list title, and its card in
+  Recently opened shows the star on. No page errors.
+- iPhone 13: the header star fits beside the truncated title with no
+  horizontal scroll, and unstarred landing stars are visible.
+- Smoke (63): an unstarred card's star is visible on the phone; the inline fixture root, which is not in the list, is
+  starred from the header, listed under Favorites with the star on, and
+  removed from Favorites by unstarring it on its card.
+
+**What the independent review changed before the commit.** The header
+star's hover background never showed, because an inline `background`
+beat the class rule; its look moved into CSS. The "available once the
+catalog has loaded" reason stayed forever when the root failed to load;
+it now says the catalog did not load. Both stars got fixed accessible
+names (above), the touch rule took `pointer: coarse`, the disabled star
+became focusable, and smoke 3g reports a failed check instead of
+aborting the run if the star never becomes available.
 

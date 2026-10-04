@@ -31,6 +31,7 @@ import { encodeSearchQuery } from './stac/searchQueryUrl'
 import { Spinner } from './components/Spinner'
 import { Logo } from './components/Logo'
 import { GitHubMark, REPO_URL } from './components/ProjectLinks'
+import { FavoriteStar } from './components/FavoriteStar'
 import { loader } from './stac/loaderInstance'
 import { loadMarkdown } from './stac/markdownLoader'
 import type { StacNode } from './stac/types'
@@ -240,6 +241,7 @@ function App() {
   // this effect had to fetch itself, keyed by href so a previous catalog's
   // root is never shown under a new one.
   const [fetchedRoot, setFetchedRoot] = useState<{ href: string; node: StacNode } | undefined>(undefined)
+  const [failedRoot, setFailedRoot] = useState<string>()
   const rootNode = rootHref
     ? (loader.get(rootHref) ?? (fetchedRoot?.href === rootHref ? fetchedRoot.node : undefined))
     : undefined
@@ -273,7 +275,9 @@ function App() {
       })
       .catch(() => {
         // Structure Lens's own root fetch already surfaces this failure
-        // (rootError) — the header just quietly falls back to the href.
+        // (rootError) — the header just quietly falls back to the href,
+        // and the favorite star says why it is unavailable.
+        if (!cancelled) setFailedRoot(rootHref)
       })
     return () => {
       cancelled = true
@@ -369,6 +373,14 @@ function App() {
             STAC Lens
           </button>
           <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', flexShrink: 0 }} />
+          {/* Stars the open catalog, next to its name — where every product
+           * puts it (GitHub's Star by the repo name, STAC Browser's by the
+           * title). DESIGN §125. */}
+          <FavoriteStar
+            href={rootHref}
+            title={rootNode && (rootNode.title ?? rootNode.id ?? rootHref)}
+            failed={failedRoot === rootHref}
+          />
           {/* The catalog's own name, not its URL, is what actually orients
            * someone here — per direct feedback, the href alone isn't very
            * useful on its own. Falls back to the raw href until
